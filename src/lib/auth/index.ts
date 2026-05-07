@@ -50,8 +50,11 @@ export const auth = betterAuth({
     requireEmailVerification: false,
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days (customer default)
-    updateAge: 60 * 60 * 24, // refresh sliding expiry once per day
+    expiresIn: 60 * 60 * 24 * 7, // 7-day absolute max (customer default)
+    // Refresh on every 5 min of activity. Combined with the 12-hour idle check
+    // in the admin layout, this gives an effective 12h idle timeout for
+    // /admin/* routes while preserving the 7-day customer session lifetime.
+    updateAge: 60 * 5,
     cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
   user: {

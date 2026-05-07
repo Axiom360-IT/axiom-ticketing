@@ -26,10 +26,33 @@ const a11yStrictRules = {
   },
 };
 
+// shadcn-generated UI primitives are generic — labels live without an
+// associated control, and components use Base UI's render-prop pattern that
+// confuses some a11y rules. We trust shadcn's a11y; consumers wire labels
+// to controls correctly when used.
+const shadcnExceptions = {
+  files: ["src/components/ui/**/*.{ts,tsx}"],
+  rules: {
+    "jsx-a11y/label-has-associated-control": "off",
+  },
+};
+
+// Server Components legitimately call side-effecting Next.js APIs (redirect,
+// headers, cookies, draftMode). React Compiler's purity rule is for client
+// renders and doesn't apply to server-only render paths.
+const serverComponentExceptions = {
+  files: ["src/app/**/*.{ts,tsx}", "src/middleware.ts"],
+  rules: {
+    "react-hooks/purity": "off",
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   a11yStrictRules,
+  shadcnExceptions,
+  serverComponentExceptions,
   globalIgnores([
     ".next/**",
     "out/**",
