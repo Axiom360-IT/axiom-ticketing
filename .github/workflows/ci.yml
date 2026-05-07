@@ -40,6 +40,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Unit tests
+        run: pnpm test
+
       - name: Build
         run: pnpm build
         env:
@@ -48,8 +51,6 @@ jobs:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
 
       # ── Added in later modules ─────────────────────────────
-      # M1:  - name: Unit tests
-      #        run: pnpm vitest run
       # M22: - name: E2E tests
       #        run: pnpm playwright test
       # ───────────────────────────────────────────────────────
