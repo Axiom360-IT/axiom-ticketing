@@ -1,9 +1,15 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
+import { can } from "@/lib/auth/can";
+import { productionContext } from "@/lib/auth/can-context";
+import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
@@ -192,4 +198,462 @@ export async function createTicket(
   // (Skipped here for Phase A; notification fan-out lands in M11.)
 
   return { ok: true, ticketNumber };
+}
+
+// ── Helpers shared by authenticated actions ──────────────────────────
+
+async function loadTicketScope(ticketId: string) {
+  const [t] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      subject: tickets.subject,
+      assignedToId: tickets.assignedToId,
+      customerId: tickets.customerId,
+      customerEmail: tickets.customerEmail,
+      customerName: tickets.customerName,
+      status: tickets.status,
+      isEscalated: tickets.isEscalated,
+      priority: tickets.priority,
+    })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  return t;
+}
+
+class ForbiddenError extends Error {
+  constructor() {
+    super("Forbidden");
+    this.name = "ForbiddenError";
+  }
+}
+class NotFoundError extends Error {
+  constructor() {
+    super("Not found");
+    this.name = "NotFoundError";
+  }
+}
+
+// ── Assignment ──────────────────────────────────────────────────────
+
+export async function assignTicket(
+  ticketId: string,
+  techId: string,
+): Promise<void> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.assign",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  // Verify the target user exists and is active
+  const [tech] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(eq(users.id, techId))
+    .limit(1);
+  if (!tech) throw new NotFoundError();
+  if (!tech.isActive) {
+    throw new Error("Cannot assign to a deactivated user");
+  }
+
+  const before = { assignedToId: ticket.assignedToId };
+  const newStatus = ticket.status === "open" ? "in_progress" : ticket.status;
+
+  await db
+    .update(tickets)
+    .set({
+      assignedToId: techId,
+      assignedAt: new Date(),
+      status: newStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(tickets.id, ticketId));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.assign",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before,
+    after: { assignedToId: techId, status: newStatus },
+  });
+
+  // Notify customer (best-effort)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    await sendEmail({
+      to: ticket.customerEmail,
+      template: {
+        template: "ticket_assigned",
+        data: {
+          ticketNumber: ticket.ticketNumber,
+          customerName: ticket.customerName,
+          subject: ticket.subject,
+          technicianName: tech.name,
+          trackingUrl,
+        },
+      },
+      ticketNumber: ticket.ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error("[assignTicket] customer email failed:", err);
+  }
+
+  // Notify the technician (best-effort)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    await sendEmail({
+      to: tech.email,
+      template: {
+        template: "new_assignment",
+        data: {
+          ticketNumber: ticket.ticketNumber,
+          technicianName: tech.name,
+          subject: ticket.subject,
+          priority: ticket.priority as "low" | "medium" | "high" | "critical",
+          customerName: ticket.customerName,
+          ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+        },
+      },
+      ticketNumber: ticket.ticketNumber,
+    });
+  } catch (err) {
+    console.error("[assignTicket] tech email failed:", err);
+  }
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+// ── Reply (visible to customer) ──────────────────────────────────────
+
+const replySchema = z.object({
+  body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
+});
+
+export async function replyToTicket(
+  ticketId: string,
+  body: string,
+): Promise<void> {
+  const parsed = replySchema.safeParse({ body });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid reply");
+  }
+
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.reply",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  // Resolve the agent's display name + email for the message + outbound email
+  const [agent] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!agent) throw new NotFoundError();
+
+  // First agent reply sets first_response_at (used by SLA monitor in M9)
+  const isFirstAgentReply = ticket.status === "open";
+
+  await db.transaction(async (tx) => {
+    await tx.insert(messages).values({
+      ticketId: ticket.id,
+      authorId: user.id,
+      authorEmail: agent.email,
+      authorName: agent.name,
+      authorType: "agent",
+      body: parsed.data.body,
+      channel: "dashboard",
+    });
+
+    const update: Partial<typeof tickets.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (isFirstAgentReply) {
+      update.firstResponseAt = new Date();
+      // Don't auto-flip status here; assignment is what moves to in_progress.
+    }
+    await tx.update(tickets).set(update).where(eq(tickets.id, ticket.id));
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.reply",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { length: parsed.data.body.length },
+  });
+
+  // Email the customer (best-effort)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    await sendEmail({
+      to: ticket.customerEmail,
+      template: {
+        template: "ticket_reply",
+        data: {
+          ticketNumber: ticket.ticketNumber,
+          customerName: ticket.customerName,
+          subject: ticket.subject,
+          agentName: agent.name,
+          body: parsed.data.body,
+          trackingUrl,
+        },
+      },
+      ticketNumber: ticket.ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error("[replyToTicket] email failed:", err);
+  }
+
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+// ── Resolve ──────────────────────────────────────────────────────────
+
+const resolveSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(10, "Resolution note must be at least 10 characters")
+    .max(5000),
+});
+
+export async function resolveTicket(
+  ticketId: string,
+  note: string,
+): Promise<void> {
+  const parsed = resolveSchema.safeParse({ note });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid note");
+  }
+
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.resolve",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (ticket.status === "resolved" || ticket.status === "closed") {
+    throw new Error("Ticket is already resolved or closed");
+  }
+
+  const [agent] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!agent) throw new NotFoundError();
+
+  await db.transaction(async (tx) => {
+    await tx.insert(messages).values({
+      ticketId: ticket.id,
+      authorId: user.id,
+      authorEmail: agent.email,
+      authorName: agent.name,
+      authorType: "agent",
+      body: parsed.data.note,
+      channel: "dashboard",
+      isResolutionNote: true,
+    });
+    await tx
+      .update(tickets)
+      .set({
+        status: "resolved",
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(tickets.id, ticket.id));
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.resolve",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { status: ticket.status },
+    after: { status: "resolved" },
+  });
+
+  // CSAT email + 24h auto-close are wired up in M3 Phase C.
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+// ── Escalate / De-escalate ───────────────────────────────────────────
+
+const escalateSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(10, "Escalation reason must be at least 10 characters")
+    .max(1000),
+});
+
+export async function escalateTicket(
+  ticketId: string,
+  reason: string,
+): Promise<void> {
+  const parsed = escalateSchema.safeParse({ reason });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid reason");
+  }
+
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.escalate",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (ticket.isEscalated) {
+    throw new Error("Ticket is already escalated");
+  }
+
+  const [actor] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+
+  await db
+    .update(tickets)
+    .set({
+      isEscalated: true,
+      escalatedAt: new Date(),
+      escalatedById: user.id,
+      escalationReason: parsed.data.reason,
+      updatedAt: new Date(),
+    })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.escalate",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { reason: parsed.data.reason },
+  });
+
+  // Notify IT Director + Coordinator (best-effort; full fan-out comes in M11)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    // For Phase B: just send to the seeded support_email as a placeholder.
+    // Per-role notification routing lands with M11 + the dispatch fan-out.
+    const supportEmail = await getSetting<string>("support_email");
+    if (supportEmail) {
+      await sendEmail({
+        to: supportEmail,
+        template: {
+          template: "escalation_alert",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            recipientName: "Team",
+            subject: ticket.subject,
+            technicianName: actor?.name ?? "An agent",
+            reason: parsed.data.reason,
+            customerName: ticket.customerName,
+            ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+      });
+    }
+  } catch (err) {
+    console.error("[escalateTicket] email failed:", err);
+  }
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+export async function deescalateTicket(ticketId: string): Promise<void> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.deescalate",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (!ticket.isEscalated) return;
+
+  await db
+    .update(tickets)
+    .set({
+      isEscalated: false,
+      escalatedAt: null,
+      escalatedById: null,
+      escalationReason: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.deescalate",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
 }
