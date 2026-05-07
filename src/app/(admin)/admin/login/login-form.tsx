@@ -21,26 +21,15 @@ export function LoginForm() {
     setLoading(true);
 
     // Trim defensively — autofill / paste often introduces stray whitespace.
-    const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
-
-    // TEMP debug: log exactly what we're sending. Remove before prod.
-    console.log("Sending sign-in:", {
-      email: JSON.stringify(trimmedEmail),
-      emailLength: trimmedEmail.length,
-      passwordLength: trimmedPassword.length,
-    });
-
     const result = await authClient.signIn.email({
-      email: trimmedEmail,
-      password: trimmedPassword,
+      email: email.trim(),
+      password: password.trim(),
     });
 
     setLoading(false);
 
     if (result.error) {
-      // TEMP debug: log the actual error structure to console.
-      console.error("Sign-in failed:", result.error);
+      // Generic message — never reveal whether the email or password was wrong.
       setError("Invalid email or password.");
       return;
     }
