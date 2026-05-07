@@ -33,6 +33,8 @@ export const users = pgTable(
     emailVerified: boolean("email_verified").notNull().default(false),
     name: text("name").notNull(),
     image: text("image"),
+    // Required by Better Auth twoFactor plugin.
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     // ── Application-specific fields (not part of Better Auth's core) ──
     language: text("language").notNull().default("en"),
     createdById: uuid("created_by_id"),
