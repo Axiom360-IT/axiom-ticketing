@@ -15,6 +15,23 @@ import {
 // when we add it (likely in M14 — Profile page). For MVP login, password +
 // TOTP is sufficient.
 
+// Origins allowed to send authenticated requests (CSRF protection).
+// In production this is just the configured app URL.
+// In development we also trust the common dev ports — Next.js will pick the
+// next free one if 3000 is taken.
+const trustedOrigins = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.BETTER_AUTH_URL,
+  ...(process.env.NODE_ENV !== "production"
+    ? [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+      ]
+    : []),
+].filter((u): u is string => Boolean(u));
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -52,6 +69,7 @@ export const auth = betterAuth({
       generateId: () => randomUUID(),
     },
   },
+  trustedOrigins,
   plugins: [twoFactor({ issuer: "Axiom360 Ticketing" })],
 });
 
