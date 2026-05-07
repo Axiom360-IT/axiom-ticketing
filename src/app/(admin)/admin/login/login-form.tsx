@@ -20,15 +20,26 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
 
-    const result = await authClient.signIn.email({ email, password });
+    // Trim defensively — autofill / paste often introduces stray whitespace.
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    // TEMP debug: log exactly what we're sending. Remove before prod.
+    console.log("Sending sign-in:", {
+      email: JSON.stringify(trimmedEmail),
+      emailLength: trimmedEmail.length,
+      passwordLength: trimmedPassword.length,
+    });
+
+    const result = await authClient.signIn.email({
+      email: trimmedEmail,
+      password: trimmedPassword,
+    });
 
     setLoading(false);
 
     if (result.error) {
       // TEMP debug: log the actual error structure to console.
-      // (PRD §5.13 says don't reveal which field failed in the UI — but we
-      // need diagnostic detail during dev. Remove this console.error before
-      // production launch.)
       console.error("Sign-in failed:", result.error);
       setError("Invalid email or password.");
       return;
