@@ -1,7 +1,15 @@
 // Re-exports every schema module so consumers can do:
 //   import { tickets, users } from "@/lib/db/schema";
-//
-// Schema files are added one domain at a time during M1. This index file
-// will grow as those schema files land.
 
-export {};
+export * from "./auth";
+export * from "./rbac";
+export * from "./tickets";
+export * from "./messages";
+export * from "./attachments";
+export * from "./procurement";
+export * from "./audit";
+export * from "./notifications";
+export * from "./settings";
+export * from "./webhooks";
+export * from "./failed-notifications";
+export * from "./holidays";
