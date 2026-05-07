@@ -25,7 +25,11 @@ export function LoginForm() {
     setLoading(false);
 
     if (result.error) {
-      // Generic message — never reveal whether the email or password was wrong.
+      // TEMP debug: log the actual error structure to console.
+      // (PRD §5.13 says don't reveal which field failed in the UI — but we
+      // need diagnostic detail during dev. Remove this console.error before
+      // production launch.)
+      console.error("Sign-in failed:", result.error);
       setError("Invalid email or password.");
       return;
     }
