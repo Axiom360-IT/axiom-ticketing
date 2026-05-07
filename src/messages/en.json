@@ -1,0 +1,334 @@
+{
+  "common": {
+    "appName": "Axiom360 Ticketing System",
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "submit": "Submit",
+    "yes": "Yes",
+    "no": "No",
+    "search": "Search",
+    "actions": "Actions"
+  },
+  "errors": {
+    "validation": "Please check the form for errors.",
+    "permissionDenied": "You don't have permission to do that.",
+    "rateLimited": "Too many requests. Try again in {minutes} minutes.",
+    "unexpected": "Something went wrong. Please try again.",
+    "notFound": "Not found.",
+    "unauthenticated": "Please sign in to continue."
+  },
+  "forms": {
+    "required": "This field is required.",
+    "invalidEmail": "Enter a valid email.",
+    "minLength": "Must be at least {min} characters.",
+    "maxLength": "Must be at most {max} characters."
+  },
+  "tickets": {
+    "queue": {
+      "title": "Tickets",
+      "count": "{count, plural, =0 {No tickets} =1 {# ticket} other {# tickets}}",
+      "countMatching": "{count, plural, =0 {No tickets} =1 {# ticket} other {# tickets}} matching \"{query}\"",
+      "search": "Search by ticket #, subject, or customer email",
+      "empty": "No tickets yet. They'll appear here as customers submit them.",
+      "emptyMatching": "No tickets match your search.",
+      "createOnBehalf": "Create on behalf",
+      "columns": {
+        "ticket": "Ticket",
+        "subject": "Subject",
+        "status": "Status",
+        "priority": "Priority",
+        "customer": "Customer",
+        "assignee": "Assignee",
+        "updated": "Updated"
+      },
+      "unassigned": "Unassigned",
+      "relativeTime": {
+        "justNow": "just now",
+        "minutes": "{minutes}m ago",
+        "hours": "{hours}h ago",
+        "days": "{days}d ago"
+      }
+    },
+    "detail": {
+      "openedBy": "Opened {date} by {customerName}",
+      "conversationTitle": "Conversation",
+      "replyTitle": "Reply",
+      "actionsTitle": "Actions",
+      "customerTitle": "Customer",
+      "assigneeTitle": "Assignee",
+      "escalationTitle": "Escalation",
+      "streamTitle": "Stream",
+      "originLabel": "Origin: {origin}",
+      "csatLabel": "Customer feedback: {response}",
+      "csatLabelWithDate": "Customer feedback: {response} · {date}"
+    },
+    "status": {
+      "open": "Open",
+      "in_progress": "In progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "category": {
+      "hardware": "Hardware",
+      "software": "Software",
+      "network": "Network",
+      "access": "Access",
+      "other": "Other"
+    },
+    "categoryDescription": {
+      "low": "Low — non-urgent",
+      "medium": "Medium — affects my work",
+      "high": "High — blocking my work",
+      "critical": "Critical — production down"
+    },
+    "actions": {
+      "assign": "Assign",
+      "reply": "Send reply",
+      "replyPending": "Sending…",
+      "resolve": "Mark resolved",
+      "resolvePending": "Resolving…",
+      "escalate": "Escalate",
+      "escalatePending": "Escalating…",
+      "deescalate": "De-escalate",
+      "deescalatePending": "De-escalating…",
+      "reopen": "Reopen ticket",
+      "reopenPending": "Reopening…",
+      "createTicket": "Create ticket",
+      "createPending": "Creating…"
+    },
+    "escalatedBadge": "Escalated",
+    "submit": {
+      "title": "Submit a ticket",
+      "subtitle": "Tell us what's wrong and a coordinator will route it to a technician.",
+      "fields": {
+        "yourName": "Your name",
+        "email": "Email",
+        "customerName": "Customer name",
+        "customerEmail": "Customer email",
+        "subject": "Subject",
+        "subjectPlaceholder": "Brief summary of the problem",
+        "subjectAgentPlaceholder": "Short summary as the customer described it",
+        "category": "Category",
+        "categoryPlaceholder": "Select category",
+        "priority": "Priority",
+        "priorityPlaceholder": "Select priority",
+        "description": "Description",
+        "descriptionPlaceholder": "What happened? What did you expect to happen? Anything you've tried?",
+        "descriptionAgentPlaceholder": "What did the customer report? Include any context they gave."
+      },
+      "honeypotLabel": "Website",
+      "captchaSkipped": "Cloudflare Turnstile is not configured — captcha is skipped in dev.",
+      "submitButton": "Submit ticket",
+      "submitting": "Submitting…",
+      "chooseCategoryPriority": "Please choose a category and priority.",
+      "errors": {
+        "tooManyByIp": "Too many submissions from your network. Try again in an hour.",
+        "tooManyByEmail": "Too many submissions from this email today. Try again tomorrow.",
+        "captchaFailed": "Captcha verification failed. Please refresh the page and try again."
+      }
+    },
+    "submitSuccess": {
+      "title": "Ticket submitted",
+      "subtitle": "We've received your ticket. A coordinator will route it to a technician shortly.",
+      "yourTicketNumber": "Your ticket number",
+      "trackingHelp": "Save this number — you'll need it to ask about the ticket. We've also emailed you a confirmation.",
+      "submitAnother": "Submit another ticket"
+    },
+    "createOnBehalf": {
+      "title": "Create ticket on behalf",
+      "subtitle": "Use this when a customer reports an issue by phone or in person. The customer will receive the standard confirmation email.",
+      "cardTitle": "Ticket details"
+    },
+    "resolveModal": {
+      "title": "Resolve ticket",
+      "description": "Describe what fixed the issue. The note is stored on the ticket and sent to the customer with their CSAT request.",
+      "placeholder": "Resolution details (minimum 10 characters)…",
+      "minLengthError": "Resolution note must be at least 10 characters.",
+      "genericError": "Failed to resolve ticket."
+    },
+    "escalateModal": {
+      "escalateTitle": "Escalate ticket",
+      "escalateDescription": "Tell IT leadership why this needs to come up the chain. The reason is stored on the ticket.",
+      "deescalateTitle": "De-escalate ticket",
+      "deescalateDescription": "Clear the escalation flag once the situation is back under control.",
+      "reasonPlaceholder": "Why is this being escalated?",
+      "minLengthError": "Reason must be at least 10 characters.",
+      "genericError": "Failed to update escalation."
+    },
+    "reply": {
+      "placeholder": "Write a reply to the customer…",
+      "errorEmpty": "Reply cannot be empty."
+    },
+    "assignControl": {
+      "label": "Assignee",
+      "unassigned": "Unassigned",
+      "assignTo": "Assign to…",
+      "saving": "Saving…",
+      "genericError": "Failed to update assignment."
+    },
+    "csat": {
+      "satisfiedTitle": "Glad it's fixed",
+      "satisfiedBody": "Thanks for confirming — we've closed the ticket. If anything comes back, just open a new one and we'll pick it up.",
+      "unsatisfiedTitle": "Sorry that didn't do it",
+      "unsatisfiedBody": "We've reopened the ticket and a technician will follow up. Watch your inbox for the next update.",
+      "invalidTitle": "We couldn't confirm that link",
+      "invalidBody": "The CSAT link in your email looks expired or invalid. If you still need to give feedback, reply to the resolution email and we'll capture it manually.",
+      "alreadyResponded": "We already had your answer on file — nothing else changed.",
+      "submitAnother": "Submit another ticket"
+    },
+    "messages": {
+      "channelDashboard": "Dashboard",
+      "channelEmail": "Email",
+      "channelPortal": "Portal",
+      "channelSms": "SMS",
+      "internalNoteBadge": "Internal note",
+      "resolutionNoteBadge": "Resolution"
+    }
+  },
+  "users": {},
+  "procurement": {},
+  "roles": {},
+  "settings": {},
+  "audit": {},
+  "notifications": {},
+  "admin": {
+    "shell": {
+      "skipToContent": "Skip to main content",
+      "navTickets": "Tickets",
+      "navProcurement": "Procurement",
+      "navUsers": "Users",
+      "navHierarchy": "Hierarchy",
+      "navRoles": "Roles",
+      "navReports": "Reports",
+      "navAudit": "Audit log",
+      "navSettings": "Settings",
+      "profileMenuLabel": "Account",
+      "profileMenuMyAccount": "My account",
+      "profileMenuSignOut": "Sign out"
+    },
+    "login": {
+      "title": "Admin sign-in",
+      "subtitle": "Use your Axiom360 staff credentials.",
+      "email": "Email",
+      "password": "Password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "genericError": "Sign-in failed. Check your email and password."
+    },
+    "landing": {
+      "welcome": "Welcome back, {name}.",
+      "subtitle": "Pick something from the sidebar to get started."
+    },
+    "stubs": {
+      "comingSoon": "Coming soon — lands in a later milestone.",
+      "tickets": "Ticket queue",
+      "procurement": "Procurement requests",
+      "users": "Users",
+      "hierarchy": "Reporting hierarchy",
+      "roles": "Roles & permissions",
+      "reports": "Reports",
+      "audit": "Audit log",
+      "settings": "System settings",
+      "profile": "My account"
+    }
+  },
+  "emails": {
+    "shared": {
+      "footerLine1": "Axiom360 Ticketing System",
+      "footerLine2": "This is an automated message. Reply to this email to add to your ticket."
+    },
+    "ticketCreated": {
+      "preview": "Your ticket {ticketNumber} has been received",
+      "title": "We've received your ticket",
+      "greeting": "Hi {customerName},",
+      "body": "Thanks for reaching out. Your ticket {ticketNumber} — “{subject}” — has been received and a coordinator will assign it to a technician shortly.",
+      "replyHint": "You'll hear from us as soon as it's assigned. To add details or a screenshot, just reply to this email.",
+      "view": "View your ticket",
+      "fallback": "If the link above doesn't work, copy and paste this URL into your browser:",
+      "subject": "[{ticketNumber}] We've received your ticket: {subject}"
+    },
+    "ticketAssigned": {
+      "preview": "Your ticket {ticketNumber} is now being worked on",
+      "title": "Your ticket is now being worked on",
+      "greeting": "Hi {customerName},",
+      "body": "Good news — {technicianName} has picked up your ticket {ticketNumber} and is looking into “{subject}”.",
+      "footer": "You'll get an update as soon as they have something to share. You can also reply to this email at any time to add details.",
+      "view": "View your ticket",
+      "subject": "[{ticketNumber}] Your ticket has been assigned: {subject}"
+    },
+    "ticketReply": {
+      "preview": "{agentName} replied to your ticket {ticketNumber}",
+      "title": "{agentName} replied to your ticket",
+      "greeting": "Hi {customerName},",
+      "intro": "We've sent you an update on “{subject}”:",
+      "footer": "You can reply to this email to keep the conversation going, or open the ticket in your browser.",
+      "view": "View your ticket",
+      "trailerLine": "Reply to this email or click the link above to respond. Mention ticket {ticketNumber} if your mail client doesn't keep the thread.",
+      "subject": "[{ticketNumber}] Re: {subject}"
+    },
+    "ticketResolved": {
+      "preview": "Your ticket {ticketNumber} has been resolved",
+      "title": "Your ticket has been resolved",
+      "greeting": "Hi {customerName},",
+      "body": "{agentName} has resolved your ticket {ticketNumber} — “{subject}”. Here's what they did:",
+      "feedbackPrompt": "Did this fix the issue? Your feedback closes the loop. If we don't hear back within 24 hours, the ticket will close automatically.",
+      "satisfiedButton": "Yes, this is fixed",
+      "unsatisfiedButton": "No, this isn't fixed",
+      "viewLine": "You can also <link>view the ticket</link> or reply to this email if you need to add more details.",
+      "subject": "[{ticketNumber}] Resolved — was this fixed? {subject}"
+    },
+    "ticketClosed": {
+      "preview": "Ticket {ticketNumber} is now closed",
+      "title": "Your ticket is closed",
+      "greeting": "Hi {customerName},",
+      "bodyCsat": "Thanks for confirming — ticket {ticketNumber} “{subject}” is now closed.",
+      "bodyAuto": "We hadn't heard back on ticket {ticketNumber} “{subject}”, so we've closed it for you. If the issue comes back, just open a new ticket and we'll pick it up.",
+      "newTicketPrompt": "Need help with something else? Open a fresh ticket any time.",
+      "newTicket": "Submit a new ticket",
+      "subject": "[{ticketNumber}] Ticket closed: {subject}"
+    },
+    "ticketReopened": {
+      "preview": "Ticket {ticketNumber} has been reopened",
+      "title": "Your ticket has been reopened",
+      "greeting": "Hi {customerName},",
+      "bodyCsat": "Sorry our last fix didn't do it. Ticket {ticketNumber} “{subject}” is reopened and we're back on it. A technician will follow up shortly.",
+      "bodyAgent": "Ticket {ticketNumber} “{subject}” has been reopened by our team and assigned for follow-up.",
+      "footer": "If there's any extra detail that would help us, just reply to this email and we'll add it to the ticket.",
+      "view": "View your ticket",
+      "subject": "[{ticketNumber}] Ticket reopened: {subject}"
+    },
+    "newAssignment": {
+      "preview": "You've been assigned ticket {ticketNumber}",
+      "title": "New ticket assigned to you",
+      "greeting": "Hi {technicianName},",
+      "body": "You've been assigned ticket {ticketNumber} — “{subject}”.",
+      "meta": "Customer: {customerName} · Priority: {priority}",
+      "view": "Open ticket",
+      "subject": "[{ticketNumber}] New ticket assigned to you: {subject}"
+    },
+    "escalationAlert": {
+      "preview": "Ticket {ticketNumber} has been escalated",
+      "title": "A ticket has been escalated",
+      "greeting": "Hi {recipientName},",
+      "body": "{technicianName} has escalated ticket {ticketNumber} “{subject}”.",
+      "metaReason": "Reason: {reason}",
+      "metaCustomer": "Customer: {customerName}",
+      "guidance": "The ticket is still assigned to {technicianName}. Please review and either take it over, advise, or de-escalate when ready.",
+      "view": "Open ticket",
+      "subject": "[{ticketNumber}] Ticket escalated: {subject}"
+    }
+  }
+}
