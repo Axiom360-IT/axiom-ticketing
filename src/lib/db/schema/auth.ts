@@ -2,22 +2,28 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
-  customType,
   foreignKey,
   index,
   pgTable,
   text,
   timestamp,
-  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
-// Postgres bytea type for binary data (passkey public keys).
-const bytea = customType<{ data: Buffer }>({
-  dataType() {
-    return "bytea";
-  },
-});
+// ── Better Auth-compatible schema ─────────────────────────────────────
+//
+// Column names follow Better Auth 1.6.x conventions. The `fields` mapping
+// option is intentionally NOT used so this file is the single source of truth
+// for the schema, and migrations stay clean.
+//
+// Application-specific user columns (language, hierarchy, soft-delete) are
+// added to the `users` table as additional columns; Better Auth tolerates
+// extra columns it doesn't recognise.
+//
+// 2FA secret + backup codes are stored plaintext in this MVP (Better Auth's
+// twoFactor plugin owns those columns). Field-level encryption for those
+// values is in BACKLOG (requires wrapping the plugin or a custom adapter).
+// ──────────────────────────────────────────────────────────────────────
 
 export const users = pgTable(
   "users",
@@ -26,7 +32,8 @@ export const users = pgTable(
     email: text("email").notNull().unique(),
     emailVerified: boolean("email_verified").notNull().default(false),
     name: text("name").notNull(),
-    avatarUrl: text("avatar_url"),
+    image: text("image"),
+    // ── Application-specific fields (not part of Better Auth's core) ──
     language: text("language").notNull().default("en"),
     createdById: uuid("created_by_id"),
     isActive: boolean("is_active").notNull().default(true),
@@ -63,18 +70,30 @@ export const accounts = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    providerId: text("provider_id").notNull(),
+      .references(() => users.id, { onDelete: "cascade" }),
     accountId: text("account_id").notNull(),
-    passwordHash: text("password_hash"),
+    providerId: text("provider_id").notNull(),
+    // OAuth fields (null for credential provider, populated for future OAuth)
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+      withTimezone: true,
+    }),
+    scope: text("scope"),
+    // Credential-provider field: the bcrypt/scrypt password hash (Better Auth-managed)
+    password: text("password"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
   },
-  (t) => [
-    unique("accounts_provider_account_unique").on(t.providerId, t.accountId),
-    index("accounts_user_id_idx").on(t.userId),
-  ],
+  (t) => [index("accounts_user_id_idx").on(t.userId)],
 );
 
 export const sessions = pgTable(
@@ -91,7 +110,7 @@ export const sessions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
-    lastActiveAt: timestamp("last_active_at", { withTimezone: true })
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
   },
@@ -101,36 +120,44 @@ export const sessions = pgTable(
   ],
 );
 
-export const verificationTokens = pgTable("verification_tokens", {
+export const verifications = pgTable("verifications", {
   id: uuid("id").primaryKey().defaultRandom(),
   identifier: text("identifier").notNull(),
-  token: text("token").notNull().unique(),
+  value: text("value").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
 });
 
-// Sensitive columns: secret + backup_codes are AES-256-GCM-encrypted (lib/crypto.ts).
-export const twoFactor = pgTable("two_factor", {
+// Better Auth twoFactor plugin storage.
+// `secret` and `backup_codes` are plain text in this MVP — encryption-at-rest
+// is provided by Neon; field-level encryption is tracked in BACKLOG.md.
+export const twoFactors = pgTable("two_factors", {
+  id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
-    .primaryKey()
+    .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  secretEncrypted: text("secret_encrypted").notNull(),
-  backupCodesEncrypted: text("backup_codes_encrypted").notNull(),
-  enabled: boolean("enabled").notNull().default(false),
-  enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
+  secret: text("secret").notNull(),
+  backupCodes: text("backup_codes").notNull(),
 });
 
+// Better Auth passkey plugin storage.
 export const passkeys = pgTable("passkeys", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name"),
+  publicKey: text("public_key").notNull(),
   credentialId: text("credential_id").notNull().unique(),
-  publicKey: bytea("public_key").notNull(),
   counter: bigint("counter", { mode: "number" }).notNull(),
-  deviceName: text("device_name"),
+  deviceType: text("device_type"),
+  backedUp: boolean("backed_up").notNull().default(false),
+  transports: text("transports"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),

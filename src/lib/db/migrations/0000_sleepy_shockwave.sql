@@ -1,20 +1,29 @@
 CREATE TABLE "accounts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
-	"provider_id" text NOT NULL,
 	"account_id" text NOT NULL,
-	"password_hash" text,
+	"provider_id" text NOT NULL,
+	"access_token" text,
+	"refresh_token" text,
+	"id_token" text,
+	"access_token_expires_at" timestamp with time zone,
+	"refresh_token_expires_at" timestamp with time zone,
+	"scope" text,
+	"password" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "accounts_provider_account_unique" UNIQUE("provider_id","account_id")
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "passkeys" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
+	"name" text,
+	"public_key" text NOT NULL,
 	"credential_id" text NOT NULL,
-	"public_key" "bytea" NOT NULL,
 	"counter" bigint NOT NULL,
-	"device_name" text,
+	"device_type" text,
+	"backed_up" boolean DEFAULT false NOT NULL,
+	"transports" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "passkeys_credential_id_unique" UNIQUE("credential_id")
 );
@@ -27,16 +36,15 @@ CREATE TABLE "sessions" (
 	"ip_address" text,
 	"user_agent" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"last_active_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "sessions_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
-CREATE TABLE "two_factor" (
-	"user_id" uuid PRIMARY KEY NOT NULL,
-	"secret_encrypted" text NOT NULL,
-	"backup_codes_encrypted" text NOT NULL,
-	"enabled" boolean DEFAULT false NOT NULL,
-	"enrolled_at" timestamp with time zone
+CREATE TABLE "two_factors" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"secret" text NOT NULL,
+	"backup_codes" text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -44,7 +52,7 @@ CREATE TABLE "users" (
 	"email" text NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"name" text NOT NULL,
-	"avatar_url" text,
+	"image" text,
 	"language" text DEFAULT 'en' NOT NULL,
 	"created_by_id" uuid,
 	"is_active" boolean DEFAULT true NOT NULL,
@@ -56,13 +64,13 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE "verification_tokens" (
+CREATE TABLE "verifications" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"identifier" text NOT NULL,
-	"token" text NOT NULL,
+	"value" text NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "verification_tokens_token_unique" UNIQUE("token")
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "role_permissions" (
@@ -279,10 +287,10 @@ CREATE TABLE "holidays" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "passkeys" ADD CONSTRAINT "passkeys_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "two_factor" ADD CONSTRAINT "two_factor_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "two_factors" ADD CONSTRAINT "two_factors_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_created_by_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_deactivated_by_id_fk" FOREIGN KEY ("deactivated_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -349,29 +357,15 @@ CREATE INDEX "failed_notifications_last_attempt_idx" ON "failed_notifications" U
 -- ─────────────────────────────────────────────────────────────────────
 -- M1 custom additions (not generated by drizzle-kit)
 -- ─────────────────────────────────────────────────────────────────────
-
--- Ticket numbering: human-readable AX-XXXX format.
--- Called by application code on ticket insert (src/lib/ticket-number.ts).
 CREATE SEQUENCE IF NOT EXISTS ax_ticket_seq;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION generate_ticket_number() RETURNS text AS $$
+CREATE OR REPLACE FUNCTION generate_ticket_number() RETURNS text AS $function$
   SELECT 'AX-' || LPAD(nextval('ax_ticket_seq')::text, 4, '0');
-$$ LANGUAGE SQL VOLATILE;--> statement-breakpoint
+$function$ LANGUAGE SQL VOLATILE;--> statement-breakpoint
 
--- 5-second statement_timeout for runtime queries.
--- Affects every new connection (Neon HTTP driver opens fresh per query).
--- Reporting role with extended timeout (60s) is created later in M13.
-DO $$
+DO $do$
 BEGIN
   EXECUTE 'ALTER ROLE ' || quote_ident(current_user) || ' SET statement_timeout = ''5s''';
 EXCEPTION WHEN insufficient_privilege THEN
-  RAISE NOTICE 'Could not set statement_timeout (insufficient privileges) — apply manually if running as a non-owner role.';
-END $$;--> statement-breakpoint
-
--- Note on audit_log append-only enforcement:
--- DB-level triggers blocking UPDATE/DELETE would also block the legitimate
--- retention-audit cron (deletes rows > 3 years). Append-only is enforced
--- at the application layer:
---   1. Only src/lib/audit.ts writes to audit_log.
---   2. The Drizzle schema exports no update() or delete() method for it.
---   3. The retention cron uses a controlled, audited deletion path.
+  RAISE NOTICE 'Could not set statement_timeout (insufficient privileges).';
+END $do$;

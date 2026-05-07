@@ -14,7 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx --env-file=.env.local src/lib/db/seed.ts"
+    "db:seed": "tsx --env-file=.env.local src/lib/db/seed.ts",
+    "db:seed-super-admin": "tsx --env-file=.env.local src/lib/db/seed-super-admin.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
