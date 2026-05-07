@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import { sendEmail } from "@/lib/email/send";
 import { checkRateLimit } from "@/lib/ratelimit";
 import { getSetting } from "@/lib/settings";
 import { generateTicketNumber } from "@/lib/ticket-number";
-import { signGuestToken } from "@/lib/tokens";
+import { signCsatToken, signGuestToken } from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 // ── Public ticket submission (no auth required) ──────────────────────
@@ -197,6 +197,129 @@ export async function createTicket(
   // 11. Emit Inngest event so async listeners (notifications, future jobs) can react
   // (Skipped here for Phase A; notification fan-out lands in M11.)
 
+  return { ok: true, ticketNumber };
+}
+
+// ── Coordinator: create on behalf of a customer ──────────────────────
+
+export const createOnBehalfSchema = z.object({
+  customerName: z.string().trim().min(1, "Name is required").max(120),
+  customerEmail: z.string().trim().toLowerCase().email("Enter a valid email"),
+  subject: z
+    .string()
+    .trim()
+    .min(3, "Subject must be at least 3 characters")
+    .max(150, "Subject must be at most 150 characters"),
+  category: z.enum(TICKET_CATEGORIES),
+  priority: z.enum(TICKET_PRIORITIES),
+  description: z
+    .string()
+    .trim()
+    .min(20, "Description must be at least 20 characters")
+    .max(5000),
+});
+
+export type CreateOnBehalfInput = z.infer<typeof createOnBehalfSchema>;
+export type CreateOnBehalfResult =
+  | { ok: true; ticketNumber: string }
+  | { ok: false; error: string };
+
+export async function createTicketOnBehalf(
+  input: CreateOnBehalfInput,
+): Promise<CreateOnBehalfResult> {
+  const user = await requireSessionUser();
+  if (!(await can(user, "tickets.create", { type: "global" }, productionContext))) {
+    return { ok: false, error: "You don't have permission to create tickets." };
+  }
+
+  const parsed = createOnBehalfSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const data = parsed.data;
+
+  const internalDomains =
+    (await getSetting<string[]>("internal_email_domains")) ?? [];
+  const emailDomain = data.customerEmail.split("@")[1]?.toLowerCase() ?? "";
+  const stream = internalDomains
+    .map((d) => d.toLowerCase())
+    .includes(emailDomain)
+    ? "internal"
+    : "external";
+
+  const ticketNumber = await generateTicketNumber();
+
+  await db.transaction(async (tx) => {
+    const [ticket] = await tx
+      .insert(tickets)
+      .values({
+        ticketNumber,
+        subject: data.subject,
+        description: data.description,
+        category: data.category,
+        priority: data.priority,
+        status: "open",
+        stream,
+        // Origin "portal" because the agent is using the dashboard portal,
+        // not the public web form. (web_form/email/portal — see schema check.)
+        origin: "portal",
+        customerEmail: data.customerEmail,
+        customerName: data.customerName,
+      })
+      .returning({ id: tickets.id });
+
+    await tx.insert(messages).values({
+      ticketId: ticket.id,
+      authorEmail: data.customerEmail,
+      authorName: data.customerName,
+      authorType: "customer",
+      body: data.description,
+      channel: "portal",
+    });
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.create_on_behalf",
+    targetType: "ticket",
+    targetId: ticketNumber,
+    after: {
+      ticketNumber,
+      subject: data.subject,
+      category: data.category,
+      priority: data.priority,
+      stream,
+      customerEmail: data.customerEmail,
+    },
+  });
+
+  // Confirmation email to the customer (best-effort).
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const guestToken = signGuestToken(ticketNumber, data.customerEmail);
+    const trackingUrl = `${appUrl}/portal/tickets/${ticketNumber}?token=${guestToken}`;
+    await sendEmail({
+      to: data.customerEmail,
+      template: {
+        template: "ticket_created",
+        data: {
+          ticketNumber,
+          customerName: data.customerName,
+          subject: data.subject,
+          trackingUrl,
+        },
+      },
+      ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error("[createTicketOnBehalf] confirmation email failed:", err);
+  }
+
+  revalidatePath("/admin/tickets");
   return { ok: true, ticketNumber };
 }
 
@@ -517,7 +640,108 @@ export async function resolveTicket(
     after: { status: "resolved" },
   });
 
-  // CSAT email + 24h auto-close are wired up in M3 Phase C.
+  // CSAT email — best-effort. Auto-close runs hourly in
+  // `inngest/functions/auto-close-resolved.ts`.
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const satToken = signCsatToken(ticket.ticketNumber, "satisfied");
+    const unsatToken = signCsatToken(ticket.ticketNumber, "unsatisfied");
+    await sendEmail({
+      to: ticket.customerEmail,
+      template: {
+        template: "ticket_resolved",
+        data: {
+          ticketNumber: ticket.ticketNumber,
+          customerName: ticket.customerName,
+          subject: ticket.subject,
+          agentName: agent.name,
+          resolutionNote: parsed.data.note,
+          csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
+          csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
+          trackingUrl,
+        },
+      },
+      ticketNumber: ticket.ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error("[resolveTicket] CSAT email failed:", err);
+  }
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+// ── Reopen ───────────────────────────────────────────────────────────
+
+export async function reopenTicket(ticketId: string): Promise<void> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.reopen",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (ticket.status !== "resolved" && ticket.status !== "closed") {
+    throw new Error("Only resolved or closed tickets can be reopened");
+  }
+
+  // If still assigned, go straight back to in_progress; otherwise back to open.
+  const newStatus = ticket.assignedToId ? "in_progress" : "open";
+
+  await db
+    .update(tickets)
+    .set({
+      status: newStatus,
+      resolvedAt: null,
+      closedAt: null,
+      reopenedCount: sql`${tickets.reopenedCount} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.reopen",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { status: ticket.status },
+    after: { status: newStatus },
+  });
+
+  // Notify customer (best-effort)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    await sendEmail({
+      to: ticket.customerEmail,
+      template: {
+        template: "ticket_reopened",
+        data: {
+          ticketNumber: ticket.ticketNumber,
+          customerName: ticket.customerName,
+          subject: ticket.subject,
+          reason: "agent",
+          trackingUrl,
+        },
+      },
+      ticketNumber: ticket.ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error("[reopenTicket] customer email failed:", err);
+  }
 
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${ticketId}`);

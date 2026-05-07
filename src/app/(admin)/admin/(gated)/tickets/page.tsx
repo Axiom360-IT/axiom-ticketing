@@ -11,11 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import {
   EscalatedBadge,
   PriorityBadge,
   StatusBadge,
 } from "@/components/tickets/badges";
+import { can } from "@/lib/auth/can";
+import { productionContext } from "@/lib/auth/can-context";
 import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
@@ -36,6 +39,13 @@ export default async function TicketsPage({
 
   const { q } = await searchParams;
   const search = q?.trim() ?? "";
+
+  const canCreate = await can(
+    user,
+    "tickets.create",
+    { type: "global" },
+    productionContext,
+  );
 
   const visibility = ticketsVisibilityCondition(user);
   const searchClause: SQL | undefined = search
@@ -83,6 +93,11 @@ export default async function TicketsPage({
             {search ? ` matching "${search}"` : ""}
           </p>
         </div>
+        {canCreate ? (
+          <Button render={<Link href="/admin/tickets/new" />}>
+            Create on behalf
+          </Button>
+        ) : null}
       </div>
 
       <form className="flex gap-2" action="/admin/tickets" method="get">

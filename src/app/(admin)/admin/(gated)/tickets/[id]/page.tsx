@@ -17,6 +17,7 @@ import {
   MessageThread,
   type ThreadMessage,
 } from "@/components/tickets/message-thread";
+import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
 import { can } from "@/lib/auth/can";
@@ -65,12 +66,14 @@ export default async function TicketDetailPage({
     canAssign,
     canEscalate,
     canDeescalate,
+    canReopen,
   ] = await Promise.all([
     can(user, "tickets.reply", ticketScope, productionContext),
     can(user, "tickets.resolve", ticketScope, productionContext),
     can(user, "tickets.assign", ticketScope, productionContext),
     can(user, "tickets.escalate", ticketScope, productionContext),
     can(user, "tickets.deescalate", ticketScope, productionContext),
+    can(user, "tickets.reopen", ticketScope, productionContext),
   ]);
 
   const messageRows = await db
@@ -195,6 +198,28 @@ export default async function TicketDetailPage({
                     />
                   ) : null}
                 </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {canReopen && isClosedOrResolved ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ReopenButton ticketId={ticket.id} />
+                {ticket.csatResponse ? (
+                  <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                    Customer feedback:{" "}
+                    <span className="font-medium capitalize">
+                      {ticket.csatResponse}
+                    </span>
+                    {ticket.csatRespondedAt
+                      ? ` · ${new Date(ticket.csatRespondedAt).toLocaleString()}`
+                      : null}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}

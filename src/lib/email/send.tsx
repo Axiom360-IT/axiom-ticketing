@@ -14,13 +14,25 @@ import {
   type TicketAssignedProps,
 } from "./templates/ticket-assigned";
 import {
+  TicketClosedEmail,
+  type TicketClosedProps,
+} from "./templates/ticket-closed";
+import {
   TicketCreatedEmail,
   type TicketCreatedProps,
 } from "./templates/ticket-created";
 import {
+  TicketReopenedEmail,
+  type TicketReopenedProps,
+} from "./templates/ticket-reopened";
+import {
   TicketReplyEmail,
   type TicketReplyProps,
 } from "./templates/ticket-reply";
+import {
+  TicketResolvedEmail,
+  type TicketResolvedProps,
+} from "./templates/ticket-resolved";
 
 // Discriminated union of all template names + their typed props. Adding a new
 // template means adding a case here AND a render branch in `renderTemplate()`.
@@ -28,6 +40,9 @@ export type EmailTemplate =
   | { template: "ticket_created"; data: TicketCreatedProps }
   | { template: "ticket_assigned"; data: TicketAssignedProps }
   | { template: "ticket_reply"; data: TicketReplyProps }
+  | { template: "ticket_resolved"; data: TicketResolvedProps }
+  | { template: "ticket_closed"; data: TicketClosedProps }
+  | { template: "ticket_reopened"; data: TicketReopenedProps }
   | { template: "new_assignment"; data: NewAssignmentProps }
   | { template: "escalation_alert"; data: EscalationAlertProps };
 
@@ -47,6 +62,12 @@ async function renderTemplate(t: EmailTemplate): Promise<string> {
       return await render(<TicketAssignedEmail {...t.data} />);
     case "ticket_reply":
       return await render(<TicketReplyEmail {...t.data} />);
+    case "ticket_resolved":
+      return await render(<TicketResolvedEmail {...t.data} />);
+    case "ticket_closed":
+      return await render(<TicketClosedEmail {...t.data} />);
+    case "ticket_reopened":
+      return await render(<TicketReopenedEmail {...t.data} />);
     case "new_assignment":
       return await render(<NewAssignmentEmail {...t.data} />);
     case "escalation_alert":
@@ -63,6 +84,12 @@ function defaultSubject(t: EmailTemplate, ticketNumber?: string): string {
       return `${num}Your ticket has been assigned: ${t.data.subject}`;
     case "ticket_reply":
       return `${num}Re: ${t.data.subject}`;
+    case "ticket_resolved":
+      return `${num}Resolved — was this fixed? ${t.data.subject}`;
+    case "ticket_closed":
+      return `${num}Ticket closed: ${t.data.subject}`;
+    case "ticket_reopened":
+      return `${num}Ticket reopened: ${t.data.subject}`;
     case "new_assignment":
       return `${num}New ticket assigned to you: ${t.data.subject}`;
     case "escalation_alert":
