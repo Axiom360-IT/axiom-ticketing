@@ -1,0 +1,286 @@
+"use client";
+
+import Script from "next/script";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { createTicket } from "@/app/actions/tickets";
+
+const CATEGORY_OPTIONS = [
+  { value: "hardware", label: "Hardware" },
+  { value: "software", label: "Software" },
+  { value: "network", label: "Network" },
+  { value: "access", label: "Access" },
+  { value: "other", label: "Other" },
+] as const;
+
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low — non-urgent" },
+  { value: "medium", label: "Medium — affects my work" },
+  { value: "high", label: "High — blocking my work" },
+  { value: "critical", label: "Critical — production down" },
+] as const;
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "error-callback"?: () => void;
+          "expired-callback"?: () => void;
+        },
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
+}
+
+export function SubmissionForm() {
+  const router = useRouter();
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  const [formData, setFormData] = useState({
+    customerName: "",
+    customerEmail: "",
+    subject: "",
+    category: "" as "" | (typeof CATEGORY_OPTIONS)[number]["value"],
+    priority: "" as "" | (typeof PRIORITY_OPTIONS)[number]["value"],
+    description: "",
+  });
+  const [turnstileToken, setTurnstileToken] = useState<string>("");
+  const [honeypot, setHoneypot] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Render Turnstile widget once script is loaded
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+    let cancelled = false;
+    const tryRender = () => {
+      if (cancelled) return;
+      if (window.turnstile && turnstileRef.current && !widgetIdRef.current) {
+        widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (token: string) => setTurnstileToken(token),
+          "expired-callback": () => setTurnstileToken(""),
+          "error-callback": () => setTurnstileToken(""),
+        });
+      } else if (!window.turnstile) {
+        setTimeout(tryRender, 250);
+      }
+    };
+    tryRender();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function update<K extends keyof typeof formData>(
+    key: K,
+    value: (typeof formData)[K],
+  ) {
+    setFormData((d) => ({ ...d, [key]: value }));
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    if (!formData.category || !formData.priority) {
+      setError("Please choose a category and priority.");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await createTicket({
+      customerName: formData.customerName,
+      customerEmail: formData.customerEmail,
+      subject: formData.subject,
+      category: formData.category,
+      priority: formData.priority,
+      description: formData.description,
+      turnstileToken: turnstileToken || undefined,
+      honeypot,
+    });
+    setSubmitting(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      // Reset Turnstile so a stale token isn't reused
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.reset(widgetIdRef.current);
+        setTurnstileToken("");
+      }
+      return;
+    }
+
+    router.push(`/portal/submit/success?ticket=${result.ticketNumber}`);
+  }
+
+  return (
+    <>
+      {TURNSTILE_SITE_KEY && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+          async
+          defer
+        />
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        {/* Honeypot (hidden from humans, filled by bots) */}
+        <div className="hidden" aria-hidden="true">
+          <label>
+            Website
+            <input
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="customerName">Your name</Label>
+            <Input
+              id="customerName"
+              required
+              autoComplete="name"
+              value={formData.customerName}
+              onChange={(e) => update("customerName", e.target.value)}
+              maxLength={120}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="customerEmail">Email</Label>
+            <Input
+              id="customerEmail"
+              type="email"
+              required
+              autoComplete="email"
+              value={formData.customerEmail}
+              onChange={(e) => update("customerEmail", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="subject">Subject</Label>
+          <Input
+            id="subject"
+            required
+            value={formData.subject}
+            onChange={(e) => update("subject", e.target.value)}
+            maxLength={150}
+            placeholder="Brief summary of the problem"
+          />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="category">Category</Label>
+            <Select
+              value={formData.category}
+              onValueChange={(v) =>
+                update("category", v as typeof formData.category)
+              }
+            >
+              <SelectTrigger id="category">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="priority">Priority</Label>
+            <Select
+              value={formData.priority}
+              onValueChange={(v) =>
+                update("priority", v as typeof formData.priority)
+              }
+            >
+              <SelectTrigger id="priority">
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            required
+            value={formData.description}
+            onChange={(e) => update("description", e.target.value)}
+            minLength={20}
+            maxLength={5000}
+            rows={6}
+            placeholder="What happened? What did you expect to happen? Anything you've tried?"
+          />
+          <p className="text-xs text-zinc-500">
+            {formData.description.length}/5000
+          </p>
+        </div>
+
+        {/* Turnstile widget */}
+        {TURNSTILE_SITE_KEY ? (
+          <div ref={turnstileRef} className="flex justify-center" />
+        ) : (
+          <p className="text-xs text-zinc-500 italic">
+            Cloudflare Turnstile is not configured — captcha is skipped in dev.
+          </p>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2"
+          >
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button type="submit" disabled={submitting} size="lg">
+            {submitting ? "Submitting…" : "Submit ticket"}
+          </Button>
+        </div>
+      </form>
+    </>
+  );
+}
