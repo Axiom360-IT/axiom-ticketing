@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { twoFactor } from "better-auth/plugins";
@@ -42,6 +43,13 @@ export const auth = betterAuth({
       isActive: { type: "boolean", defaultValue: true },
       // createdById, deactivatedAt, deactivatedById, lastLoginAt are
       // application-managed columns; Better Auth ignores them.
+    },
+  },
+  // Override Better Auth's default ID generator (custom alphanumeric, ~32 chars)
+  // with UUID v4 to match our `uuid` PK columns.
+  advanced: {
+    database: {
+      generateId: () => randomUUID(),
     },
   },
   plugins: [twoFactor({ issuer: "Axiom360 Ticketing" })],
