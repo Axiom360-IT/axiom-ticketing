@@ -62,6 +62,10 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.procurement.delivered.title",
     bodyKey: "notifications.procurement.delivered.body",
   },
+  "attachment.quarantined": {
+    titleKey: "notifications.attachment.quarantined.title",
+    bodyKey: "notifications.attachment.quarantined.body",
+  },
 };
 
 export function inAppDescriptor(

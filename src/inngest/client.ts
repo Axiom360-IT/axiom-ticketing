@@ -66,7 +66,8 @@ export type NotificationEventType =
   | "procurement.submitted"
   | "procurement.approved"
   | "procurement.rejected"
-  | "procurement.delivered";
+  | "procurement.delivered"
+  | "attachment.quarantined";
 
 export type NotificationDispatchPayload = {
   /** Domain event being announced. */

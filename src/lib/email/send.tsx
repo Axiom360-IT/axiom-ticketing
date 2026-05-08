@@ -8,6 +8,10 @@ import {
   type AccountLockoutProps,
 } from "./templates/account-lockout";
 import {
+  AttachmentQuarantinedEmail,
+  type AttachmentQuarantinedProps,
+} from "./templates/attachment-quarantined";
+import {
   EscalationAlertEmail,
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
@@ -103,6 +107,10 @@ export type EmailTemplate =
   | {
       template: "account_lockout";
       data: Omit<AccountLockoutProps, "locale">;
+    }
+  | {
+      template: "attachment_quarantined";
+      data: Omit<AttachmentQuarantinedProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -169,6 +177,10 @@ async function renderTemplate(
       return await render(
         <AccountLockoutEmail {...t.data} locale={locale} />,
       );
+    case "attachment_quarantined":
+      return await render(
+        <AttachmentQuarantinedEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -188,6 +200,7 @@ const TEMPLATE_NAMESPACE = {
   procurement_rejected: "emails.procurementRejected",
   procurement_delivered: "emails.procurementDelivered",
   account_lockout: "emails.accountLockout",
+  attachment_quarantined: "emails.attachmentQuarantined",
 } as const;
 
 async function defaultSubject(

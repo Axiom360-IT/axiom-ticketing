@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import { eventType } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
+import { tickets } from "@/lib/db/schema/tickets";
 import { deleteObject, fetchObject } from "@/lib/storage/signed-urls";
 import { scanBytes } from "@/lib/storage/virus-scan";
 import { inngest } from "../client";
@@ -94,6 +96,78 @@ export const scanAttachment = inngest.createFunction(
         targetId: attachmentId,
         after: { result: "quarantined", signature: result.signature },
       });
+
+      // Notify the uploader (if it was a known user) and the assigned
+      // tech via the dispatch fan-out. Customers who uploaded via the
+      // inbound-email path don't have a user account, so we just skip
+      // them — the audit row records the event.
+      try {
+        const [ticket] = await db
+          .select({
+            id: tickets.id,
+            ticketNumber: tickets.ticketNumber,
+            subject: tickets.subject,
+            assignedToId: tickets.assignedToId,
+          })
+          .from(tickets)
+          .where(eq(tickets.id, row.ticketId))
+          .limit(1);
+        if (ticket) {
+          let uploaderName: string | null = null;
+          if (row.uploadedById) {
+            const [u] = await db
+              .select({ name: users.name })
+              .from(users)
+              .where(eq(users.id, row.uploadedById))
+              .limit(1);
+            uploaderName = u?.name ?? null;
+          }
+          const recipientUserIds = new Set<string>();
+          if (row.uploadedById) recipientUserIds.add(row.uploadedById);
+          if (ticket.assignedToId) recipientUserIds.add(ticket.assignedToId);
+
+          if (recipientUserIds.size > 0) {
+            const appUrl =
+              process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+            const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+            await inngest.send({
+              name: "notification/dispatch",
+              data: {
+                type: "attachment.quarantined",
+                recipientUserIds: [...recipientUserIds],
+                email: {
+                  template: {
+                    template: "attachment_quarantined",
+                    data: {
+                      recipientName: uploaderName ?? "Team",
+                      ticketNumber: ticket.ticketNumber,
+                      ticketSubject: ticket.subject,
+                      fileName: row.fileName,
+                      signature: result.signature,
+                      ticketUrl,
+                    },
+                  },
+                  ticketNumber: ticket.ticketNumber,
+                },
+                inApp: {
+                  titleArgs: { ticketNumber: ticket.ticketNumber },
+                  bodyArgs: {
+                    fileName: row.fileName,
+                    signature: result.signature,
+                  },
+                  linkUrl: `/admin/tickets/${ticket.id}`,
+                },
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[scan-attachment] quarantine dispatch failed:",
+          err,
+        );
+      }
+
       return {
         status: "quarantined",
         attachmentId,

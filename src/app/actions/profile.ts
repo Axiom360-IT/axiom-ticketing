@@ -186,6 +186,7 @@ const KNOWN_EVENT_TYPES = new Set<NotificationEventType>([
   "procurement.approved",
   "procurement.rejected",
   "procurement.delivered",
+  "attachment.quarantined",
 ]);
 
 export type NotificationPrefRow = {

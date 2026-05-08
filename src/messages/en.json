@@ -773,7 +773,8 @@
         "procurement.submitted": "Procurement request submitted",
         "procurement.approved": "Procurement approved",
         "procurement.rejected": "Procurement rejected",
-        "procurement.delivered": "Procurement delivered"
+        "procurement.delivered": "Procurement delivered",
+        "attachment.quarantined": "Attachment quarantined by virus scanner"
       },
       "errorGeneric": "Couldn't update preference."
     }
@@ -831,6 +832,12 @@
       "delivered": {
         "title": "Delivered: {itemName}",
         "body": "{quantity} × {itemName} delivered."
+      }
+    },
+    "attachment": {
+      "quarantined": {
+        "title": "Attachment quarantined on {ticketNumber}",
+        "body": "{fileName} matched {signature} and was removed from storage."
       }
     }
   },
@@ -1080,6 +1087,15 @@
       "body": "{quantity} × {itemName} has been delivered. The ticket is updated.",
       "review": "View request",
       "subject": "[{ticketNumber}] Delivered: {itemName}"
+    },
+    "attachmentQuarantined": {
+      "preview": "An attachment on {ticketNumber} was quarantined",
+      "title": "An attachment was quarantined",
+      "greeting": "Hi {recipientName},",
+      "body": "We removed {fileName} from “{subject}” because the virus scanner matched it against {signature}.",
+      "note": "The file has been deleted from storage. If you need to reshare it, please verify the file is clean and upload again.",
+      "button": "Open ticket",
+      "subject": "[{ticketNumber}] Attachment quarantined: {fileName}"
     },
     "accountLockout": {
       "preview": "Your account has been temporarily locked",
