@@ -16,6 +16,7 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { checkRateLimit } from "@/lib/ratelimit";
 import { getSetting } from "@/lib/settings";
+import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { signCsatToken, signGuestToken } from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -119,8 +120,13 @@ export async function createTicket(
     ? "internal"
     : "external";
 
-  // 7. Generate ticket number
+  // 7. Generate ticket number + compute SLA deadlines
   const ticketNumber = await generateTicketNumber();
+  const createdAt = new Date();
+  const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
+    createdAt,
+    priority: data.priority as Priority,
+  });
 
   // 8. Insert ticket + initial message in a transaction
   await db.transaction(async (tx) => {
@@ -137,6 +143,9 @@ export async function createTicket(
         origin: "web_form",
         customerEmail: data.customerEmail,
         customerName: data.customerName,
+        createdAt,
+        responseDueAt,
+        resolutionDueAt,
       })
       .returning({ id: tickets.id });
 
@@ -252,6 +261,11 @@ export async function createTicketOnBehalf(
     : "external";
 
   const ticketNumber = await generateTicketNumber();
+  const createdAt = new Date();
+  const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
+    createdAt,
+    priority: data.priority as Priority,
+  });
 
   await db.transaction(async (tx) => {
     const [ticket] = await tx
@@ -269,6 +283,9 @@ export async function createTicketOnBehalf(
         origin: "portal",
         customerEmail: data.customerEmail,
         customerName: data.customerName,
+        createdAt,
+        responseDueAt,
+        resolutionDueAt,
       })
       .returning({ id: tickets.id });
 
