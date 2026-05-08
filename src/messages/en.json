@@ -174,9 +174,15 @@
     },
     "reply": {
       "placeholder": "Write a reply to the customer…",
+      "internalPlaceholder": "Write an internal note (not sent to the customer)…",
       "errorEmpty": "Reply cannot be empty.",
       "errorGeneric": "Failed to send reply.",
-      "footerHint": "Reply is emailed to the customer."
+      "internalErrorGeneric": "Failed to add internal note.",
+      "footerHint": "Reply is emailed to the customer.",
+      "internalFooterHint": "Internal note — only visible to the team.",
+      "internalToggleLabel": "Internal note",
+      "internalNoteSendLabel": "Add note",
+      "internalNoteSendingLabel": "Adding…"
     },
     "assignControl": {
       "label": "Assignee",

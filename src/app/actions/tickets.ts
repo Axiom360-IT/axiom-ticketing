@@ -565,6 +565,68 @@ export async function replyToTicket(
   revalidatePath(`/admin/tickets/${ticketId}`);
 }
 
+// ── Internal note (agent-only, never visible to customer) ────────────
+
+const internalNoteSchema = z.object({
+  body: z.string().trim().min(1, "Internal note cannot be empty").max(10000),
+});
+
+export async function addInternalNote(
+  ticketId: string,
+  body: string,
+): Promise<void> {
+  const parsed = internalNoteSchema.safeParse({ body });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid note");
+  }
+
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.internal_note",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const [agent] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!agent) throw new NotFoundError();
+
+  await db.insert(messages).values({
+    ticketId: ticket.id,
+    authorId: user.id,
+    authorEmail: agent.email,
+    authorName: agent.name,
+    authorType: "agent",
+    body: parsed.data.body,
+    channel: "dashboard",
+    isInternalNote: true,
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.internal_note",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { length: parsed.data.body.length },
+  });
+
+  // Notification fan-out (assigned tech, coordinators) lands with M11.
+  // Crucially: NO customer email path here.
+
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
 // ── Resolve ──────────────────────────────────────────────────────────
 
 const resolveSchema = z.object({

@@ -74,6 +74,7 @@ export default async function TicketDetailPage({
 
   const [
     canReply,
+    canInternalNote,
     canResolve,
     canAssign,
     canEscalate,
@@ -81,6 +82,7 @@ export default async function TicketDetailPage({
     canReopen,
   ] = await Promise.all([
     can(user, "tickets.reply", ticketScope, productionContext),
+    can(user, "tickets.internal_note", ticketScope, productionContext),
     can(user, "tickets.resolve", ticketScope, productionContext),
     can(user, "tickets.assign", ticketScope, productionContext),
     can(user, "tickets.escalate", ticketScope, productionContext),
@@ -208,13 +210,16 @@ export default async function TicketDetailPage({
             </CardContent>
           </Card>
 
-          {canReply && !isClosedOrResolved ? (
+          {(canReply || canInternalNote) && !isClosedOrResolved ? (
             <Card>
               <CardHeader>
                 <CardTitle>{t("replyTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ReplyComposer ticketId={ticket.id} />
+                <ReplyComposer
+                  ticketId={ticket.id}
+                  canInternalNote={canInternalNote}
+                />
               </CardContent>
             </Card>
           ) : null}
