@@ -37,6 +37,9 @@ export const users = pgTable(
     twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     // ── Application-specific fields (not part of Better Auth's core) ──
     language: text("language").notNull().default("en"),
+    // E.164-formatted phone (e.g. "+14165550123") for SMS notifications.
+    // Optional — when null we skip the SMS leg of any notification.
+    phone: text("phone"),
     createdById: uuid("created_by_id"),
     isActive: boolean("is_active").notNull().default(true),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),

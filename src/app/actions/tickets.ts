@@ -15,6 +15,7 @@ import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { checkRateLimit } from "@/lib/ratelimit";
+import { sendSms } from "@/lib/sms/send";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
@@ -403,6 +404,8 @@ export async function assignTicket(
       id: users.id,
       name: users.name,
       email: users.email,
+      phone: users.phone,
+      language: users.language,
       isActive: users.isActive,
     })
     .from(users)
@@ -479,6 +482,26 @@ export async function assignTicket(
     });
   } catch (err) {
     console.error("[assignTicket] tech email failed:", err);
+  }
+
+  // SMS the tech if they have a phone configured (best-effort)
+  if (tech.phone) {
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      await sendSms({
+        to: tech.phone,
+        locale: tech.language,
+        template: {
+          template: "ticket_assigned",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+          },
+        },
+      });
+    } catch (err) {
+      console.error("[assignTicket] tech SMS failed:", err);
+    }
   }
 
   revalidatePath("/admin/tickets");

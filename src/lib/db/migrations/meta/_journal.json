@@ -15,6 +15,13 @@
       "when": 1778133497219,
       "tag": "0001_furry_justice",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778225724396,
+      "tag": "0002_volatile_punisher",
+      "breakpoints": true
     }
   ]
 }

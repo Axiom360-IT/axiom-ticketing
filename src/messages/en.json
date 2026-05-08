@@ -574,6 +574,20 @@
   },
   "audit": {},
   "notifications": {},
+  "sms": {
+    "ticketAssigned": {
+      "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
+    },
+    "customerReplied": {
+      "body": "{ticketNumber}: Customer replied to your ticket. {ticketUrl}"
+    },
+    "slaWarning80": {
+      "body": "{ticketNumber}: SLA at 80%. Update or escalate. {ticketUrl}"
+    },
+    "slaBreached": {
+      "body": "{ticketNumber}: SLA BREACHED. Action needed. {ticketUrl}"
+    }
+  },
   "admin": {
     "shell": {
       "skipToContent": "Skip to main content",
