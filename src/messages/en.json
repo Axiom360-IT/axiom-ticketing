@@ -663,6 +663,68 @@
       "external": "External"
     }
   },
+  "profile": {
+    "page": {
+      "title": "My profile",
+      "subtitle": "Account info, security, sessions, and notification preferences."
+    },
+    "account": {
+      "title": "Account",
+      "name": "Name",
+      "email": "Email",
+      "language": "Language",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "errorGeneric": "Save failed."
+    },
+    "password": {
+      "title": "Password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "passwordHint": "Minimum 12 characters.",
+      "mismatch": "Passwords don't match.",
+      "revokeOthers": "Sign me out of all other sessions",
+      "save": "Update password",
+      "saving": "Updating…",
+      "saved": "Password updated.",
+      "errorGeneric": "Couldn't change password."
+    },
+    "sessions": {
+      "title": "Active sessions",
+      "subtitle": "Sessions currently signed in to your account.",
+      "currentBadge": "This session",
+      "revokeButton": "Revoke",
+      "revoking": "Revoking…",
+      "revokeOthers": "Sign out of all other sessions",
+      "revokingOthers": "Signing out…",
+      "lastActive": "Last active {when}",
+      "expires": "Expires {when}",
+      "unknownDevice": "Unknown device",
+      "unknownIp": "—"
+    },
+    "preferences": {
+      "title": "Notification preferences",
+      "subtitle": "Email and SMS for each event type. In-app notifications always show in the bell.",
+      "headerEvent": "Event",
+      "headerEmail": "Email",
+      "headerSms": "SMS",
+      "events": {
+        "ticket.assigned": "Ticket assigned to me",
+        "ticket.customer_replied": "Customer replied to my ticket",
+        "ticket.escalated": "Ticket escalated",
+        "sla.warning_50": "SLA at 50% of the deadline",
+        "sla.warning_80": "SLA at 80% of the deadline",
+        "sla.breached": "SLA breached",
+        "procurement.submitted": "Procurement request submitted",
+        "procurement.approved": "Procurement approved",
+        "procurement.rejected": "Procurement rejected",
+        "procurement.delivered": "Procurement delivered"
+      },
+      "errorGeneric": "Couldn't update preference."
+    }
+  },
   "notifications": {
     "bell": {
       "ariaLabel": "Notifications",
