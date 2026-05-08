@@ -454,7 +454,124 @@
       "lockedTooltip": "You don't hold this permission yourself, so you can't grant it."
     }
   },
-  "settings": {},
+  "settings": {
+    "page": {
+      "title": "System settings",
+      "subtitle": "Live values used across the app. Changes take effect immediately."
+    },
+    "actions": {
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "errorGeneric": "Save failed."
+    },
+    "businessHours": {
+      "title": "Business hours",
+      "subtitle": "SLA timers honor these for priorities flagged respect_business_hours.",
+      "timezone": "Timezone (IANA)",
+      "startHour": "Start hour (0-23)",
+      "endHour": "End hour (0-24)",
+      "workingDays": "Working days"
+    },
+    "days": {
+      "Sun": "Sun",
+      "Mon": "Mon",
+      "Tue": "Tue",
+      "Wed": "Wed",
+      "Thu": "Thu",
+      "Fri": "Fri",
+      "Sat": "Sat"
+    },
+    "sla": {
+      "title": "SLA targets",
+      "subtitle": "Response and resolution targets per priority, in minutes.",
+      "columns": {
+        "priority": "Priority",
+        "response": "Response (min)",
+        "resolve": "Resolve (min)",
+        "respect": "Respect business hours"
+      }
+    },
+    "holidays": {
+      "title": "Holidays",
+      "subtitle": "Days excluded from SLA business-hours computation.",
+      "addDate": "Date",
+      "addLabel": "Label",
+      "addButton": "Add holiday",
+      "remove": "Remove",
+      "empty": "No holidays yet."
+    },
+    "domains": {
+      "title": "Internal email domains",
+      "subtitle": "Submitter emails on these domains are auto-tagged stream=internal.",
+      "addPlaceholder": "axiom360.it",
+      "addButton": "Add",
+      "remove": "Remove",
+      "empty": "No internal domains configured."
+    },
+    "procurement": {
+      "title": "Procurement",
+      "thresholdLabel": "Approval threshold (cost ≥ requires Super Admin)",
+      "thresholdHint": "0 disables the second step — every request is single-step Coordinator approval."
+    },
+    "responseWindow": {
+      "title": "Customer response window",
+      "label": "Hours before resolved tickets auto-close without CSAT response"
+    },
+    "emails": {
+      "title": "Email configuration",
+      "supportEmail": "Support email (public-facing)",
+      "inboundDomain": "Inbound email domain",
+      "inboundDomainHint": "Used for ticket+AX-XXXX@<domain> threading. Read-only after first set.",
+      "defaultSenderName": "Default sender name",
+      "defaultSenderEmail": "Default sender email",
+      "allowlistTitle": "Inbound sender allowlist",
+      "allowlistDescription": "When on, only emails from registered customer accounts are accepted; others get an auto-reply.",
+      "allowlistToggle": "Allowlist mode"
+    },
+    "fileUpload": {
+      "title": "File uploads",
+      "maxSizeLabel": "Maximum size",
+      "maxSizeHint": "Bytes. Default 10 MiB = 10485760.",
+      "mimeTypesLabel": "Allowed MIME types",
+      "addPlaceholder": "image/png",
+      "addButton": "Add",
+      "remove": "Remove",
+      "empty": "No allowed MIME types — uploads will be rejected."
+    },
+    "virusScan": {
+      "title": "Virus scanning",
+      "description": "When on, every confirmed upload is queued for ClamAV scan before being marked clean.",
+      "enabled": "Enable virus scanning"
+    },
+    "rateLimits": {
+      "publicTitle": "Rate limits — public",
+      "authTitle": "Rate limits — authenticated",
+      "labels": {
+        "rate_limits.public_submit": "Public ticket submit",
+        "rate_limits.login": "Login",
+        "rate_limits.password_reset": "Password reset",
+        "rate_limits.guest_portal": "Guest portal token reads",
+        "rate_limits.authenticated.create_ticket": "Create ticket",
+        "rate_limits.authenticated.reply": "Reply",
+        "rate_limits.authenticated.internal_note": "Internal note",
+        "rate_limits.authenticated.escalate": "Escalate",
+        "rate_limits.authenticated.create_proc": "Create procurement",
+        "rate_limits.authenticated.create_user": "Create user",
+        "rate_limits.authenticated.create_role": "Create role",
+        "rate_limits.authenticated.update_setting": "Update setting"
+      },
+      "fields": {
+        "per_ip_per_hour": "per IP / hour",
+        "per_email_per_day": "per email / day",
+        "per_ip_per_minute": "per IP / minute",
+        "per_email_per_hour": "per email / hour",
+        "per_token_per_minute": "per token / minute",
+        "per_user_per_hour": "per user / hour",
+        "per_user_per_day": "per user / day"
+      }
+    }
+  },
   "audit": {},
   "notifications": {},
   "admin": {
