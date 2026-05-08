@@ -302,7 +302,60 @@
     }
   },
   "procurement": {},
-  "roles": {},
+  "roles": {
+    "list": {
+      "title": "Roles",
+      "subtitle": "Custom roles and per-module permission grants.",
+      "createButton": "Create role",
+      "count": "{count, plural, =0 {No roles} =1 {# role} other {# roles}}",
+      "userCount": "{count, plural, =0 {0 users} =1 {1 user} other {# users}}",
+      "system": "System",
+      "columns": {
+        "name": "Name",
+        "type": "Type",
+        "users": "Users",
+        "description": "Description"
+      }
+    },
+    "create": {
+      "title": "Create role",
+      "subtitle": "Pick a name and the permissions this role should grant.",
+      "cardTitle": "Role",
+      "submit": "Create role",
+      "submitting": "Creating…"
+    },
+    "edit": {
+      "title": "Edit role",
+      "subtitle": "Update the role's name, description, and permissions.",
+      "cardTitle": "Role",
+      "saveButton": "Save changes",
+      "saving": "Saving…",
+      "deleteButton": "Delete role",
+      "deleting": "Deleting…",
+      "deleteConfirm": "Delete this role? This can't be undone.",
+      "systemBadge": "System role — permissions are locked.",
+      "permissionsTitle": "Permissions"
+    },
+    "fields": {
+      "name": "Name",
+      "description": "Description",
+      "permissions": "Permissions"
+    },
+    "matrix": {
+      "module": {
+        "tickets": "Tickets",
+        "procurement": "Procurement",
+        "reports": "Reports",
+        "users": "Users",
+        "roles": "Roles",
+        "settings": "Settings",
+        "audit": "Audit log"
+      },
+      "selectAll": "Select all",
+      "locked": "Locked",
+      "lockedTooltip": "You don't hold this permission yourself, so you can't grant it."
+    }
+  },
   "settings": {},
   "audit": {},
   "notifications": {},
