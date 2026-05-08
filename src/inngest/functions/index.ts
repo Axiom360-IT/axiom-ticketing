@@ -5,9 +5,11 @@
 //   - scan-attachment (M5 wiring; ClamAV scanner lands in M18)
 //   - sla-monitor (M9) — DONE
 //   - dispatch-notification + send-email/send-sms/send-in-app (M11) — DONE
-//   - retention-* / cleanup-* (M21)
+//   - cleanup-old-notifications (M11) — DONE
+//   - retention-* / other cleanup-* (M21)
 
 import { autoCloseResolvedTickets } from "./auto-close-resolved";
+import { cleanupOldNotifications } from "./cleanup-old-notifications";
 import { dispatchNotification } from "./dispatch-notification";
 import { invalidateSettingsCache } from "./invalidate-settings-cache";
 import { processInboundEmail } from "./process-inbound-email";
@@ -27,4 +29,5 @@ export const functions = [
   sendEmailNotification,
   sendSmsNotification,
   sendInAppNotification,
+  cleanupOldNotifications,
 ];
