@@ -4,7 +4,6 @@ import { simpleParser } from "mailparser";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
-import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
@@ -287,35 +286,51 @@ export const processInboundEmail = inngest.createFunction(
       after: { from: payload.fromEmail, length: messageBody.length },
     });
 
-    // Notify the assigned tech (best-effort). Customer never gets a
-    // confirmation here — this is just an inbound capture.
+    // Notify the assigned tech via the dispatch fan-out.
     if (ticket.assignedToId) {
       await step.run("notify-assignee", async () => {
         try {
-          const [tech] = await db
-            .select({ name: users.name, email: users.email })
-            .from(users)
-            .where(eq(users.id, ticket.assignedToId!))
-            .limit(1);
-          if (!tech) return;
-          await sendEmail({
-            to: tech.email,
-            template: {
-              template: "ticket_reply",
-              data: {
+          const customerName = payload.fromName ?? payload.fromEmail;
+          await inngest.send({
+            name: "notification/dispatch",
+            data: {
+              type: "ticket.customer_replied",
+              recipientUserIds: [ticket.assignedToId!],
+              ticketId: ticket.id,
+              ticketNumber: ticket.ticketNumber,
+              email: {
+                template: {
+                  template: "ticket_reply",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    customerName,
+                    subject: ticket.subject,
+                    agentName: customerName,
+                    body: messageBody,
+                    trackingUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+                  },
+                },
                 ticketNumber: ticket.ticketNumber,
-                customerName: payload.fromName ?? payload.fromEmail,
-                subject: ticket.subject,
-                agentName: payload.fromName ?? payload.fromEmail,
-                body: messageBody,
-                trackingUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+              },
+              sms: {
+                template: {
+                  template: "customer_replied",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+                  },
+                },
+              },
+              inApp: {
+                titleArgs: { ticketNumber: ticket.ticketNumber },
+                bodyArgs: { customerName },
+                linkUrl: `/admin/tickets/${ticket.id}`,
               },
             },
-            ticketNumber: ticket.ticketNumber,
           });
         } catch (err) {
           console.error(
-            "[process-inbound-email] assignee notification failed:",
+            "[process-inbound-email] dispatch failed:",
             err,
           );
         }

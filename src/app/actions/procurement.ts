@@ -11,10 +11,10 @@ import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { procurementRequests } from "@/lib/db/schema/procurement";
-import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { getSetting } from "@/lib/settings";
+import { inngest } from "@/inngest/client";
 
 class ForbiddenError extends Error {
   constructor() {
@@ -191,23 +191,45 @@ export async function createProcurementRequest(
     },
   });
 
-  // Notify Coordinators + the requester (best-effort).
+  // Dispatch to Coordinators (the approval queue). Requester gets an
+  // echo email kept inline because they don't need a row in their own
+  // notifications table for an action they just took.
   try {
-    await notifyByRole("Coordinator", {
-      template: "procurement_submitted",
+    await inngest.send({
+      name: "notification/dispatch",
       data: {
+        type: "procurement.submitted",
+        recipientRoles: ["Coordinator"],
+        ticketId: data.ticketId,
         ticketNumber: ticket.ticketNumber,
-        ticketSubject: ticket.subject,
-        requesterName: author?.name ?? caller.id,
-        itemName: data.itemName,
-        quantity: data.quantity,
-        urgency: data.urgency,
-        adminUrl: `${appUrl()}/admin/procurement/${row.id}`,
+        email: {
+          template: {
+            template: "procurement_submitted",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              ticketSubject: ticket.subject,
+              requesterName: author?.name ?? caller.id,
+              itemName: data.itemName,
+              quantity: data.quantity,
+              urgency: data.urgency,
+              adminUrl: `${appUrl()}/admin/procurement/${row.id}`,
+            },
+          },
+        },
+        inApp: {
+          titleArgs: { itemName: data.itemName },
+          bodyArgs: {
+            requesterName: author?.name ?? caller.id,
+            quantity: data.quantity,
+            itemName: data.itemName,
+          },
+          linkUrl: `/admin/procurement/${row.id}`,
+        },
       },
     });
   } catch (err) {
     console.error(
-      "[createProcurementRequest] coordinator notify failed:",
+      "[createProcurementRequest] dispatch failed:",
       err,
     );
   }
@@ -295,20 +317,40 @@ export async function approveProcurement(
       after: { status: "pending_admin_approval" },
     });
     try {
-      await notifyByRole("Super Admin", {
-        template: "procurement_submitted",
+      await inngest.send({
+        name: "notification/dispatch",
         data: {
-          ticketNumber: ticket?.ticketNumber ?? "",
-          ticketSubject: ticket?.subject ?? "",
-          requesterName: r.requestedByEmail,
-          itemName: r.itemName,
-          quantity: r.quantity,
-          urgency: r.urgency,
-          adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+          type: "procurement.submitted",
+          recipientRoles: ["Super Admin"],
+          ticketId: r.ticketId,
+          ticketNumber: ticket?.ticketNumber,
+          email: {
+            template: {
+              template: "procurement_submitted",
+              data: {
+                ticketNumber: ticket?.ticketNumber ?? "",
+                ticketSubject: ticket?.subject ?? "",
+                requesterName: r.requestedByEmail,
+                itemName: r.itemName,
+                quantity: r.quantity,
+                urgency: r.urgency,
+                adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+              },
+            },
+          },
+          inApp: {
+            titleArgs: { itemName: r.itemName },
+            bodyArgs: {
+              requesterName: r.requestedByEmail,
+              quantity: r.quantity,
+              itemName: r.itemName,
+            },
+            linkUrl: `/admin/procurement/${requestId}`,
+          },
         },
       });
     } catch (err) {
-      console.error("[approveProcurement] super admin notify failed:", err);
+      console.error("[approveProcurement] super admin dispatch failed:", err);
     }
     revalidatePath(`/admin/procurement/${requestId}`);
     revalidatePath("/admin/procurement");
@@ -646,44 +688,8 @@ export async function getProcurementDetail(id: string) {
   return r;
 }
 
-// ── Email fan-out helper ─────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────
 
 function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-}
-
-type SubmittedTemplateData = {
-  ticketNumber: string;
-  ticketSubject: string;
-  requesterName: string;
-  itemName: string;
-  quantity: number;
-  urgency: string;
-  adminUrl: string;
-};
-
-async function notifyByRole(
-  roleName: string,
-  payload: { template: "procurement_submitted"; data: SubmittedTemplateData },
-): Promise<void> {
-  const recipients = await db
-    .selectDistinct({ email: users.email })
-    .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(and(eq(roles.name, roleName), eq(users.isActive, true)));
-
-  for (const r of recipients) {
-    try {
-      await sendEmail({
-        to: r.email,
-        template: payload,
-      });
-    } catch (err) {
-      console.error(
-        `[notifyByRole] ${roleName} send failed (${r.email}):`,
-        err,
-      );
-    }
-  }
 }

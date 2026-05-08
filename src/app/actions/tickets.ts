@@ -15,7 +15,7 @@ import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { checkRateLimit } from "@/lib/ratelimit";
-import { sendSms } from "@/lib/sms/send";
+import { inngest } from "@/inngest/client";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
@@ -462,46 +462,52 @@ export async function assignTicket(
     console.error("[assignTicket] customer email failed:", err);
   }
 
-  // Notify the technician (best-effort)
+  // Notify the assigned tech via the M11 dispatch fan-out — emits ONE
+  // event; the dispatcher gates email/sms by the user's preferences and
+  // always inserts an in-app notification.
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await sendEmail({
-      to: tech.email,
-      template: {
-        template: "new_assignment",
-        data: {
+    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.assigned",
+        recipientUserIds: [techId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "new_assignment",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              technicianName: tech.name,
+              subject: ticket.subject,
+              priority: ticket.priority as
+                | "low"
+                | "medium"
+                | "high"
+                | "critical",
+              customerName: ticket.customerName,
+              ticketUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          technicianName: tech.name,
-          subject: ticket.subject,
-          priority: ticket.priority as "low" | "medium" | "high" | "critical",
-          customerName: ticket.customerName,
-          ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
         },
-      },
-      ticketNumber: ticket.ticketNumber,
-    });
-  } catch (err) {
-    console.error("[assignTicket] tech email failed:", err);
-  }
-
-  // SMS the tech if they have a phone configured (best-effort)
-  if (tech.phone) {
-    try {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      await sendSms({
-        to: tech.phone,
-        locale: tech.language,
-        template: {
-          template: "ticket_assigned",
-          data: {
-            ticketNumber: ticket.ticketNumber,
-            ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+        sms: {
+          template: {
+            template: "ticket_assigned",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
           },
         },
-      });
-    } catch (err) {
-      console.error("[assignTicket] tech SMS failed:", err);
-    }
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { subject: ticket.subject },
+          linkUrl: `/admin/tickets/${ticket.id}`,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[assignTicket] dispatch failed:", err);
   }
 
   revalidatePath("/admin/tickets");
@@ -955,32 +961,42 @@ export async function escalateTicket(
     after: { reason: parsed.data.reason },
   });
 
-  // Notify IT Director + Coordinator (best-effort; full fan-out comes in M11)
+  // Notify IT Director + Coordinator via dispatch fan-out.
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    // For Phase B: just send to the seeded support_email as a placeholder.
-    // Per-role notification routing lands with M11 + the dispatch fan-out.
-    const supportEmail = await getSetting<string>("support_email");
-    if (supportEmail) {
-      await sendEmail({
-        to: supportEmail,
-        template: {
-          template: "escalation_alert",
-          data: {
-            ticketNumber: ticket.ticketNumber,
-            recipientName: "Team",
-            subject: ticket.subject,
-            technicianName: actor?.name ?? "An agent",
-            reason: parsed.data.reason,
-            customerName: ticket.customerName,
-            ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-          },
-        },
+    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+    const technicianName = actor?.name ?? "An agent";
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.escalated",
+        recipientRoles: ["IT Director", "Coordinator"],
+        ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
-      });
-    }
+        email: {
+          template: {
+            template: "escalation_alert",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              recipientName: "Team",
+              subject: ticket.subject,
+              technicianName,
+              reason: parsed.data.reason,
+              customerName: ticket.customerName,
+              ticketUrl,
+            },
+          },
+          ticketNumber: ticket.ticketNumber,
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { technicianName, subject: ticket.subject },
+          linkUrl: `/admin/tickets/${ticket.id}`,
+        },
+      },
+    });
   } catch (err) {
-    console.error("[escalateTicket] email failed:", err);
+    console.error("[escalateTicket] dispatch failed:", err);
   }
 
   revalidatePath("/admin/tickets");

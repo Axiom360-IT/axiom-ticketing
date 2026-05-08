@@ -2,9 +2,7 @@ import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/auth";
 import { tickets } from "@/lib/db/schema/tickets";
-import { sendSms } from "@/lib/sms/send";
 import { inngest } from "../client";
 
 // SLA monitor — runs every 5 minutes per ARCHITECTURE §27.
@@ -14,18 +12,13 @@ import { inngest } from "../client";
 // resolution due times and emit a notification + audit on three
 // transitions:
 //
-//   - 50% elapsed → notification only (low-noise heads-up)
-//   - 80% elapsed → notification (in M11 this fans out to email + SMS)
+//   - 50% elapsed → notification (in-app only)
+//   - 80% elapsed → notification (email + SMS + in-app via dispatch)
 //   - 100%+ elapsed → breach: notification + audit
 //
 // Idempotency: each ticket has sla_warning_50_at, sla_warning_80_at,
 // sla_breached_at columns. We only fire when the relevant column is
 // still NULL — re-runs of the cron find nothing to do.
-//
-// Why two thresholds? Per-priority percentage gives us a single rule
-// that scales: a 1-hour response SLA gets a 30-minute heads-up; a
-// 3-day SLA gets a day-and-a-half heads-up. Operators don't need to
-// configure threshold minutes per priority.
 
 const TICKET_BATCH_LIMIT = 500;
 
@@ -101,7 +94,7 @@ export const slaMonitor = inngest.createFunction(
             .update(tickets)
             .set({ slaWarning50At: t50, updatedAt: sql`now()` })
             .where(and(eq(tickets.id, t.id), isNull(tickets.slaWarning50At)));
-          await emitDispatch(t, target.kind, "sla.warning_50");
+          await dispatch(t, target.kind, "sla.warning_50");
         });
         summary.warned50++;
       }
@@ -112,8 +105,7 @@ export const slaMonitor = inngest.createFunction(
             .update(tickets)
             .set({ slaWarning80At: t80, updatedAt: sql`now()` })
             .where(and(eq(tickets.id, t.id), isNull(tickets.slaWarning80At)));
-          await emitDispatch(t, target.kind, "sla.warning_80");
-          await smsAssignee(t, "sla_warning_80");
+          await dispatch(t, target.kind, "sla.warning_80");
         });
         summary.warned80++;
       }
@@ -135,8 +127,7 @@ export const slaMonitor = inngest.createFunction(
               breachedAt: tBreach.toISOString(),
             },
           });
-          await emitDispatch(t, target.kind, "sla.breached");
-          await smsAssignee(t, "sla_breached");
+          await dispatch(t, target.kind, "sla.breached");
         });
         summary.breached++;
       }
@@ -146,60 +137,50 @@ export const slaMonitor = inngest.createFunction(
   },
 );
 
-async function emitDispatch(
-  t: { id: string; ticketNumber: string },
+async function dispatch(
+  t: { id: string; ticketNumber: string; assignedToId: string | null },
   kind: "response" | "resolution",
   type: "sla.warning_50" | "sla.warning_80" | "sla.breached",
 ): Promise<void> {
-  // M11 wires this up to fan out to email + SMS + in-app. For now the
-  // event is fired so a downstream listener (when added) picks it up
-  // without any change here.
+  // 50% is in-app only (low-noise heads-up). 80% and breach also fire
+  // an SMS to the assignee if they have one configured. None of the
+  // SLA events have a dedicated email template yet — the dispatcher
+  // only sends the email leg when `email` is supplied here.
+  if (!t.assignedToId) return;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const ticketUrl = `${appUrl}/admin/tickets/${t.id}`;
+
+  const wantsSms = type === "sla.warning_80" || type === "sla.breached";
+  const smsTemplate =
+    type === "sla.warning_80" ? "sla_warning_80" : "sla_breached";
+
   try {
     await inngest.send({
       name: "notification/dispatch",
       data: {
         type,
+        recipientUserIds: [t.assignedToId],
         ticketId: t.id,
         ticketNumber: t.ticketNumber,
-        payload: { kind },
-      },
-    });
-  } catch (err) {
-    console.error("[sla-monitor] dispatch emit failed:", err);
-  }
-}
-
-async function smsAssignee(
-  t: { id: string; ticketNumber: string; assignedToId: string | null },
-  template: "sla_warning_80" | "sla_breached",
-): Promise<void> {
-  // Best-effort: only fires when the ticket is actually assigned and the
-  // assignee has a phone configured. M11's dispatch fan-out will replace
-  // this inline send with notification-preference-aware delivery.
-  if (!t.assignedToId) return;
-  try {
-    const [tech] = await db
-      .select({
-        phone: users.phone,
-        language: users.language,
-      })
-      .from(users)
-      .where(eq(users.id, t.assignedToId))
-      .limit(1);
-    if (!tech?.phone) return;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await sendSms({
-      to: tech.phone,
-      locale: tech.language,
-      template: {
-        template,
-        data: {
-          ticketNumber: t.ticketNumber,
-          ticketUrl: `${appUrl}/admin/tickets/${t.id}`,
+        ...(wantsSms
+          ? {
+              sms: {
+                template: {
+                  template: smsTemplate,
+                  data: { ticketNumber: t.ticketNumber, ticketUrl },
+                },
+              },
+            }
+          : {}),
+        inApp: {
+          titleArgs: { ticketNumber: t.ticketNumber },
+          bodyArgs: { kind },
+          linkUrl: `/admin/tickets/${t.id}`,
         },
       },
     });
   } catch (err) {
-    console.error(`[sla-monitor] ${template} SMS failed:`, err);
+    console.error(`[sla-monitor] dispatch ${type} failed:`, err);
   }
 }
