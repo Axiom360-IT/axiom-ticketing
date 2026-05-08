@@ -16,6 +16,7 @@ import {
   roles as rolesTable,
   userRoles,
 } from "@/lib/db/schema/rbac";
+import { clearFailures } from "@/lib/auth/lockout";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 
 class ForbiddenError extends Error {
@@ -464,6 +465,48 @@ export async function reactivateUser(userId: string): Promise<{ ok: true } | { o
   });
 
   revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${userId}`);
+  return { ok: true };
+}
+
+// ── unlockUser ─────────────────────────────────────────────────────
+
+export async function unlockUser(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  if (!(await can(caller, "users.unlock", { type: "global" }, productionContext))) {
+    throw new ForbiddenError();
+  }
+
+  const [target] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      lockedUntil: users.lockedUntil,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!target) throw new NotFoundError();
+
+  await db
+    .update(users)
+    .set({ lockedUntil: null, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+
+  // Also flush the Redis-side counter + lock so the user can immediately
+  // attempt sign-in without the in-memory ban hanging on.
+  await clearFailures(target.email);
+
+  await audit({
+    actorId: caller.id,
+    action: "user.unlock",
+    targetType: "user",
+    targetId: userId,
+    before: { lockedUntil: target.lockedUntil?.toISOString() ?? null },
+  });
+
   revalidatePath(`/admin/users/${userId}`);
   return { ok: true };
 }

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
-import { authClient } from "@/lib/auth/client";
+import { signInWithLockout } from "@/app/actions/sign-in";
 
 export function LoginForm() {
   const router = useRouter();
@@ -23,16 +23,21 @@ export function LoginForm() {
     setLoading(true);
 
     // Trim defensively — autofill / paste often introduces stray whitespace.
-    const result = await authClient.signIn.email({
-      email: email.trim(),
-      password: password.trim(),
-    });
+    // The lockout action does the actual sign-in via Better Auth and sets
+    // the session cookie via the nextCookies() plugin.
+    const result = await signInWithLockout(email.trim(), password.trim());
 
     setLoading(false);
 
-    if (result.error) {
-      // Generic message — never reveal whether the email or password was wrong.
-      setError(t("genericError"));
+    if (!result.ok) {
+      // Lockout messages come back from the server already localized to
+      // English; for now we surface the generic error otherwise so we
+      // never leak whether email or password was wrong.
+      if (result.locked) {
+        setError(result.error);
+      } else {
+        setError(t("genericError"));
+      }
       return;
     }
 

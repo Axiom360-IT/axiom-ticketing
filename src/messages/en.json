@@ -270,11 +270,14 @@
       "reactivateButton": "Reactivate",
       "resetPasswordButton": "Send password reset",
       "resetPasswordSent": "Reset email sent.",
+      "unlockButton": "Unlock account",
       "deactivatedNote": "Deactivated {when}",
       "createdNote": "Created {when}",
+      "lockedNote": "Account locked until {when}",
       "actionsCardTitle": "Account actions",
       "statusActive": "Active",
-      "statusInactive": "Inactive"
+      "statusInactive": "Inactive",
+      "statusLocked": "Locked"
     },
     "fields": {
       "name": "Full name",
@@ -1050,6 +1053,15 @@
       "body": "{quantity} × {itemName} has been delivered. The ticket is updated.",
       "review": "View request",
       "subject": "[{ticketNumber}] Delivered: {itemName}"
+    },
+    "accountLockout": {
+      "preview": "Your account has been temporarily locked",
+      "title": "Your account has been temporarily locked",
+      "greeting": "Hi {userName},",
+      "body": "We saw {attempts} failed sign-in attempts on your account in a short window, so we've temporarily locked it as a precaution. The lock lifts automatically in {minutes} minutes.",
+      "ifYou": "If this was you and you've forgotten your password, use the password reset flow once the lock lifts. If it wasn't you, please change your password right after sign-in and consider enabling two-factor authentication.",
+      "support": "If you need to get back in sooner, contact your administrator — they can unlock the account.",
+      "subject": "Your Axiom account has been temporarily locked"
     }
   }
 }

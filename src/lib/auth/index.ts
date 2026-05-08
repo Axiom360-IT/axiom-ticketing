@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins";
 import { db } from "../db/client";
 import {
@@ -73,7 +74,10 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins,
-  plugins: [twoFactor({ issuer: "Axiom360 Ticketing" })],
+  // `nextCookies()` last so its `after` hook runs after every other plugin
+  // — it forwards Set-Cookie from `auth.api.*` calls in Server Actions
+  // (e.g. signInWithLockout) onto the Next.js response.
+  plugins: [twoFactor({ issuer: "Axiom360 Ticketing" }), nextCookies()],
 });
 
 export type Auth = typeof auth;

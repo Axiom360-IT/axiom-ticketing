@@ -4,6 +4,10 @@ import { resend } from "./client";
 import { getSetting } from "../settings";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import {
+  AccountLockoutEmail,
+  type AccountLockoutProps,
+} from "./templates/account-lockout";
+import {
   EscalationAlertEmail,
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
@@ -95,6 +99,10 @@ export type EmailTemplate =
   | {
       template: "procurement_delivered";
       data: Omit<ProcurementDeliveredProps, "locale">;
+    }
+  | {
+      template: "account_lockout";
+      data: Omit<AccountLockoutProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -157,6 +165,10 @@ async function renderTemplate(
       return await render(
         <ProcurementDeliveredEmail {...t.data} locale={locale} />,
       );
+    case "account_lockout":
+      return await render(
+        <AccountLockoutEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -175,6 +187,7 @@ const TEMPLATE_NAMESPACE = {
   procurement_approved: "emails.procurementApproved",
   procurement_rejected: "emails.procurementRejected",
   procurement_delivered: "emails.procurementDelivered",
+  account_lockout: "emails.accountLockout",
 } as const;
 
 async function defaultSubject(

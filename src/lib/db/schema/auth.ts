@@ -44,6 +44,10 @@ export const users = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     deactivatedById: uuid("deactivated_by_id"),
+    // Soft lock for repeated failed sign-in attempts (M16). When set in the
+    // future, sign-in is refused until the timestamp passes (or an admin
+    // with `users.unlock` clears it). Cleared on every successful sign-in.
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

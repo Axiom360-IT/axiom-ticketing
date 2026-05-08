@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ReactivateButton,
   ResetPasswordButton,
+  UnlockButton,
 } from "@/components/users/account-actions";
 import { DeactivateModal } from "@/components/users/deactivate-modal";
 import { EditUserForm } from "@/components/users/edit-user-form";
@@ -40,6 +41,7 @@ export default async function EditUserPage({
       createdById: users.createdById,
       createdAt: users.createdAt,
       deactivatedAt: users.deactivatedAt,
+      lockedUntil: users.lockedUntil,
     })
     .from(users)
     .where(eq(users.id, id))
@@ -57,6 +59,7 @@ export default async function EditUserPage({
     canReactivate,
     canReset,
     canImpersonate,
+    canUnlock,
     allRoles,
     currentRoleRows,
   ] = await Promise.all([
@@ -65,6 +68,7 @@ export default async function EditUserPage({
     can(caller, "users.reactivate", { type: "global" }, productionContext),
     can(caller, "users.reset_password", userScope, productionContext),
     can(caller, "users.impersonate", userScope, productionContext),
+    can(caller, "users.unlock", { type: "global" }, productionContext),
     listAllRoles(),
     db
       .select({ roleId: userRoles.roleId })
@@ -72,9 +76,19 @@ export default async function EditUserPage({
       .where(eq(userRoles.userId, target.id)),
   ]);
 
-  if (!canUpdate && !canDeactivate && !canReactivate && !canReset && !canImpersonate) {
+  if (
+    !canUpdate &&
+    !canDeactivate &&
+    !canReactivate &&
+    !canReset &&
+    !canImpersonate &&
+    !canUnlock
+  ) {
     redirect("/admin/users");
   }
+
+  const isLocked =
+    target.lockedUntil != null && target.lockedUntil.getTime() > Date.now();
 
   // Roles available to this caller — drop ones whose permissions exceed the
   // caller's. Super Admin sees them all because their set is ALL_PERMISSIONS.
@@ -150,6 +164,16 @@ export default async function EditUserPage({
                   : "—",
               })}
         </p>
+        {isLocked && target.lockedUntil ? (
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            {t("lockedNote", {
+              when: formatter.dateTime(target.lockedUntil, {
+                timeStyle: "short",
+                dateStyle: "medium",
+              }),
+            })}
+          </p>
+        ) : null}
       </header>
 
       <Card>
@@ -187,6 +211,9 @@ export default async function EditUserPage({
             <ImpersonateButton userId={target.id} />
           ) : null}
           {canReset ? <ResetPasswordButton userId={target.id} /> : null}
+          {canUnlock && isLocked ? (
+            <UnlockButton userId={target.id} />
+          ) : null}
           {canDeactivate && target.isActive ? (
             <>
               <Separator />
