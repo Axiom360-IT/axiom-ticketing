@@ -20,6 +20,22 @@ import {
   type NewAssignmentProps,
 } from "./templates/new-assignment";
 import {
+  ProcurementApprovedEmail,
+  type ProcurementApprovedProps,
+} from "./templates/procurement-approved";
+import {
+  ProcurementDeliveredEmail,
+  type ProcurementDeliveredProps,
+} from "./templates/procurement-delivered";
+import {
+  ProcurementRejectedEmail,
+  type ProcurementRejectedProps,
+} from "./templates/procurement-rejected";
+import {
+  ProcurementSubmittedEmail,
+  type ProcurementSubmittedProps,
+} from "./templates/procurement-submitted";
+import {
   TicketAssignedEmail,
   type TicketAssignedProps,
 } from "./templates/ticket-assigned";
@@ -63,6 +79,22 @@ export type EmailTemplate =
   | {
       template: "inbound_closed_ticket";
       data: Omit<InboundClosedTicketProps, "locale">;
+    }
+  | {
+      template: "procurement_submitted";
+      data: Omit<ProcurementSubmittedProps, "locale">;
+    }
+  | {
+      template: "procurement_approved";
+      data: Omit<ProcurementApprovedProps, "locale">;
+    }
+  | {
+      template: "procurement_rejected";
+      data: Omit<ProcurementRejectedProps, "locale">;
+    }
+  | {
+      template: "procurement_delivered";
+      data: Omit<ProcurementDeliveredProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -109,6 +141,22 @@ async function renderTemplate(
       return await render(
         <InboundClosedTicketEmail {...t.data} locale={locale} />,
       );
+    case "procurement_submitted":
+      return await render(
+        <ProcurementSubmittedEmail {...t.data} locale={locale} />,
+      );
+    case "procurement_approved":
+      return await render(
+        <ProcurementApprovedEmail {...t.data} locale={locale} />,
+      );
+    case "procurement_rejected":
+      return await render(
+        <ProcurementRejectedEmail {...t.data} locale={locale} />,
+      );
+    case "procurement_delivered":
+      return await render(
+        <ProcurementDeliveredEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -123,6 +171,10 @@ const TEMPLATE_NAMESPACE = {
   escalation_alert: "emails.escalationAlert",
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",
+  procurement_submitted: "emails.procurementSubmitted",
+  procurement_approved: "emails.procurementApproved",
+  procurement_rejected: "emails.procurementRejected",
+  procurement_delivered: "emails.procurementDelivered",
 } as const;
 
 async function defaultSubject(
@@ -131,14 +183,15 @@ async function defaultSubject(
 ): Promise<string> {
   const namespace = TEMPLATE_NAMESPACE[t.template];
   const tr = await getTranslations({ locale, namespace });
-  // Subject keys interpolate any of `ticketNumber` and `subject` if they
-  // exist on the data; templates that don't carry both still render fine
-  // because next-intl ignores absent placeholders.
-  const data = t.data as { ticketNumber?: string; subject?: string };
-  return tr("subject", {
-    ticketNumber: data.ticketNumber ?? "",
-    subject: data.subject ?? "",
-  });
+  // Pass every primitive field on the template data as a placeholder
+  // value — next-intl ignores keys that aren't referenced by the message,
+  // so each template can pick whichever fields it needs (ticketNumber,
+  // subject, itemName, etc.).
+  const values: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(t.data as Record<string, unknown>)) {
+    if (typeof v === "string" || typeof v === "number") values[k] = v;
+  }
+  return tr("subject", values);
 }
 
 /**

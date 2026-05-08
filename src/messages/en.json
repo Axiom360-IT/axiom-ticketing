@@ -309,7 +309,94 @@
       "candidate": "{name} — {email}"
     }
   },
-  "procurement": {},
+  "procurement": {
+    "list": {
+      "title": "Procurement",
+      "subtitle": "Hardware and software requests against tickets.",
+      "addButton": "Add request",
+      "count": "{count, plural, =0 {No requests} =1 {# request} other {# requests}}",
+      "empty": "No requests match your filters.",
+      "filterStatus": "Status",
+      "filterType": "Type",
+      "filterUrgency": "Urgency",
+      "columns": {
+        "item": "Item",
+        "type": "Type",
+        "urgency": "Urgency",
+        "status": "Status",
+        "cost": "Estimated cost",
+        "requester": "Requester",
+        "ticket": "Ticket",
+        "createdAt": "Submitted"
+      }
+    },
+    "section": {
+      "title": "Procurement requests",
+      "addButton": "Add request",
+      "empty": "No procurement requests for this ticket.",
+      "viewAll": "Open queue"
+    },
+    "form": {
+      "title": "New procurement request",
+      "type": "Type",
+      "itemName": "Item name",
+      "quantity": "Quantity",
+      "estimatedCost": "Estimated cost",
+      "vendor": "Vendor",
+      "justification": "Justification",
+      "justificationHint": "Why is this needed? Minimum 10 characters.",
+      "urgency": "Urgency",
+      "dateNeededBy": "Needed by",
+      "submit": "Submit request",
+      "submitting": "Submitting…"
+    },
+    "type": {
+      "hardware": "Hardware",
+      "software": "Software"
+    },
+    "urgency": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "status": {
+      "pending_coordinator_approval": "Pending coordinator approval",
+      "pending_admin_approval": "Pending admin approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "purchased": "Purchased",
+      "delivered": "Delivered"
+    },
+    "detail": {
+      "summaryTitle": "Request",
+      "actionsTitle": "Actions",
+      "approve": "Approve",
+      "approving": "Approving…",
+      "reject": "Reject",
+      "rejecting": "Rejecting…",
+      "rejectModalTitle": "Reject request",
+      "rejectModalDescription": "Tell the requester why this can't proceed.",
+      "rejectReasonPlaceholder": "Explain the rejection (visible to the requester)",
+      "rejectionTitle": "Rejection",
+      "rejectionAtStep": "Rejected at {step} step",
+      "stepCoordinator": "coordinator",
+      "stepAdmin": "admin",
+      "markPurchased": "Mark purchased",
+      "markPurchasing": "Marking…",
+      "markDelivered": "Mark delivered",
+      "markDelivering": "Marking…",
+      "ticketLabel": "Ticket",
+      "requesterLabel": "Requester",
+      "vendorLabel": "Vendor",
+      "costLabel": "Estimated cost",
+      "neededByLabel": "Needed by",
+      "submittedLabel": "Submitted",
+      "errorGeneric": "Action failed.",
+      "decisionMeta": "Coordinator decision: {date} · Admin decision: {adminDate}",
+      "purchasedMeta": "Purchased {date}",
+      "deliveredMeta": "Delivered {date}"
+    }
+  },
   "roles": {
     "list": {
       "title": "Roles",
@@ -558,6 +645,40 @@
       "cta": "If the issue is back or you have something new, please open a fresh ticket and we'll pick it up there.",
       "buttonNewTicket": "Submit a new ticket",
       "subject": "[{ticketNumber}] That ticket is closed — please open a new one"
+    },
+    "procurementSubmitted": {
+      "preview": "New procurement request: {itemName}",
+      "title": "New procurement request",
+      "greeting": "Hi team,",
+      "body": "{requesterName} requested {quantity} × {itemName}.",
+      "meta": "Ticket {ticketNumber}: {ticketSubject} · Urgency: {urgency}",
+      "review": "Review request",
+      "subject": "[{ticketNumber}] Procurement request: {itemName}"
+    },
+    "procurementApproved": {
+      "preview": "Your procurement request has been approved",
+      "title": "Procurement request approved",
+      "greeting": "Hi,",
+      "body": "Your request for {quantity} × {itemName} has been approved. We'll mark it purchased once the order goes out.",
+      "review": "View request",
+      "subject": "[{ticketNumber}] Procurement approved: {itemName}"
+    },
+    "procurementRejected": {
+      "preview": "Your procurement request has been rejected",
+      "title": "Procurement request rejected",
+      "greeting": "Hi,",
+      "body": "Your request for {itemName} has been rejected. The reviewer left this note:",
+      "nextSteps": "If you'd like to try again, submit a fresh request from the ticket.",
+      "review": "View request",
+      "subject": "[{ticketNumber}] Procurement rejected: {itemName}"
+    },
+    "procurementDelivered": {
+      "preview": "Your procurement order has been delivered",
+      "title": "Procurement order delivered",
+      "greeting": "Hi,",
+      "body": "{quantity} × {itemName} has been delivered. The ticket is updated.",
+      "review": "View request",
+      "subject": "[{ticketNumber}] Delivered: {itemName}"
     }
   }
 }
