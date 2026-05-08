@@ -9,6 +9,7 @@ import {
 } from "@/components/users/account-actions";
 import { DeactivateModal } from "@/components/users/deactivate-modal";
 import { EditUserForm } from "@/components/users/edit-user-form";
+import { ImpersonateButton } from "@/components/users/impersonate-button";
 import { getDescendants, listAllRoles } from "@/app/actions/users";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -50,20 +51,28 @@ export default async function EditUserPage({
     user: { id: target.id, createdById: target.createdById },
   };
 
-  const [canUpdate, canDeactivate, canReactivate, canReset, allRoles, currentRoleRows] =
-    await Promise.all([
-      can(caller, "users.update", userScope, productionContext),
-      can(caller, "users.deactivate", userScope, productionContext),
-      can(caller, "users.reactivate", { type: "global" }, productionContext),
-      can(caller, "users.reset_password", userScope, productionContext),
-      listAllRoles(),
-      db
-        .select({ roleId: userRoles.roleId })
-        .from(userRoles)
-        .where(eq(userRoles.userId, target.id)),
-    ]);
+  const [
+    canUpdate,
+    canDeactivate,
+    canReactivate,
+    canReset,
+    canImpersonate,
+    allRoles,
+    currentRoleRows,
+  ] = await Promise.all([
+    can(caller, "users.update", userScope, productionContext),
+    can(caller, "users.deactivate", userScope, productionContext),
+    can(caller, "users.reactivate", { type: "global" }, productionContext),
+    can(caller, "users.reset_password", userScope, productionContext),
+    can(caller, "users.impersonate", userScope, productionContext),
+    listAllRoles(),
+    db
+      .select({ roleId: userRoles.roleId })
+      .from(userRoles)
+      .where(eq(userRoles.userId, target.id)),
+  ]);
 
-  if (!canUpdate && !canDeactivate && !canReactivate && !canReset) {
+  if (!canUpdate && !canDeactivate && !canReactivate && !canReset && !canImpersonate) {
     redirect("/admin/users");
   }
 
@@ -174,6 +183,9 @@ export default async function EditUserPage({
           <CardTitle>{t("actionsCardTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {canImpersonate && target.isActive && target.id !== caller.id ? (
+            <ImpersonateButton userId={target.id} />
+          ) : null}
           {canReset ? <ResetPasswordButton userId={target.id} /> : null}
           {canDeactivate && target.isActive ? (
             <>

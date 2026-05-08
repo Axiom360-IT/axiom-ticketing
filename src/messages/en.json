@@ -284,6 +284,14 @@
       "language": "Language",
       "roles": "Roles"
     },
+    "impersonate": {
+      "button": "Impersonate",
+      "starting": "Starting…",
+      "ending": "Ending…",
+      "genericError": "Failed to start impersonation.",
+      "bannerLabel": "Impersonating {name}.",
+      "bannerEnd": "Click to exit"
+    },
     "deactivate": {
       "title": "Deactivate user",
       "description": "What should happen to users they created?",

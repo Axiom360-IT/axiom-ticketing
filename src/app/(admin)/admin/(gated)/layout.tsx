@@ -1,7 +1,11 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { getSessionUser } from "@/lib/auth/session";
+import { getActiveImpersonation, getSessionUser } from "@/lib/auth/session";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
+import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
 
@@ -32,15 +36,36 @@ export default async function AdminGatedLayout({
     redirect("/admin/login");
   }
 
+  // For the topbar: when impersonating, show the IMPERSONATED user's
+  // name/email so the rest of the UI is consistent with `user.id`. The
+  // banner above the topbar makes the override visible at a glance.
+  const imp = await getActiveImpersonation();
+  let displayEmail = session.user.email;
+  let displayName = session.user.name;
+  let bannerName: string | null = null;
+  if (imp) {
+    const [t] = await db
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, imp.targetId))
+      .limit(1);
+    if (t) {
+      displayEmail = t.email;
+      displayName = t.name;
+      bannerName = t.name;
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
+        {bannerName ? <ImpersonationBanner targetName={bannerName} /> : null}
         <Topbar
           user={{
             id: user.id,
-            email: session.user.email,
-            name: session.user.name,
+            email: displayEmail,
+            name: displayName,
             roles: [...user.roleNames],
           }}
         />
