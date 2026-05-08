@@ -328,7 +328,10 @@
         "requester": "Requester",
         "ticket": "Ticket",
         "createdAt": "Submitted"
-      }
+      },
+      "filterAny": "—",
+      "qty": "× {count}",
+      "ticketLink": "{number} — {subject}"
     },
     "section": {
       "title": "Procurement requests",
