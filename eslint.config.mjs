@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import i18next from "eslint-plugin-i18next";
 
 // Accessibility (WCAG 2.1 AA) — per ARCHITECTURE §19.
 // `eslint-config-next` already registers the `jsx-a11y` plugin and enables a
@@ -47,12 +48,63 @@ const serverComponentExceptions = {
   },
 };
 
+// i18n enforcement (per ARCHITECTURE §18 / EXECUTION M3.5):
+// Every user-facing JSX text must be a `t('key')` call resolved against
+// `messages/en.json`. The default `jsx-text-only` mode flags JSX text
+// content but ignores attribute values (className, id, etc.) and the
+// PreviewProps objects in email templates.
+const i18nEnforcement = {
+  files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
+  plugins: { i18next },
+  rules: {
+    "i18next/no-literal-string": [
+      "error",
+      {
+        mode: "jsx-text-only",
+        "jsx-components": {
+          // <Trans> is the convention for rich strings; allow it even
+          // though we use `t.rich` instead — keeps room for migration.
+          exclude: ["Trans"],
+        },
+        words: {
+          // Plugin defaults (numbers, single uppercase letters, html
+          // entities, emoji) plus our additions for symbols, keyboard
+          // shortcuts, and the `current/max` counter pattern.
+          exclude: [
+            "[0-9!-/:-@[-`{-~]+",
+            "[A-Z_-]+",
+            "[\\d]+\\s*/\\s*[\\d]+",
+            "·",
+            "⌘[A-Z]?",
+            "⌥",
+            "⇧",
+            "⏎",
+          ],
+        },
+      },
+    ],
+  },
+};
+
+// shadcn/Base UI primitives use icon-only or aria-label-only buttons; the
+// few literal characters they ship (e.g. `·` separators) are visual glue,
+// not user copy. Consumers of these primitives still must i18n their own
+// text. Keeping enforcement off avoids churn in vendored UI files.
+const i18nShadcnException = {
+  files: ["src/components/ui/**/*.{ts,tsx}"],
+  rules: {
+    "i18next/no-literal-string": "off",
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   a11yStrictRules,
   shadcnExceptions,
   serverComponentExceptions,
+  i18nEnforcement,
+  i18nShadcnException,
   globalIgnores([
     ".next/**",
     "out/**",
