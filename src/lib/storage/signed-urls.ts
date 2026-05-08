@@ -34,6 +34,23 @@ export async function getSignedDownloadUrl(
 }
 
 /**
+ * Read the entire object body. Used by the virus-scan path (M18) — we
+ * already cap upload size at MAX_FILE_BYTES, so pulling the full body
+ * into memory is bounded.
+ */
+export async function fetchObject(storageKey: string): Promise<Uint8Array> {
+  const cmd = new GetObjectCommand({
+    Bucket: r2Bucket(),
+    Key: storageKey,
+  });
+  const out = await r2Client().send(cmd);
+  if (!out.Body) {
+    throw new Error("R2 returned no body");
+  }
+  return await out.Body.transformToByteArray();
+}
+
+/**
  * Read just the leading bytes of an object — used by `confirmUpload` to
  * verify the file's magic bytes match the declared MIME without pulling
  * the whole file. R2 supports HTTP Range exactly like S3.

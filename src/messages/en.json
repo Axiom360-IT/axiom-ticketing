@@ -559,8 +559,15 @@
     },
     "virusScan": {
       "title": "Virus scanning",
-      "description": "When on, every confirmed upload is queued for ClamAV scan before being marked clean.",
-      "enabled": "Enable virus scanning"
+      "description": "When on, every confirmed upload is queued for scanning before being marked clean. Infected files are quarantined and removed from storage.",
+      "enabled": "Enable virus scanning",
+      "providerLabel": "Scanner provider",
+      "providerHint": "EICAR is for end-to-end testing only — it just looks for the EICAR test signature. Use clamav-rest in production.",
+      "providerDisabled": "Disabled",
+      "providerEicar": "EICAR test detector",
+      "providerClamavRest": "ClamAV (REST)",
+      "endpointLabel": "ClamAV REST endpoint",
+      "endpointHint": "HTTPS URL of the clamav-rest service. Required when the provider is ClamAV (REST)."
     },
     "rateLimits": {
       "publicTitle": "Rate limits — public",

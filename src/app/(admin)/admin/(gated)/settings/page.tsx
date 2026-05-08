@@ -7,6 +7,7 @@ import { RateLimitForm } from "@/components/settings/rate-limit-form";
 import {
   BooleanSettingForm,
   NumberSettingForm,
+  SelectSettingForm,
   StringSettingForm,
 } from "@/components/settings/scalar-form";
 import { SlaTargetsForm } from "@/components/settings/sla-form";
@@ -285,11 +286,29 @@ export default async function SettingsPage() {
           <CardTitle>{tVs("title")}</CardTitle>
           <CardDescription>{tVs("description")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <BooleanSettingForm
             settingKey="virus_scan.enabled"
             label={tVs("enabled")}
             initial={bool(v["virus_scan.enabled"], false)}
+          />
+          <SelectSettingForm
+            settingKey="virus_scan.provider"
+            label={tVs("providerLabel")}
+            hint={tVs("providerHint")}
+            initial={str(v["virus_scan.provider"], "disabled")}
+            options={[
+              { value: "disabled", label: tVs("providerDisabled") },
+              { value: "eicar", label: tVs("providerEicar") },
+              { value: "clamav-rest", label: tVs("providerClamavRest") },
+            ]}
+          />
+          <StringSettingForm
+            settingKey="virus_scan.endpoint"
+            label={tVs("endpointLabel")}
+            hint={tVs("endpointHint")}
+            initial={str(v["virus_scan.endpoint"], "")}
+            optional
           />
         </CardContent>
       </Card>

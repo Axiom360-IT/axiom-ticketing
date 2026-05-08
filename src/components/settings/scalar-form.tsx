@@ -16,6 +16,8 @@ type StringProps = {
   hint?: string;
   readOnly?: boolean;
   maxLength?: number;
+  /** Allow saving an empty value. Defaults to required. */
+  optional?: boolean;
 };
 
 export function StringSettingForm({
@@ -26,6 +28,7 @@ export function StringSettingForm({
   hint,
   readOnly = false,
   maxLength,
+  optional = false,
 }: StringProps) {
   const router = useRouter();
   const { runWithReauth, gate } = useReauthGate();
@@ -61,7 +64,7 @@ export function StringSettingForm({
           type={type}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          required
+          required={!optional}
           readOnly={readOnly}
           disabled={readOnly}
           maxLength={maxLength}
@@ -142,6 +145,75 @@ export function NumberSettingForm({
       <SaveRow pending={isPending} saved={saved} error={error} />
       {gate}
     </form>
+  );
+}
+
+type SelectOption = { value: string; label: string };
+type SelectProps = {
+  settingKey: string;
+  label: string;
+  initial: string;
+  options: readonly SelectOption[];
+  hint?: string;
+};
+
+export function SelectSettingForm({
+  settingKey,
+  label,
+  initial,
+  options,
+  hint,
+}: SelectProps) {
+  const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
+  const [value, setValue] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleChange(next: string) {
+    setError(null);
+    const prev = value;
+    setValue(next);
+    startTransition(async () => {
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, next),
+        "settings",
+      );
+      if (!res.ok) {
+        setError(res.error);
+        setValue(prev);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-1.5 max-w-sm">
+      <Label htmlFor={`s-${settingKey}`}>{label}</Label>
+      <select
+        id={`s-${settingKey}`}
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={isPending}
+        className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {hint ? (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : null}
+      {gate}
+    </div>
   );
 }
 

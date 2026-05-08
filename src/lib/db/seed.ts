@@ -239,6 +239,16 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
       value: false,
       description: "Enable ClamAV scan on uploaded attachments",
     },
+    {
+      key: "virus_scan.provider",
+      value: "disabled",
+      description: "Scanner backend: disabled | eicar | clamav-rest",
+    },
+    {
+      key: "virus_scan.endpoint",
+      value: "",
+      description: "HTTPS endpoint for the clamav-rest provider",
+    },
   ];
 
 async function seed() {

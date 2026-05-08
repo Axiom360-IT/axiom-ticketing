@@ -110,6 +110,24 @@ export const SETTING_SCHEMAS = {
 
   // Virus scanning
   "virus_scan.enabled": z.boolean(),
+  // Provider for the actual scan. `disabled` is the same as
+  // `virus_scan.enabled = false` and is the safe default. `eicar` ships
+  // a tiny in-process detector (matches the EICAR test signature) for
+  // end-to-end testing of the quarantine pipeline without standing up
+  // a real scanner. `clamav-rest` POSTs the bytes to a configurable
+  // HTTPS endpoint that speaks clamav-rest-api / clamav-rest.
+  "virus_scan.provider": z.enum(["disabled", "eicar", "clamav-rest"]),
+  // HTTPS endpoint for the clamav-rest provider. Empty string means
+  // "not configured"; the scan-attachment function then reports an
+  // error and falls open.
+  "virus_scan.endpoint": z
+    .string()
+    .trim()
+    .max(500)
+    .refine(
+      (v) => v === "" || /^https?:\/\//i.test(v),
+      "Must be empty or start with http(s)://",
+    ),
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;

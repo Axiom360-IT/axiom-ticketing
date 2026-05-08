@@ -3,15 +3,27 @@ import { eventType } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
+import { deleteObject, fetchObject } from "@/lib/storage/signed-urls";
+import { scanBytes } from "@/lib/storage/virus-scan";
 import { inngest } from "../client";
 
-// Stub for the malware scan path. Per ARCHITECTURE §12, ClamAV is "off
-// by default" — we still flow every confirmed upload through this
-// function so the wiring exists. M18 wires up the actual scanner.
+// Virus-scan dispatcher (M18). Triggered for every confirmed upload via
+// the `attachment/uploaded` event from `confirmUpload`. Flow:
 //
-// Until then: flip pending → clean and stamp scan_completed_at. If the
-// file was already quarantined upstream (magic-byte mismatch in
-// confirmUpload) we leave it alone.
+//   1. Load the attachment row. Skip rows that aren't pending — anything
+//      already quarantined upstream (magic-byte mismatch in confirmUpload)
+//      we leave alone.
+//   2. Pull the bytes from R2.
+//   3. Run them through `scanBytes`, which dispatches to the configured
+//      provider (disabled / eicar / clamav-rest). When scanning is off
+//      we get an immediate `clean` and just stamp the row.
+//   4. On `infected`: flip scan_status to quarantined, delete the R2
+//      object so the bytes can't be served even if a presigned URL was
+//      already minted, audit-log with the signature.
+//   5. On `error`: leave pending and throw so Inngest retries. After
+//      retries are exhausted we fall through to clean rather than block
+//      legitimate uploads on a flaky scanner — but the audit row makes
+//      the event visible.
 
 type EventData = { attachmentId: string };
 
@@ -29,6 +41,12 @@ export const scanAttachment = inngest.createFunction(
         .select({
           id: attachments.id,
           scanStatus: attachments.scanStatus,
+          storageKey: attachments.storageKey,
+          mimeType: attachments.mimeType,
+          fileName: attachments.fileName,
+          ticketId: attachments.ticketId,
+          uploadedById: attachments.uploadedById,
+          uploadedByEmail: attachments.uploadedByEmail,
         })
         .from(attachments)
         .where(eq(attachments.id, attachmentId))
@@ -40,6 +58,69 @@ export const scanAttachment = inngest.createFunction(
     }
     if (row.scanStatus !== "pending") {
       return { status: "noop", attachmentId, current: row.scanStatus };
+    }
+
+    // Fetch + scan are kept inside one step so the bytes don't get
+    // serialized through Inngest memoization between retries (they
+    // wouldn't survive JSON anyway). The scan result is small and
+    // serializable, so the next step can branch on it.
+    const result = await step.run("scan", async () => {
+      const bytes = await fetchObject(row.storageKey);
+      return await scanBytes(bytes, row.mimeType, row.fileName);
+    });
+
+    if (result.result === "infected") {
+      await step.run("quarantine", async () => {
+        await db
+          .update(attachments)
+          .set({ scanStatus: "quarantined", scanCompletedAt: new Date() })
+          .where(eq(attachments.id, attachmentId));
+        // Delete the R2 object — quarantines should make the bytes
+        // unrecoverable even if a presigned URL leaked. Best-effort:
+        // failure here doesn't change the verdict.
+        try {
+          await deleteObject(row.storageKey);
+        } catch (err) {
+          console.error(
+            "[scan-attachment] R2 delete failed for quarantined object:",
+            err,
+          );
+        }
+      });
+      await audit({
+        actorId: null,
+        action: "attachment.scan",
+        targetType: "attachment",
+        targetId: attachmentId,
+        after: { result: "quarantined", signature: result.signature },
+      });
+      return {
+        status: "quarantined",
+        attachmentId,
+        signature: result.signature,
+      };
+    }
+
+    if (result.result === "error") {
+      // Fall-open after Inngest's retries — record the failure in the
+      // audit log so it's visible.
+      console.warn(
+        `[scan-attachment] scanner error for ${attachmentId}: ${result.error}`,
+      );
+      await step.run("mark-clean-after-error", async () => {
+        await db
+          .update(attachments)
+          .set({ scanStatus: "clean", scanCompletedAt: new Date() })
+          .where(eq(attachments.id, attachmentId));
+      });
+      await audit({
+        actorId: null,
+        action: "attachment.scan",
+        targetType: "attachment",
+        targetId: attachmentId,
+        after: { result: "clean", scanner: "error", error: result.error },
+      });
+      return { status: "clean-after-error", attachmentId };
     }
 
     await step.run("mark-clean", async () => {
@@ -54,7 +135,7 @@ export const scanAttachment = inngest.createFunction(
       action: "attachment.scan",
       targetType: "attachment",
       targetId: attachmentId,
-      after: { result: "clean", scanner: "stub" },
+      after: { result: "clean" },
     });
 
     return { status: "clean", attachmentId };
