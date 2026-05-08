@@ -95,6 +95,9 @@ export function TwoFactorSection({ enabled, canDisable }: Props) {
       }
       setVerified(true);
       setVerifyCode("");
+      // Refresh so the forced-enrolment page (M17) can route the user
+      // forward, and so the profile page reflects the now-enabled state.
+      router.refresh();
     });
   }
 

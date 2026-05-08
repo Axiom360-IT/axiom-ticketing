@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ReactivateButton,
   ResetPasswordButton,
+  ResetTwoFactorButton,
   UnlockButton,
 } from "@/components/users/account-actions";
 import { DeactivateModal } from "@/components/users/deactivate-modal";
@@ -42,6 +43,7 @@ export default async function EditUserPage({
       createdAt: users.createdAt,
       deactivatedAt: users.deactivatedAt,
       lockedUntil: users.lockedUntil,
+      twoFactorEnabled: users.twoFactorEnabled,
     })
     .from(users)
     .where(eq(users.id, id))
@@ -76,19 +78,25 @@ export default async function EditUserPage({
       .where(eq(userRoles.userId, target.id)),
   ]);
 
+  const isSuperAdmin = caller.roleNames.has("Super Admin");
   if (
     !canUpdate &&
     !canDeactivate &&
     !canReactivate &&
     !canReset &&
     !canImpersonate &&
-    !canUnlock
+    !canUnlock &&
+    !isSuperAdmin
   ) {
     redirect("/admin/users");
   }
 
   const isLocked =
     target.lockedUntil != null && target.lockedUntil.getTime() > Date.now();
+  const canResetTwoFactor =
+    caller.roleNames.has("Super Admin") &&
+    caller.id !== target.id &&
+    target.twoFactorEnabled;
 
   // Roles available to this caller — drop ones whose permissions exceed the
   // caller's. Super Admin sees them all because their set is ALL_PERMISSIONS.
@@ -213,6 +221,9 @@ export default async function EditUserPage({
           {canReset ? <ResetPasswordButton userId={target.id} /> : null}
           {canUnlock && isLocked ? (
             <UnlockButton userId={target.id} />
+          ) : null}
+          {canResetTwoFactor ? (
+            <ResetTwoFactorButton userId={target.id} />
           ) : null}
           {canDeactivate && target.isActive ? (
             <>

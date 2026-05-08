@@ -271,6 +271,9 @@
       "resetPasswordButton": "Send password reset",
       "resetPasswordSent": "Reset email sent.",
       "unlockButton": "Unlock account",
+      "resetTwoFactorButton": "Reset two-factor",
+      "resetTwoFactorConfirm": "Yes, reset two-factor",
+      "resetTwoFactorWarn": "This wipes their authenticator + backup codes. They'll be forced to re-enrol next sign-in.",
       "deactivatedNote": "Deactivated {when}",
       "createdNote": "Created {when}",
       "lockedNote": "Account locked until {when}",
@@ -706,6 +709,11 @@
       "expires": "Expires {when}",
       "unknownDevice": "Unknown device",
       "unknownIp": "—"
+    },
+    "twoFactorRequired": {
+      "title": "Two-factor authentication required",
+      "subtitle": "Your role grants access to sensitive operations, so we require a second factor on every sign-in. Enrol now to continue — you can't dismiss this screen.",
+      "signOut": "Sign out instead"
     },
     "twoFactor": {
       "title": "Two-factor authentication",

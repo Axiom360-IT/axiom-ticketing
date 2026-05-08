@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth";
 import { PRIVILEGED_PERMISSIONS } from "@/lib/auth/permissions";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/auth";
+import { twoFactors, users } from "@/lib/db/schema/auth";
 
 // Self-service 2FA. Privileged users (anyone holding any
 // PRIVILEGED_PERMISSIONS per ARCHITECTURE §13) can't disable 2FA — that
@@ -125,6 +125,58 @@ export async function disableTwoFactor(
       error: err instanceof Error ? err.message : "Could not disable",
     };
   }
+}
+
+// ── Admin reset of another user's 2FA (M17) ────────────────────────
+//
+// When someone loses their authenticator AND their backup codes, only a
+// Super Admin can clear the lock. This zeroes out their `two_factors`
+// row and flips `users.two_factor_enabled` off; if they're privileged,
+// the gated layout will then redirect them to forced enrolment on
+// their next request, so we end up back in a safe state.
+export async function resetUserTwoFactor(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  if (!caller.roleNames.has("Super Admin")) {
+    return { ok: false, error: "Only Super Admins can reset two-factor." };
+  }
+  if (caller.id === userId) {
+    return { ok: false, error: "Reset your own 2FA from your profile." };
+  }
+
+  const [target] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      twoFactorEnabled: users.twoFactorEnabled,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!target) {
+    return { ok: false, error: "User not found" };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(twoFactors).where(eq(twoFactors.userId, userId));
+    await tx
+      .update(users)
+      .set({ twoFactorEnabled: false, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  });
+
+  await audit({
+    actorId: caller.id,
+    action: "user.two_factor.reset",
+    targetType: "user",
+    targetId: userId,
+    before: { twoFactorEnabled: target.twoFactorEnabled },
+    after: { twoFactorEnabled: false },
+  });
+
+  revalidatePath(`/admin/users/${userId}`);
+  return { ok: true };
 }
 
 export async function regenerateBackupCodes(
