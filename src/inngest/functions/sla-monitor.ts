@@ -2,7 +2,9 @@ import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
 import { tickets } from "@/lib/db/schema/tickets";
+import { sendSms } from "@/lib/sms/send";
 import { inngest } from "../client";
 
 // SLA monitor — runs every 5 minutes per ARCHITECTURE §27.
@@ -47,6 +49,7 @@ export const slaMonitor = inngest.createFunction(
       .select({
         id: tickets.id,
         ticketNumber: tickets.ticketNumber,
+        assignedToId: tickets.assignedToId,
         createdAt: tickets.createdAt,
         responseDueAt: tickets.responseDueAt,
         resolutionDueAt: tickets.resolutionDueAt,
@@ -110,6 +113,7 @@ export const slaMonitor = inngest.createFunction(
             .set({ slaWarning80At: t80, updatedAt: sql`now()` })
             .where(and(eq(tickets.id, t.id), isNull(tickets.slaWarning80At)));
           await emitDispatch(t, target.kind, "sla.warning_80");
+          await smsAssignee(t, "sla_warning_80");
         });
         summary.warned80++;
       }
@@ -132,6 +136,7 @@ export const slaMonitor = inngest.createFunction(
             },
           });
           await emitDispatch(t, target.kind, "sla.breached");
+          await smsAssignee(t, "sla_breached");
         });
         summary.breached++;
       }
@@ -161,5 +166,40 @@ async function emitDispatch(
     });
   } catch (err) {
     console.error("[sla-monitor] dispatch emit failed:", err);
+  }
+}
+
+async function smsAssignee(
+  t: { id: string; ticketNumber: string; assignedToId: string | null },
+  template: "sla_warning_80" | "sla_breached",
+): Promise<void> {
+  // Best-effort: only fires when the ticket is actually assigned and the
+  // assignee has a phone configured. M11's dispatch fan-out will replace
+  // this inline send with notification-preference-aware delivery.
+  if (!t.assignedToId) return;
+  try {
+    const [tech] = await db
+      .select({
+        phone: users.phone,
+        language: users.language,
+      })
+      .from(users)
+      .where(eq(users.id, t.assignedToId))
+      .limit(1);
+    if (!tech?.phone) return;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    await sendSms({
+      to: tech.phone,
+      locale: tech.language,
+      template: {
+        template,
+        data: {
+          ticketNumber: t.ticketNumber,
+          ticketUrl: `${appUrl}/admin/tickets/${t.id}`,
+        },
+      },
+    });
+  } catch (err) {
+    console.error(`[sla-monitor] ${template} SMS failed:`, err);
   }
 }
