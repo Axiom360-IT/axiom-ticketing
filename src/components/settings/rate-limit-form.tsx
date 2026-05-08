@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateSetting } from "@/app/actions/settings";
 import { SaveRow } from "./save-button";
 
@@ -17,6 +18,7 @@ type Props = {
 
 export function RateLimitForm({ settingKey, initial }: Props) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const tLabels = useTranslations("settings.rateLimits.labels");
   const tFields = useTranslations("settings.rateLimits.fields");
   const [values, setValues] = useState<Record<string, number>>(initial);
@@ -29,7 +31,10 @@ export function RateLimitForm({ settingKey, initial }: Props) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const res = await updateSetting(settingKey, values);
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, values),
+        "settings",
+      );
       if (!res.ok) {
         setError(res.error);
         return;
@@ -70,6 +75,7 @@ export function RateLimitForm({ settingKey, initial }: Props) {
         ))}
       </div>
       <SaveRow pending={isPending} saved={saved} error={error} />
+      {gate}
     </form>
   );
 }

@@ -17,6 +17,7 @@ import {
   userRoles,
 } from "@/lib/db/schema/rbac";
 import { clearFailures } from "@/lib/auth/lockout";
+import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 
 class ForbiddenError extends Error {
@@ -41,6 +42,16 @@ async function loadUserScope(userId: string) {
     .where(eq(users.id, userId))
     .limit(1);
   return u;
+}
+
+async function rolesIncludeSuperAdmin(roleIds: string[]): Promise<boolean> {
+  if (roleIds.length === 0) return false;
+  const rows = await db
+    .select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(and(inArray(rolesTable.id, roleIds), eq(rolesTable.name, "Super Admin")))
+    .limit(1);
+  return rows.length > 0;
 }
 
 async function permissionsForRoles(roleIds: string[]): Promise<Set<Permission>> {
@@ -118,7 +129,7 @@ const createUserSchema = z.object({
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type CreateUserResult =
   | { ok: true; userId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; reauthRequired?: true };
 
 export async function createUser(
   input: CreateUserInput,
@@ -148,6 +159,14 @@ export async function createUser(
         error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
       };
     }
+  }
+
+  // M17: granting Super Admin requires fresh password confirmation.
+  if (
+    (await rolesIncludeSuperAdmin(data.roleIds)) &&
+    !(await isReauthFresh(caller.id))
+  ) {
+    return reauthRequiredResult();
   }
 
   // Ensure email is unique up front so we can return a friendly error
@@ -219,7 +238,9 @@ const updateUserSchema = z.object({
 });
 
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
-export type UpdateUserResult = { ok: true } | { ok: false; error: string };
+export type UpdateUserResult =
+  | { ok: true }
+  | { ok: false; error: string; reauthRequired?: true };
 
 export async function updateUser(
   userId: string,
@@ -256,6 +277,15 @@ export async function updateUser(
         ok: false,
         error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
       };
+    }
+    // M17: granting Super Admin in an update also requires fresh
+    // password confirmation, even if the user already had it before
+    // — the operation is sensitive enough either way.
+    if (
+      (await rolesIncludeSuperAdmin(data.roleIds)) &&
+      !(await isReauthFresh(caller.id))
+    ) {
+      return reauthRequiredResult();
     }
   }
 

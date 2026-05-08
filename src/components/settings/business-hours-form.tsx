@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateSetting } from "@/app/actions/settings";
 import { SaveRow } from "./save-button";
 
@@ -21,6 +22,7 @@ type Props = {
 
 export function BusinessHoursForm({ initial }: Props) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const t = useTranslations("settings.businessHours");
   const tDays = useTranslations("settings.days");
 
@@ -53,7 +55,10 @@ export function BusinessHoursForm({ initial }: Props) {
         ["business_hours.working_days", DAYS.filter((d) => days.has(d))],
       ];
       for (const [k, v] of writes) {
-        const res = await updateSetting(k, v);
+        const res = await runWithReauth(
+          () => updateSetting(k, v),
+          "settings",
+        );
         if (!res.ok) {
           setError(res.error);
           return;
@@ -124,6 +129,7 @@ export function BusinessHoursForm({ initial }: Props) {
         </div>
       </fieldset>
       <SaveRow pending={isPending} saved={saved} error={error} />
+      {gate}
     </form>
   );
 }

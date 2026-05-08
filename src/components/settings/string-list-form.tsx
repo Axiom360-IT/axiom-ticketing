@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateSetting } from "@/app/actions/settings";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
 
 export function StringListForm({ settingKey, initial, i18nNamespace }: Props) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const t = useTranslations(i18nNamespace);
   const [items, setItems] = useState<string[]>(initial);
   const [draft, setDraft] = useState("");
@@ -26,7 +28,10 @@ export function StringListForm({ settingKey, initial, i18nNamespace }: Props) {
   function commit(next: string[]) {
     startTransition(async () => {
       setError(null);
-      const res = await updateSetting(settingKey, next);
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, next),
+        "settings",
+      );
       if (!res.ok) {
         setError(res.error);
         return;
@@ -96,6 +101,7 @@ export function StringListForm({ settingKey, initial, i18nNamespace }: Props) {
           {error}
         </p>
       ) : null}
+      {gate}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateSetting } from "@/app/actions/settings";
 import { SaveRow } from "./save-button";
 
@@ -27,6 +28,7 @@ export function StringSettingForm({
   maxLength,
 }: StringProps) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -37,7 +39,10 @@ export function StringSettingForm({
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const res = await updateSetting(settingKey, value);
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, value),
+        "settings",
+      );
       if (!res.ok) {
         setError(res.error);
         return;
@@ -68,6 +73,7 @@ export function StringSettingForm({
       {!readOnly ? (
         <SaveRow pending={isPending} saved={saved} error={error} />
       ) : null}
+      {gate}
     </form>
   );
 }
@@ -92,6 +98,7 @@ export function NumberSettingForm({
   step,
 }: NumberProps) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -102,7 +109,10 @@ export function NumberSettingForm({
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const res = await updateSetting(settingKey, value);
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, value),
+        "settings",
+      );
       if (!res.ok) {
         setError(res.error);
         return;
@@ -130,6 +140,7 @@ export function NumberSettingForm({
         ) : null}
       </div>
       <SaveRow pending={isPending} saved={saved} error={error} />
+      {gate}
     </form>
   );
 }
@@ -148,6 +159,7 @@ export function BooleanSettingForm({
   description,
 }: BooleanProps) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -156,7 +168,10 @@ export function BooleanSettingForm({
     setError(null);
     setValue(next);
     startTransition(async () => {
-      const res = await updateSetting(settingKey, next);
+      const res = await runWithReauth(
+        () => updateSetting(settingKey, next),
+        "settings",
+      );
       if (!res.ok) {
         setError(res.error);
         // revert on failure
@@ -186,6 +201,7 @@ export function BooleanSettingForm({
           {error}
         </p>
       ) : null}
+      {gate}
     </div>
   );
 }

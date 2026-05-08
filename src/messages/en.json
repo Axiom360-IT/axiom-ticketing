@@ -28,6 +28,18 @@
     "minLength": "Must be at least {min} characters.",
     "maxLength": "Must be at most {max} characters."
   },
+  "reauth": {
+    "title": "Confirm your password",
+    "passwordLabel": "Password",
+    "verify": "Confirm",
+    "verifying": "Confirming…",
+    "cancel": "Cancel",
+    "reason": {
+      "default": "This action requires you to re-enter your password.",
+      "settings": "Changing app-wide settings requires a fresh password confirmation.",
+      "superAdmin": "Granting Super Admin access requires a fresh password confirmation."
+    }
+  },
   "tickets": {
     "queue": {
       "title": "Tickets",

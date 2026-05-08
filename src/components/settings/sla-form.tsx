@@ -4,6 +4,7 @@ import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateSetting } from "@/app/actions/settings";
 import { SaveRow } from "./save-button";
 
@@ -22,6 +23,7 @@ type Props = {
 
 export function SlaTargetsForm({ initial }: Props) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const tPriority = useTranslations("tickets.priority");
   const tColumns = useTranslations("settings.sla.columns");
   const [rows, setRows] = useState<Record<Priority, Row>>(initial);
@@ -46,7 +48,10 @@ export function SlaTargetsForm({ initial }: Props) {
           [`sla.${p}.respect_business_hours`, r.respectBusinessHours],
         ];
         for (const [k, v] of writes) {
-          const res = await updateSetting(k, v);
+          const res = await runWithReauth(
+            () => updateSetting(k, v),
+            "settings",
+          );
           if (!res.ok) {
             setError(`${k}: ${res.error}`);
             return;
@@ -116,6 +121,7 @@ export function SlaTargetsForm({ initial }: Props) {
         </table>
       </div>
       <SaveRow pending={isPending} saved={saved} error={error} />
+      {gate}
     </form>
   );
 }

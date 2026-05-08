@@ -11,6 +11,7 @@ import { db } from "@/lib/db/client";
 import { holidays } from "@/lib/db/schema/holidays";
 import { settings as settingsTable } from "@/lib/db/schema/settings";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
+import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
 import { invalidateSetting } from "@/lib/settings";
 import {
   isValidSettingKey,
@@ -30,7 +31,7 @@ class ForbiddenError extends Error {
 
 export type UpdateSettingResult =
   | { ok: true }
-  | { ok: false; error: string };
+  | { ok: false; error: string; reauthRequired?: true };
 
 // ── updateSetting ─────────────────────────────────────────────────
 
@@ -44,6 +45,12 @@ export async function updateSetting(
     !(await can(caller, "settings.update", { type: "global" }, productionContext))
   ) {
     throw new ForbiddenError();
+  }
+  // M17: settings changes affect everyone — require a fresh password
+  // confirmation within the last 5 minutes. The form sees the
+  // reauthRequired flag and pops the password modal.
+  if (!(await isReauthFresh(caller.id))) {
+    return reauthRequiredResult();
   }
 
   if (!isValidSettingKey(key)) {

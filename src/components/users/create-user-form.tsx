@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { createUser } from "@/app/actions/users";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +14,7 @@ type Role = { id: string; name: string };
 
 export function CreateUserForm({ roles }: { roles: Role[] }) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const tFields = useTranslations("users.fields");
   const tCreate = useTranslations("users.create");
   const tCommon = useTranslations("common");
@@ -44,10 +46,14 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const res = await createUser({
-      ...data,
-      roleIds: [...selectedRoles],
-    });
+    const res = await runWithReauth(
+      () =>
+        createUser({
+          ...data,
+          roleIds: [...selectedRoles],
+        }),
+      "superAdmin",
+    );
     setSubmitting(false);
     if (!res.ok) {
       setError(res.error);
@@ -154,6 +160,7 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
           {submitting ? tCreate("submitting") : tCreate("submit")}
         </Button>
       </div>
+      {gate}
     </form>
   );
 }

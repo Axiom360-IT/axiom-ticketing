@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateUser } from "@/app/actions/users";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ type Props = {
 
 export function EditUserForm({ userId, initial, roles, isActive }: Props) {
   const router = useRouter();
+  const { runWithReauth, gate } = useReauthGate();
   const tFields = useTranslations("users.fields");
   const tEdit = useTranslations("users.edit");
   const tCommon = useTranslations("common");
@@ -50,11 +52,15 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
     e.preventDefault();
     setError(null);
     setSaving(true);
-    const res = await updateUser(userId, {
-      name,
-      language,
-      roleIds: [...selected],
-    });
+    const res = await runWithReauth(
+      () =>
+        updateUser(userId, {
+          name,
+          language,
+          roleIds: [...selected],
+        }),
+      "superAdmin",
+    );
     setSaving(false);
     if (!res.ok) {
       setError(res.error);
@@ -148,6 +154,7 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
           {saving ? tEdit("saving") : tEdit("saveButton")}
         </Button>
       </div>
+      {gate}
     </form>
   );
 }
