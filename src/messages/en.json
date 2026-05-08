@@ -229,7 +229,78 @@
       "rejectedType": "{fileName}: file type not allowed."
     }
   },
-  "users": {},
+  "users": {
+    "list": {
+      "title": "Users",
+      "subtitle": "Create, edit, deactivate, and reset accounts.",
+      "createButton": "Create user",
+      "search": "Search by name or email",
+      "filterRole": "Role",
+      "filterRoleAll": "All roles",
+      "filterStatus": "Status",
+      "filterStatusActive": "Active",
+      "filterStatusInactive": "Inactive",
+      "filterStatusAll": "All",
+      "count": "{count, plural, =0 {No users} =1 {# user} other {# users}}",
+      "empty": "No users match the filters.",
+      "columns": {
+        "name": "Name",
+        "email": "Email",
+        "roles": "Roles",
+        "status": "Status",
+        "createdAt": "Created"
+      },
+      "noRoles": "(no roles)"
+    },
+    "create": {
+      "title": "Create user",
+      "subtitle": "The user will receive a welcome email at the address you enter.",
+      "cardTitle": "Account",
+      "submit": "Create user",
+      "submitting": "Creating…"
+    },
+    "edit": {
+      "title": "Edit user",
+      "subtitle": "Update profile, language, and role assignments.",
+      "cardTitle": "Profile",
+      "rolesTitle": "Roles",
+      "saveButton": "Save changes",
+      "saving": "Saving…",
+      "deactivateButton": "Deactivate",
+      "reactivateButton": "Reactivate",
+      "resetPasswordButton": "Send password reset",
+      "resetPasswordSent": "Reset email sent.",
+      "deactivatedNote": "Deactivated {when}",
+      "createdNote": "Created {when}",
+      "actionsCardTitle": "Account actions",
+      "statusActive": "Active",
+      "statusInactive": "Inactive"
+    },
+    "fields": {
+      "name": "Full name",
+      "email": "Email",
+      "password": "Password",
+      "passwordHint": "Minimum 12 characters.",
+      "language": "Language",
+      "roles": "Roles"
+    },
+    "deactivate": {
+      "title": "Deactivate user",
+      "description": "What should happen to users they created?",
+      "optionMoveUp": "Move descendants up to {parentName}",
+      "optionMoveUpNoParent": "Move descendants up (no parent — they'll have no creator)",
+      "optionCascade": "Cascade — also deactivate {count, plural, =1 {# descendant} other {# descendants}}",
+      "optionReassign": "Reassign descendants to another user",
+      "reassignTo": "Reassign to",
+      "reassignPlaceholder": "Select a user…",
+      "directChildren": "{count, plural, =0 {No direct reports} =1 {# direct report} other {# direct reports}}",
+      "totalDescendants": "{count, plural, =0 {No descendants} =1 {# total descendant} other {# total descendants}}",
+      "submit": "Deactivate",
+      "submitting": "Deactivating…",
+      "genericError": "Failed to deactivate.",
+      "candidate": "{name} — {email}"
+    }
+  },
   "procurement": {},
   "roles": {},
   "settings": {},
