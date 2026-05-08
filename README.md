@@ -146,8 +146,26 @@ Opens `http://localhost:3000` with Turbopack. The default scaffold page renders 
 | `pnpm build` | Production build |
 | `pnpm start` | Run a production build locally |
 | `pnpm lint` | Run ESLint |
+| `pnpm test` | Run Vitest unit suite |
+| `pnpm test:e2e` | Run Playwright + axe-core a11y suite |
 
-(More scripts will be added as modules ship — `db:generate`, `db:migrate`, `db:seed`, `test`, `test:e2e`.)
+---
+
+## Accessibility
+
+The app targets **WCAG 2.1 AA**. Three layers enforce it:
+
+1. **Static lint** — `eslint-plugin-jsx-a11y` is part of `pnpm lint`. CI fails on any rule violation.
+2. **Runtime axe-core** — `pnpm test:e2e` runs the Playwright suite at `e2e/`, which boots `next dev` and executes `@axe-core/playwright` against every covered route. New routes should add a block to `e2e/a11y.spec.ts`. The CI gate is "zero AA violations."
+3. **Manual checks** — keyboard-only walk, NVDA/VoiceOver pass, and colour-contrast audit (≥ 4.5:1 body, ≥ 3:1 UI elements). Track exceptions in `DECISIONS.md`.
+
+### Accessibility carryover
+
+These checks need a human at a real device — not yet automated:
+
+- Screen reader (NVDA / VoiceOver) walkthrough on every flow.
+- Colour-contrast verification on every distinct foreground / background combination (axe's `color-contrast` is currently disabled in the CI suite because of CI dark-mode flakiness; re-enable once the design system stabilises).
+- Keyboard-only navigation walkthrough on every flow per the M14.5 checklist.
 
 ---
 
