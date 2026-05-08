@@ -12,6 +12,9 @@ export type Events = {
   "attachment/uploaded": {
     data: { attachmentId: string };
   };
+  "setting/updated": {
+    data: { key: string };
+  };
 };
 
 export const inngest = new Inngest({

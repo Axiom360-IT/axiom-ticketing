@@ -8,6 +8,7 @@
 //   - retention-* / cleanup-* (M21)
 
 import { autoCloseResolvedTickets } from "./auto-close-resolved";
+import { invalidateSettingsCache } from "./invalidate-settings-cache";
 import { processInboundEmail } from "./process-inbound-email";
 import { scanAttachment } from "./scan-attachment";
 
@@ -15,4 +16,5 @@ export const functions = [
   autoCloseResolvedTickets,
   processInboundEmail,
   scanAttachment,
+  invalidateSettingsCache,
 ];
