@@ -47,6 +47,21 @@ export const ratelimits = {
   passwordResetByIp: makeLimiter(10, "1 h"),
   /** Inbound email webhook: 1000 per minute (flood protection). */
   inboundEmail: makeLimiter(1000, "1 m"),
+
+  // ── Authenticated per-user-per-action limits (M16) ─────────────
+  // These track abuse from inside a session. Values match the seeded
+  // settings in `rate_limits.authenticated.*`. We could read them from
+  // settings at runtime, but the per-instance cache + Redis trip per
+  // call is already plenty; keeping the limiter shape static here
+  // means one limiter instance per key, reused across requests.
+  authCreateTicket: makeLimiter(100, "1 h"),
+  authReply: makeLimiter(200, "1 h"),
+  authInternalNote: makeLimiter(200, "1 h"),
+  authEscalate: makeLimiter(50, "1 h"),
+  authCreateProcurement: makeLimiter(50, "1 d"),
+  authCreateUser: makeLimiter(50, "1 h"),
+  authCreateRole: makeLimiter(20, "1 d"),
+  authUpdateSetting: makeLimiter(100, "1 d"),
 };
 
 export type RateLimitKey = keyof typeof ratelimits;
@@ -80,4 +95,25 @@ export async function checkRateLimit(
     reset: result.reset,
     limit: result.limit,
   };
+}
+
+/**
+ * Convenience wrapper for Server Actions: check `${userId}` against the
+ * authenticated rate-limit bucket and throw if the budget is exhausted.
+ * The thrown error message is shown to the user verbatim.
+ */
+export async function enforceUserRateLimit(
+  key: RateLimitKey,
+  userId: string,
+): Promise<void> {
+  const result = await checkRateLimit(key, userId);
+  if (!result.allowed) {
+    const minutes = Math.max(
+      1,
+      Math.ceil((result.reset - Date.now()) / 60_000),
+    );
+    throw new Error(
+      `Too many requests. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    );
+  }
 }

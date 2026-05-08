@@ -14,7 +14,7 @@ import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
-import { checkRateLimit } from "@/lib/ratelimit";
+import { checkRateLimit, enforceUserRateLimit } from "@/lib/ratelimit";
 import { inngest } from "@/inngest/client";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
@@ -239,6 +239,7 @@ export async function createTicketOnBehalf(
   input: CreateOnBehalfInput,
 ): Promise<CreateOnBehalfResult> {
   const user = await requireSessionUser();
+  await enforceUserRateLimit("authCreateTicket", user.id);
   if (!(await can(user, "tickets.create", { type: "global" }, productionContext))) {
     return { ok: false, error: "You don't have permission to create tickets." };
   }
@@ -532,6 +533,7 @@ export async function replyToTicket(
   }
 
   const user = await requireSessionUser();
+  await enforceUserRateLimit("authReply", user.id);
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) throw new NotFoundError();
 
@@ -650,6 +652,7 @@ export async function addInternalNote(
   }
 
   const user = await requireSessionUser();
+  await enforceUserRateLimit("authInternalNote", user.id);
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) throw new NotFoundError();
 
@@ -918,6 +921,7 @@ export async function escalateTicket(
   }
 
   const user = await requireSessionUser();
+  await enforceUserRateLimit("authEscalate", user.id);
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) throw new NotFoundError();
 

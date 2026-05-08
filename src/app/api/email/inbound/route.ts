@@ -6,6 +6,7 @@ import {
   type ResendInboundPayload,
 } from "@/lib/email/inbound-payload";
 import { verifySvixSignature } from "@/lib/email/webhook-signature";
+import { checkRateLimit } from "@/lib/ratelimit";
 import { inngest } from "@/inngest/client";
 
 // Resend inbound webhook entry point. Configure the Resend dashboard to
@@ -45,6 +46,25 @@ export async function POST(request: NextRequest): Promise<Response> {
       `[email/inbound] signature verification failed: ${verification.reason}`,
     );
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  // Flood protection — only counted after signature verification so bad
+  // actors can't drain the budget with junk requests. 1000/min ceiling.
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "global";
+  const limit = await checkRateLimit("inboundEmail", `inbound:ip:${ip}`);
+  if (!limit.allowed) {
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((limit.reset - Date.now()) / 1000),
+    );
+    console.warn(`[email/inbound] rate limit exceeded for ${ip}`);
+    return new Response("Too Many Requests", {
+      status: 429,
+      headers: { "Retry-After": String(retryAfter) },
+    });
   }
 
   // Idempotency: insert before processing. If the row already exists,

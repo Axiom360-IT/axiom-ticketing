@@ -13,6 +13,7 @@ import { users } from "@/lib/db/schema/auth";
 import { procurementRequests } from "@/lib/db/schema/procurement";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
+import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getSetting } from "@/lib/settings";
 import { inngest } from "@/inngest/client";
 
@@ -132,6 +133,7 @@ export async function createProcurementRequest(
   const data = parsed.data;
 
   const caller = await requireSessionUser();
+  await enforceUserRateLimit("authCreateProcurement", caller.id);
   // procurement.create is global — every requester role holds it.
   if (
     !(await can(

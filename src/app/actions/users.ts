@@ -16,6 +16,7 @@ import {
   roles as rolesTable,
   userRoles,
 } from "@/lib/db/schema/rbac";
+import { enforceUserRateLimit } from "@/lib/ratelimit";
 
 class ForbiddenError extends Error {
   constructor() {
@@ -131,6 +132,7 @@ export async function createUser(
   const data = parsed.data;
 
   const caller = await requireSessionUser();
+  await enforceUserRateLimit("authCreateUser", caller.id);
   if (!(await can(caller, "users.create", { type: "global" }, productionContext))) {
     throw new ForbiddenError();
   }

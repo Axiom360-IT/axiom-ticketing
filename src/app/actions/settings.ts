@@ -10,6 +10,7 @@ import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { holidays } from "@/lib/db/schema/holidays";
 import { settings as settingsTable } from "@/lib/db/schema/settings";
+import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { invalidateSetting } from "@/lib/settings";
 import {
   isValidSettingKey,
@@ -38,6 +39,7 @@ export async function updateSetting(
   rawValue: unknown,
 ): Promise<UpdateSettingResult> {
   const caller = await requireSessionUser();
+  await enforceUserRateLimit("authUpdateSetting", caller.id);
   if (
     !(await can(caller, "settings.update", { type: "global" }, productionContext))
   ) {
