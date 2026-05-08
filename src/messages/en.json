@@ -379,6 +379,24 @@
       "guidance": "The ticket is still assigned to {technicianName}. Please review and either take it over, advise, or de-escalate when ready.",
       "view": "Open ticket",
       "subject": "[{ticketNumber}] Ticket escalated: {subject}"
+    },
+    "inboundBounce": {
+      "preview": "We couldn't match your email to a ticket",
+      "title": "We couldn't match your email to a ticket",
+      "greeting": "Hi {customerName},",
+      "body": "Thanks for getting in touch. Your message didn't reference an existing ticket, so we weren't sure where to file it. To make sure we see it, please open a new ticket through our portal.",
+      "cta": "It only takes a minute — and we'll respond from there.",
+      "buttonNewTicket": "Submit a new ticket",
+      "subject": "We couldn't match your email to a ticket"
+    },
+    "inboundClosedTicket": {
+      "preview": "Ticket {ticketNumber} is closed — please open a new one",
+      "title": "That ticket is already closed",
+      "greeting": "Hi {customerName},",
+      "body": "Your reply came in on ticket {ticketNumber}, which is already closed. We don't reopen tickets from email replies, so the conversation isn't going to reach the team this way.",
+      "cta": "If the issue is back or you have something new, please open a fresh ticket and we'll pick it up there.",
+      "buttonNewTicket": "Submit a new ticket",
+      "subject": "[{ticketNumber}] That ticket is closed — please open a new one"
     }
   }
 }

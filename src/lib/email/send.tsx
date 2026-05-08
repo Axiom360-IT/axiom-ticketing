@@ -8,6 +8,14 @@ import {
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
 import {
+  InboundBounceEmail,
+  type InboundBounceProps,
+} from "./templates/inbound-bounce";
+import {
+  InboundClosedTicketEmail,
+  type InboundClosedTicketProps,
+} from "./templates/inbound-closed-ticket";
+import {
   NewAssignmentEmail,
   type NewAssignmentProps,
 } from "./templates/new-assignment";
@@ -50,6 +58,11 @@ export type EmailTemplate =
   | {
       template: "escalation_alert";
       data: Omit<EscalationAlertProps, "locale">;
+    }
+  | { template: "inbound_bounce"; data: Omit<InboundBounceProps, "locale"> }
+  | {
+      template: "inbound_closed_ticket";
+      data: Omit<InboundClosedTicketProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -90,6 +103,12 @@ async function renderTemplate(
       return await render(
         <EscalationAlertEmail {...t.data} locale={locale} />,
       );
+    case "inbound_bounce":
+      return await render(<InboundBounceEmail {...t.data} locale={locale} />);
+    case "inbound_closed_ticket":
+      return await render(
+        <InboundClosedTicketEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -102,6 +121,8 @@ const TEMPLATE_NAMESPACE = {
   ticket_reopened: "emails.ticketReopened",
   new_assignment: "emails.newAssignment",
   escalation_alert: "emails.escalationAlert",
+  inbound_bounce: "emails.inboundBounce",
+  inbound_closed_ticket: "emails.inboundClosedTicket",
 } as const;
 
 async function defaultSubject(
@@ -110,12 +131,13 @@ async function defaultSubject(
 ): Promise<string> {
   const namespace = TEMPLATE_NAMESPACE[t.template];
   const tr = await getTranslations({ locale, namespace });
-  // Every template's namespace contains a `subject` key with `{ticketNumber}`
-  // and `{subject}` placeholders; data carries both.
-  const data = t.data as { ticketNumber: string; subject: string };
+  // Subject keys interpolate any of `ticketNumber` and `subject` if they
+  // exist on the data; templates that don't carry both still render fine
+  // because next-intl ignores absent placeholders.
+  const data = t.data as { ticketNumber?: string; subject?: string };
   return tr("subject", {
-    ticketNumber: data.ticketNumber,
-    subject: data.subject,
+    ticketNumber: data.ticketNumber ?? "",
+    subject: data.subject ?? "",
   });
 }
 
