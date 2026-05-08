@@ -572,7 +572,49 @@
       }
     }
   },
-  "audit": {},
+  "audit": {
+    "page": {
+      "title": "Audit log",
+      "subtitle": "Append-only record of every privileged action.",
+      "exportCsv": "Export CSV"
+    },
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "actor": "Actor",
+      "actorAll": "Any actor",
+      "action": "Action",
+      "actionAll": "Any action",
+      "targetType": "Target type",
+      "targetId": "Target ID",
+      "apply": "Apply",
+      "reset": "Reset"
+    },
+    "columns": {
+      "timestamp": "When",
+      "actor": "Actor",
+      "action": "Action",
+      "target": "Target",
+      "ipAddress": "IP"
+    },
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "empty": "No entries match the filters.",
+    "viewDetails": "View",
+    "details": {
+      "title": "Audit entry",
+      "actorLabel": "Actor",
+      "impersonatorLabel": "Impersonated by",
+      "roleSnapshotLabel": "Role at time of action",
+      "ipLabel": "Source IP",
+      "userAgentLabel": "User agent",
+      "requestIdLabel": "Request ID",
+      "beforeLabel": "Before",
+      "afterLabel": "After",
+      "noBefore": "(none)",
+      "noAfter": "(none)"
+    }
+  },
   "notifications": {
     "bell": {
       "ariaLabel": "Notifications",
