@@ -15,6 +15,14 @@ export type Events = {
   "setting/updated": {
     data: { key: string };
   };
+  "notification/dispatch": {
+    data: {
+      type: string;
+      ticketId: string;
+      ticketNumber: string;
+      payload?: Record<string, unknown>;
+    };
+  };
 };
 
 export const inngest = new Inngest({
