@@ -4,13 +4,17 @@
 //   - process-inbound-email (M4) — DONE
 //   - scan-attachment (M5 wiring; ClamAV scanner lands in M18)
 //   - sla-monitor (M9) — DONE
-//   - dispatch-notification + send-email/send-sms/send-in-app (M11)
+//   - dispatch-notification + send-email/send-sms/send-in-app (M11) — DONE
 //   - retention-* / cleanup-* (M21)
 
 import { autoCloseResolvedTickets } from "./auto-close-resolved";
+import { dispatchNotification } from "./dispatch-notification";
 import { invalidateSettingsCache } from "./invalidate-settings-cache";
 import { processInboundEmail } from "./process-inbound-email";
 import { scanAttachment } from "./scan-attachment";
+import { sendEmailNotification } from "./send-email-notification";
+import { sendInAppNotification } from "./send-in-app-notification";
+import { sendSmsNotification } from "./send-sms-notification";
 import { slaMonitor } from "./sla-monitor";
 
 export const functions = [
@@ -19,4 +23,8 @@ export const functions = [
   scanAttachment,
   invalidateSettingsCache,
   slaMonitor,
+  dispatchNotification,
+  sendEmailNotification,
+  sendSmsNotification,
+  sendInAppNotification,
 ];

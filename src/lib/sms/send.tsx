@@ -1,31 +1,13 @@
 import { getTranslations } from "next-intl/server";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
+import type { SmsTemplate } from "../notifications/sms-types";
 import { twilioClient, twilioFromNumber } from "./client";
 
 // Outbound SMS. Templates are i18n keys (per ARCHITECTURE §10) so messages
 // are rendered in the recipient's locale. We keep them under 160 chars to
 // avoid multi-segment billing.
-//
-// Server Actions call this directly for the assignment + customer-replied
-// paths. The SLA monitor + the M11 dispatch fan-out also call it.
 
-export type SmsTemplate =
-  | {
-      template: "ticket_assigned";
-      data: { ticketNumber: string; ticketUrl: string };
-    }
-  | {
-      template: "customer_replied";
-      data: { ticketNumber: string; ticketUrl: string };
-    }
-  | {
-      template: "sla_warning_80";
-      data: { ticketNumber: string; ticketUrl: string };
-    }
-  | {
-      template: "sla_breached";
-      data: { ticketNumber: string; ticketUrl: string };
-    };
+export type { SmsTemplate } from "../notifications/sms-types";
 
 const TEMPLATE_NAMESPACE = {
   ticket_assigned: "sms.ticketAssigned",

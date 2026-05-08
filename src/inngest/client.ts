@@ -1,7 +1,9 @@
 import { Inngest } from "inngest";
+import type { EmailTemplate } from "@/lib/email/send";
+import type { SmsTemplate } from "@/lib/notifications/sms-types";
 
 // Inngest event payloads. Add to this union whenever a new domain event
-// is emitted (e.g. notification/dispatch in M11).
+// is emitted.
 export type Events = {
   "ticket/created": {
     data: { ticketId: string; ticketNumber: string };
@@ -15,13 +17,82 @@ export type Events = {
   "setting/updated": {
     data: { key: string };
   };
+
+  // ── Notification fan-out (M11) ────────────────────────────────────
+  //
+  // Producers emit one `notification/dispatch`; the dispatcher reads
+  // notification_preferences for each recipient and fans out into
+  // `notification/email`, `notification/sms`, and `notification/in-app`.
+  // Each sender function is independently retried by Inngest.
   "notification/dispatch": {
+    data: NotificationDispatchPayload;
+  };
+  "notification/email": {
     data: {
-      type: string;
-      ticketId: string;
-      ticketNumber: string;
-      payload?: Record<string, unknown>;
+      to: string;
+      locale: string;
+      template: EmailTemplate;
+      ticketNumber?: string;
+      replyToTicket?: boolean;
     };
+  };
+  "notification/sms": {
+    data: {
+      to: string;
+      locale: string;
+      template: SmsTemplate;
+    };
+  };
+  "notification/in-app": {
+    data: {
+      userId: string;
+      eventType: string;
+      titleKey: string;
+      titleArgs?: Record<string, string | number>;
+      bodyKey: string;
+      bodyArgs?: Record<string, string | number>;
+      linkUrl?: string;
+    };
+  };
+};
+
+export type NotificationEventType =
+  | "ticket.assigned"
+  | "ticket.customer_replied"
+  | "ticket.escalated"
+  | "sla.warning_50"
+  | "sla.warning_80"
+  | "sla.breached"
+  | "procurement.submitted"
+  | "procurement.approved"
+  | "procurement.rejected"
+  | "procurement.delivered";
+
+export type NotificationDispatchPayload = {
+  /** Domain event being announced. */
+  type: NotificationEventType;
+  /** Explicit recipient user IDs (deduped against any role-resolved set). */
+  recipientUserIds?: string[];
+  /** Roles to broadcast to (e.g. ["IT Director", "Coordinator"]). */
+  recipientRoles?: string[];
+  /**
+   * Email template payload. The dispatcher fills in `to` per recipient
+   * (using their email column) and `locale` (using their language).
+   */
+  email?: {
+    template: EmailTemplate;
+    ticketNumber?: string;
+    replyToTicket?: boolean;
+  };
+  /** SMS template payload. The dispatcher fills in `to` and `locale`. */
+  sms?: {
+    template: SmsTemplate;
+  };
+  /** In-app args (referenced by the registry's titleKey/bodyKey). */
+  inApp?: {
+    titleArgs?: Record<string, string | number>;
+    bodyArgs?: Record<string, string | number>;
+    linkUrl?: string;
   };
 };
 

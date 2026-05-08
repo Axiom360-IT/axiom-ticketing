@@ -573,7 +573,62 @@
     }
   },
   "audit": {},
-  "notifications": {},
+  "notifications": {
+    "bell": {
+      "ariaLabel": "Notifications",
+      "empty": "No notifications.",
+      "viewAll": "View all",
+      "markAllRead": "Mark all as read",
+      "markAllReadPending": "Marking…",
+      "unreadCount": "{count, plural, =0 {No unread} =1 {1 unread} other {# unread}}"
+    },
+    "ticket": {
+      "assigned": {
+        "title": "Ticket {ticketNumber} assigned to you",
+        "body": "{subject}"
+      },
+      "customer_replied": {
+        "title": "Customer replied on {ticketNumber}",
+        "body": "{customerName} sent a new message."
+      },
+      "escalated": {
+        "title": "{ticketNumber} escalated",
+        "body": "{technicianName} escalated this ticket: {subject}"
+      }
+    },
+    "sla": {
+      "warning_50": {
+        "title": "{ticketNumber} — SLA at 50%",
+        "body": "{kind} target reached half-way."
+      },
+      "warning_80": {
+        "title": "{ticketNumber} — SLA at 80%",
+        "body": "{kind} target close to breach. Update or escalate."
+      },
+      "breached": {
+        "title": "{ticketNumber} — SLA BREACHED",
+        "body": "{kind} target missed."
+      }
+    },
+    "procurement": {
+      "submitted": {
+        "title": "New procurement request: {itemName}",
+        "body": "{requesterName} requested {quantity} × {itemName}."
+      },
+      "approved": {
+        "title": "Procurement approved: {itemName}",
+        "body": "Your request for {quantity} × {itemName} was approved."
+      },
+      "rejected": {
+        "title": "Procurement rejected: {itemName}",
+        "body": "Your request for {itemName} was rejected."
+      },
+      "delivered": {
+        "title": "Delivered: {itemName}",
+        "body": "{quantity} × {itemName} delivered."
+      }
+    }
+  },
   "sms": {
     "ticketAssigned": {
       "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
