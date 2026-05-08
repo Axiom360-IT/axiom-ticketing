@@ -410,6 +410,17 @@
     "comingSoon": {
       "buildsIn": "Builds in {module}"
     },
+    "hierarchy": {
+      "title": "Hierarchy",
+      "subtitle": "Who created whom. The tree backs the impersonation + descendant-cascade rules.",
+      "rootHeading": "Top-level users",
+      "noUsers": "No users yet.",
+      "descendantCount": "{count, plural, =0 {no descendants} =1 {1 descendant} other {# descendants}}",
+      "rolesEmpty": "(no roles)",
+      "rolesLine": "Roles: {roles}",
+      "statusActive": "Active",
+      "statusInactive": "Inactive"
+    },
     "stubs": {
       "procurementTitle": "Procurement",
       "procurementDescription": "Hardware and software purchase requests with two-step approval.",
