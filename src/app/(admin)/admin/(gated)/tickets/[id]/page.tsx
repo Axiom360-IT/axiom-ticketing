@@ -21,6 +21,8 @@ import {
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
+import { TicketProcurementSection } from "@/components/procurement/ticket-section";
+import { listProcurementForTicket } from "@/app/actions/procurement";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -81,6 +83,8 @@ export default async function TicketDetailPage({
     canEscalate,
     canDeescalate,
     canReopen,
+    canProcurementView,
+    canProcurementCreate,
   ] = await Promise.all([
     can(user, "tickets.reply", ticketScope, productionContext),
     can(user, "tickets.internal_note", ticketScope, productionContext),
@@ -89,7 +93,13 @@ export default async function TicketDetailPage({
     can(user, "tickets.escalate", ticketScope, productionContext),
     can(user, "tickets.deescalate", ticketScope, productionContext),
     can(user, "tickets.reopen", ticketScope, productionContext),
+    can(user, "procurement.view", { type: "global" }, productionContext),
+    can(user, "procurement.create", { type: "global" }, productionContext),
   ]);
+
+  const procurementRows = canProcurementView
+    ? await listProcurementForTicket(ticket.id)
+    : [];
 
   const messageRows = await db
     .select({
@@ -259,6 +269,22 @@ export default async function TicketDetailPage({
                 />
               </CardContent>
             </Card>
+          ) : null}
+
+          {canProcurementView ? (
+            <TicketProcurementSection
+              ticketId={ticket.id}
+              requests={procurementRows.map((r) => ({
+                id: r.id,
+                type: r.type,
+                itemName: r.itemName,
+                quantity: r.quantity,
+                urgency: r.urgency,
+                status: r.status,
+                createdAt: r.createdAt,
+              }))}
+              canCreate={canProcurementCreate}
+            />
           ) : null}
 
           {(canResolve || canEscalate || canDeescalate) &&
