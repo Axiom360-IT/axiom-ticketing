@@ -215,6 +215,18 @@
       "channelSms": "SMS",
       "resolutionNoteBadge": "Resolution note",
       "internalNoteBadge": "Internal note"
+    },
+    "attachments": {
+      "openImage": "Open {fileName}",
+      "download": "Download attachment",
+      "uploadButton": "Attach files",
+      "uploading": "Uploading {fileName}…",
+      "uploadFailed": "{fileName}: {error}",
+      "uploadSuccess": "{fileName} attached",
+      "remove": "Remove",
+      "tooManyFiles": "You can attach up to {max} files per message.",
+      "tooLarge": "{fileName} is over the {limitMb} MB limit.",
+      "rejectedType": "{fileName}: file type not allowed."
     }
   },
   "users": {},

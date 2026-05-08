@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
+import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
@@ -106,9 +107,45 @@ export default async function TicketDetailPage({
     .where(eq(messages.ticketId, ticket.id))
     .orderBy(asc(messages.createdAt));
 
+  // Load attachments for the thread in a single query and group by message.
+  const attachmentRows = await db
+    .select({
+      id: attachments.id,
+      messageId: attachments.messageId,
+      fileName: attachments.fileName,
+      mimeType: attachments.mimeType,
+      sizeBytes: attachments.sizeBytes,
+      scanStatus: attachments.scanStatus,
+      uploadConfirmedAt: attachments.uploadConfirmedAt,
+    })
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.ticketId, ticket.id),
+        isNotNull(attachments.messageId),
+        isNotNull(attachments.uploadConfirmedAt),
+        ne(attachments.scanStatus, "quarantined"),
+      ),
+    );
+
+  const attachmentsByMessage = new Map<string, ThreadMessage["attachments"]>();
+  for (const a of attachmentRows) {
+    if (!a.messageId) continue;
+    const list = attachmentsByMessage.get(a.messageId) ?? [];
+    list.push({
+      id: a.id,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes,
+      isImage: a.mimeType.startsWith("image/"),
+    });
+    attachmentsByMessage.set(a.messageId, list);
+  }
+
   const thread: ThreadMessage[] = messageRows.map((m) => ({
     ...m,
     authorType: m.authorType as ThreadMessage["authorType"],
+    attachments: attachmentsByMessage.get(m.id) ?? [],
   }));
 
   // Resolve assignee name (if any) and load technicians for the assign dropdown
