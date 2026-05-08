@@ -1,5 +1,6 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
+import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -31,6 +32,12 @@ import { tickets } from "@/lib/db/schema/tickets";
 
 export const dynamic = "force-dynamic";
 
+const ORIGIN_KEYS: Record<string, "originWebForm" | "originEmail" | "originPortal"> = {
+  web_form: "originWebForm",
+  email: "originEmail",
+  portal: "originPortal",
+};
+
 export default async function TicketDetailPage({
   params,
 }: {
@@ -38,6 +45,11 @@ export default async function TicketDetailPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
+
+  const t = await getTranslations("tickets.detail");
+  const tQueue = await getTranslations("tickets.queue");
+  const tCsat = await getTranslations("tickets.csat");
+  const formatter = await getFormatter();
 
   const { id } = await params;
 
@@ -139,6 +151,31 @@ export default async function TicketDetailPage({
   const isClosedOrResolved =
     ticket.status === "resolved" || ticket.status === "closed";
 
+  const originLabel = t("originLabel", {
+    origin: t(ORIGIN_KEYS[ticket.origin] ?? "originWebForm"),
+  });
+
+  const streamLabel =
+    ticket.stream === "internal" ? t("streamInternal") : t("streamExternal");
+
+  let csatLine: string | null = null;
+  if (ticket.csatResponse === "satisfied" || ticket.csatResponse === "unsatisfied") {
+    const responseLabel = tCsat(
+      ticket.csatResponse === "satisfied"
+        ? "responseSatisfied"
+        : "responseUnsatisfied",
+    );
+    csatLine = ticket.csatRespondedAt
+      ? t("csatLabelWithDate", {
+          response: responseLabel,
+          date: formatter.dateTime(ticket.csatRespondedAt, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+        })
+      : t("csatLabel", { response: responseLabel });
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-3 flex-wrap">
@@ -153,8 +190,10 @@ export default async function TicketDetailPage({
         <CategoryBadge category={ticket.category} />
         <span>·</span>
         <span>
-          Opened {new Date(ticket.createdAt).toLocaleDateString()} by{" "}
-          {ticket.customerName}
+          {t("openedBy", {
+            date: formatter.dateTime(ticket.createdAt, { dateStyle: "medium" }),
+            customerName: ticket.customerName,
+          })}
         </span>
       </div>
 
@@ -162,7 +201,7 @@ export default async function TicketDetailPage({
         <div className="md:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Conversation</CardTitle>
+              <CardTitle>{t("conversationTitle")}</CardTitle>
             </CardHeader>
             <CardContent>
               <MessageThread messages={thread} />
@@ -172,7 +211,7 @@ export default async function TicketDetailPage({
           {canReply && !isClosedOrResolved ? (
             <Card>
               <CardHeader>
-                <CardTitle>Reply</CardTitle>
+                <CardTitle>{t("replyTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ReplyComposer ticketId={ticket.id} />
@@ -184,7 +223,7 @@ export default async function TicketDetailPage({
           !isClosedOrResolved ? (
             <Card>
               <CardHeader>
-                <CardTitle>Actions</CardTitle>
+                <CardTitle>{t("actionsTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
@@ -205,19 +244,13 @@ export default async function TicketDetailPage({
           {canReopen && isClosedOrResolved ? (
             <Card>
               <CardHeader>
-                <CardTitle>Actions</CardTitle>
+                <CardTitle>{t("actionsTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ReopenButton ticketId={ticket.id} />
-                {ticket.csatResponse ? (
+                {csatLine ? (
                   <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                    Customer feedback:{" "}
-                    <span className="font-medium capitalize">
-                      {ticket.csatResponse}
-                    </span>
-                    {ticket.csatRespondedAt
-                      ? ` · ${new Date(ticket.csatRespondedAt).toLocaleString()}`
-                      : null}
+                    {csatLine}
                   </p>
                 ) : null}
               </CardContent>
@@ -228,7 +261,7 @@ export default async function TicketDetailPage({
         <aside className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Customer</CardTitle>
+              <CardTitle className="text-sm">{t("customerTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-1">
               <div>{ticket.customerName}</div>
@@ -240,7 +273,7 @@ export default async function TicketDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Assignee</CardTitle>
+              <CardTitle className="text-sm">{t("assigneeTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-2">
               {canAssign ? (
@@ -252,7 +285,9 @@ export default async function TicketDetailPage({
               ) : (
                 <div>
                   {assigneeName ?? (
-                    <span className="text-zinc-400">Unassigned</span>
+                    <span className="text-zinc-400">
+                      {tQueue("unassigned")}
+                    </span>
                   )}
                 </div>
               )}
@@ -262,7 +297,9 @@ export default async function TicketDetailPage({
           {ticket.isEscalated && ticket.escalationReason ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Escalation</CardTitle>
+                <CardTitle className="text-sm">
+                  {t("escalationTitle")}
+                </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <p className="whitespace-pre-wrap">
@@ -270,7 +307,10 @@ export default async function TicketDetailPage({
                 </p>
                 {ticket.escalatedAt ? (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {new Date(ticket.escalatedAt).toLocaleString()}
+                    {formatter.dateTime(ticket.escalatedAt, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
                   </p>
                 ) : null}
               </CardContent>
@@ -279,13 +319,13 @@ export default async function TicketDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Stream</CardTitle>
+              <CardTitle className="text-sm">{t("streamTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm">
-              <span className="capitalize">{ticket.stream}</span>
+              <span>{streamLabel}</span>
               <Separator className="my-2" />
               <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                Origin: {ticket.origin.replace("_", " ")}
+                {originLabel}
               </div>
             </CardContent>
           </Card>

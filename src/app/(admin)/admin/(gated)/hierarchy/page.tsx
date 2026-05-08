@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function HierarchyPage() {
+export default async function HierarchyPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Hierarchy"
-      description="User-creation tree showing who created whom."
-      module="M6 — RBAC management UI"
+      title={t("hierarchyTitle")}
+      description={t("hierarchyDescription")}
+      module={t("hierarchyModule")}
     />
   );
 }

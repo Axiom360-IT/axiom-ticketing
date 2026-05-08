@@ -9,12 +9,14 @@ import {
   Section,
   Text,
 } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 
 type LayoutProps = {
   preview: string;
   title: string;
   children: React.ReactNode;
   ticketNumber?: string;
+  locale: string;
 };
 
 const styles = {
@@ -66,12 +68,14 @@ const styles = {
   },
 };
 
-export function EmailLayout({
+export async function EmailLayout({
   preview,
   title,
   children,
   ticketNumber,
+  locale,
 }: LayoutProps) {
+  const t = await getTranslations({ locale, namespace: "emails.shared" });
   return (
     <Html>
       <Head />
@@ -86,10 +90,9 @@ export function EmailLayout({
           <Hr style={styles.hr} />
           <Section>
             <Text style={styles.footer}>
-              Axiom360 Ticketing System
+              {t("footerLine1")}
               <br />
-              This is an automated message. Reply to this email to add to your
-              ticket.
+              {t("footerLine2")}
             </Text>
           </Section>
         </Container>

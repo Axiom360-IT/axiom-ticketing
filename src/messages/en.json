@@ -65,7 +65,12 @@
       "streamTitle": "Stream",
       "originLabel": "Origin: {origin}",
       "csatLabel": "Customer feedback: {response}",
-      "csatLabelWithDate": "Customer feedback: {response} · {date}"
+      "csatLabelWithDate": "Customer feedback: {response} · {date}",
+      "streamInternal": "Internal",
+      "streamExternal": "External",
+      "originWebForm": "web form",
+      "originEmail": "email",
+      "originPortal": "portal"
     },
     "status": {
       "open": "Open",
@@ -104,6 +109,7 @@
       "deescalatePending": "De-escalating…",
       "reopen": "Reopen ticket",
       "reopenPending": "Reopening…",
+      "reopenError": "Failed to reopen.",
       "createTicket": "Create ticket",
       "createPending": "Creating…"
     },
@@ -139,10 +145,11 @@
       }
     },
     "submitSuccess": {
-      "title": "Ticket submitted",
-      "subtitle": "We've received your ticket. A coordinator will route it to a technician shortly.",
-      "yourTicketNumber": "Your ticket number",
-      "trackingHelp": "Save this number — you'll need it to ask about the ticket. We've also emailed you a confirmation.",
+      "metaTitle": "Ticket received — Axiom360",
+      "title": "We've received your ticket",
+      "fallbackTicket": "your ticket",
+      "ticketNumberLine": "Your ticket number is {ticket}. A confirmation email is on its way — keep an eye on your inbox.",
+      "trackingHelp": "A coordinator will assign your ticket to a technician shortly. To add details or a screenshot, just reply to the confirmation email.",
       "submitAnother": "Submit another ticket"
     },
     "createOnBehalf": {
@@ -159,16 +166,17 @@
     },
     "escalateModal": {
       "escalateTitle": "Escalate ticket",
-      "escalateDescription": "Tell IT leadership why this needs to come up the chain. The reason is stored on the ticket.",
-      "deescalateTitle": "De-escalate ticket",
-      "deescalateDescription": "Clear the escalation flag once the situation is back under control.",
-      "reasonPlaceholder": "Why is this being escalated?",
-      "minLengthError": "Reason must be at least 10 characters.",
-      "genericError": "Failed to update escalation."
+      "escalateDescription": "The ticket stays assigned to you. IT Director and Coordinator are notified to review.",
+      "reasonPlaceholder": "Why does this need senior review? (minimum 10 characters)",
+      "minLengthError": "Escalation reason must be at least 10 characters.",
+      "escalateError": "Failed to escalate ticket.",
+      "deescalateError": "Failed to de-escalate ticket."
     },
     "reply": {
       "placeholder": "Write a reply to the customer…",
-      "errorEmpty": "Reply cannot be empty."
+      "errorEmpty": "Reply cannot be empty.",
+      "errorGeneric": "Failed to send reply.",
+      "footerHint": "Reply is emailed to the customer."
     },
     "assignControl": {
       "label": "Assignee",
@@ -185,15 +193,22 @@
       "invalidTitle": "We couldn't confirm that link",
       "invalidBody": "The CSAT link in your email looks expired or invalid. If you still need to give feedback, reply to the resolution email and we'll capture it manually.",
       "alreadyResponded": "We already had your answer on file — nothing else changed.",
-      "submitAnother": "Submit another ticket"
+      "submitAnother": "Submit another ticket",
+      "responseSatisfied": "Satisfied",
+      "responseUnsatisfied": "Unsatisfied"
     },
     "messages": {
-      "channelDashboard": "Dashboard",
+      "empty": "No messages yet.",
+      "authorCustomer": "Customer",
+      "authorAgent": "Agent",
+      "authorSystem": "System",
       "channelEmail": "Email",
       "channelPortal": "Portal",
+      "channelDashboard": "Dashboard",
+      "channelSystem": "System",
       "channelSms": "SMS",
-      "internalNoteBadge": "Internal note",
-      "resolutionNoteBadge": "Resolution"
+      "resolutionNoteBadge": "Resolution note",
+      "internalNoteBadge": "Internal note"
     }
   },
   "users": {},
@@ -205,6 +220,10 @@
   "admin": {
     "shell": {
       "skipToContent": "Skip to main content",
+      "brand": "Axiom360",
+      "tagline": "Ticketing System",
+      "buildLine": "v0.1.0 · MVP build",
+      "mainNavLabel": "Main",
       "navTickets": "Tickets",
       "navProcurement": "Procurement",
       "navUsers": "Users",
@@ -213,36 +232,67 @@
       "navReports": "Reports",
       "navAudit": "Audit log",
       "navSettings": "Settings",
-      "profileMenuLabel": "Account",
-      "profileMenuMyAccount": "My account",
-      "profileMenuSignOut": "Sign out"
+      "profileMenuLabel": "Profile menu",
+      "profileMenuMyProfile": "My profile",
+      "profileMenuSignOut": "Sign out",
+      "profileMenuSigningOut": "Signing out…",
+      "profileMenuNoRoles": "(no roles)",
+      "topbarSearchPlaceholder": "Search…",
+      "topbarSearchAriaLabel": "Global search (M15)",
+      "topbarSearchTitle": "Global search lands in M15",
+      "topbarNotificationsAria": "Notifications (M11)",
+      "topbarNotificationsTitle": "Notification centre lands in M11"
     },
     "login": {
-      "title": "Admin sign-in",
-      "subtitle": "Use your Axiom360 staff credentials.",
+      "title": "Sign in",
+      "subtitle": "Axiom360 Ticketing System",
       "email": "Email",
       "password": "Password",
       "showPassword": "Show password",
       "hidePassword": "Hide password",
       "submit": "Sign in",
       "submitting": "Signing in…",
-      "genericError": "Sign-in failed. Check your email and password."
+      "genericError": "Invalid email or password."
     },
     "landing": {
-      "welcome": "Welcome back, {name}.",
-      "subtitle": "Pick something from the sidebar to get started."
+      "welcome": "Welcome",
+      "subtitle": "You're signed in. The admin shell is in place. Ticketing UI lands in M3.",
+      "sessionTitle": "Session",
+      "sessionDescription": "What this account can do right now.",
+      "userIdLabel": "User ID:",
+      "rolesLabel": "Roles:",
+      "permissionsLabel": "Permissions:",
+      "noRoles": "(none)",
+      "permissionsActive": "{count} active"
+    },
+    "comingSoon": {
+      "buildsIn": "Builds in {module}"
     },
     "stubs": {
-      "comingSoon": "Coming soon — lands in a later milestone.",
-      "tickets": "Ticket queue",
-      "procurement": "Procurement requests",
-      "users": "Users",
-      "hierarchy": "Reporting hierarchy",
-      "roles": "Roles & permissions",
-      "reports": "Reports",
-      "audit": "Audit log",
-      "settings": "System settings",
-      "profile": "My account"
+      "procurementTitle": "Procurement",
+      "procurementDescription": "Hardware and software purchase requests with two-step approval.",
+      "procurementModule": "M7 — Procurement",
+      "usersTitle": "Users",
+      "usersDescription": "Create, deactivate, reset password, and impersonate users.",
+      "usersModule": "M6 — RBAC management UI",
+      "rolesTitle": "Roles",
+      "rolesDescription": "Custom role creation with the per-module permissions matrix.",
+      "rolesModule": "M6 — RBAC management UI",
+      "hierarchyTitle": "Hierarchy",
+      "hierarchyDescription": "User-creation tree showing who created whom.",
+      "hierarchyModule": "M6 — RBAC management UI",
+      "reportsTitle": "Reports",
+      "reportsDescription": "Ticket health metrics and procurement spend dashboards.",
+      "reportsModule": "M13 — Reports dashboard",
+      "auditTitle": "Audit Log",
+      "auditDescription": "Filterable view of every privileged action.",
+      "auditModule": "M12 — Audit log viewer",
+      "settingsTitle": "Settings",
+      "settingsDescription": "SLA targets, business hours, internal email domains, and other configurables.",
+      "settingsModule": "M8 — System Settings panel",
+      "profileTitle": "My Profile",
+      "profileDescription": "Account info, password, 2FA, sessions, and notification preferences.",
+      "profileModule": "M14 — Profile / Account page"
     }
   },
   "emails": {

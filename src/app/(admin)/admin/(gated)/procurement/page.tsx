@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function ProcurementPage() {
+export default async function ProcurementPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Procurement"
-      description="Hardware and software purchase requests with two-step approval."
-      module="M7 — Procurement"
+      title={t("procurementTitle")}
+      description={t("procurementDescription")}
+      module={t("procurementModule")}
     />
   );
 }

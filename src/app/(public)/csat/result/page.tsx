@@ -1,37 +1,36 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = {
-  title: "Thanks for the feedback — Axiom360",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("tickets.csat");
+  return { title: t("satisfiedTitle") };
+}
 
 type SearchParams = Promise<{
   status?: string;
   response?: string;
 }>;
 
-const COPY = {
-  satisfied: {
-    title: "Glad it's fixed",
-    body:
-      "Thanks for confirming — we've closed the ticket. If anything comes back, just open a new one and we'll pick it up.",
-  },
-  unsatisfied: {
-    title: "Sorry that didn't do it",
-    body:
-      "We've reopened the ticket and a technician will follow up. Watch your inbox for the next update.",
-  },
-  invalid: {
-    title: "We couldn't confirm that link",
-    body:
-      "The CSAT link in your email looks expired or invalid. If you still need to give feedback, reply to the resolution email and we'll capture it manually.",
-  },
-} as const;
+type ResultCopy = {
+  title: string;
+  body: string;
+};
 
-function pickCopy(status: string | undefined, response: string | undefined) {
-  if (status === "invalid") return COPY.invalid;
-  if (response === "satisfied") return COPY.satisfied;
-  if (response === "unsatisfied") return COPY.unsatisfied;
-  return COPY.invalid;
+function pickCopy(
+  status: string | undefined,
+  response: string | undefined,
+  t: (key: string) => string,
+): ResultCopy {
+  if (status === "invalid") {
+    return { title: t("invalidTitle"), body: t("invalidBody") };
+  }
+  if (response === "satisfied") {
+    return { title: t("satisfiedTitle"), body: t("satisfiedBody") };
+  }
+  if (response === "unsatisfied") {
+    return { title: t("unsatisfiedTitle"), body: t("unsatisfiedBody") };
+  }
+  return { title: t("invalidTitle"), body: t("invalidBody") };
 }
 
 export default async function CsatResultPage({
@@ -40,7 +39,8 @@ export default async function CsatResultPage({
   searchParams: SearchParams;
 }) {
   const { status, response } = await searchParams;
-  const copy = pickCopy(status, response);
+  const t = await getTranslations("tickets.csat");
+  const copy = pickCopy(status, response, t);
   const alreadyResponded = status === "already";
 
   return (
@@ -52,7 +52,7 @@ export default async function CsatResultPage({
         <p className="text-zinc-600 dark:text-zinc-300">{copy.body}</p>
         {alreadyResponded ? (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            We already had your answer on file — nothing else changed.
+            {t("alreadyResponded")}
           </p>
         ) : null}
         <div className="pt-2">
@@ -60,7 +60,7 @@ export default async function CsatResultPage({
             href="/portal/submit"
             className="text-sm font-medium text-blue-700 dark:text-blue-400 hover:underline"
           >
-            Submit another ticket
+            {t("submitAnother")}
           </Link>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { Link, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketCreatedProps = {
@@ -6,36 +7,37 @@ export type TicketCreatedProps = {
   customerName: string;
   subject: string;
   trackingUrl: string;
+  locale: string;
 };
 
-export function TicketCreatedEmail({
+export async function TicketCreatedEmail({
   ticketNumber,
   customerName,
   subject,
   trackingUrl,
+  locale,
 }: TicketCreatedProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.ticketCreated",
+  });
   return (
     <EmailLayout
-      preview={`Your ticket ${ticketNumber} has been received`}
-      title="We've received your ticket"
+      preview={t("preview", { ticketNumber })}
+      title={t("title")}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {customerName},</Text>
+      <Text style={textStyles.body}>{t("greeting", { customerName })}</Text>
       <Text style={textStyles.body}>
-        Thanks for reaching out. Your ticket <strong>{ticketNumber}</strong> —
-        “{subject}” — has been received and a coordinator will assign it to a
-        technician shortly.
+        {t("body", { ticketNumber, subject })}
       </Text>
-      <Text style={textStyles.body}>
-        You&apos;ll hear from us as soon as it&apos;s assigned. To add details
-        or a screenshot, just reply to this email.
-      </Text>
+      <Text style={textStyles.body}>{t("replyHint")}</Text>
       <Link href={trackingUrl} style={textStyles.button}>
-        View your ticket
+        {t("view")}
       </Link>
       <Text style={textStyles.meta}>
-        If the link above doesn&apos;t work, copy and paste this URL into your
-        browser:
+        {t("fallback")}
         <br />
         {trackingUrl}
       </Text>
@@ -48,6 +50,7 @@ TicketCreatedEmail.PreviewProps = {
   customerName: "Alex",
   subject: "Outlook is stuck on the splash screen",
   trackingUrl: "https://tickets.axiom360.it/portal/tickets/AX-0042?token=abc",
+  locale: "en",
 } satisfies TicketCreatedProps;
 
 export default TicketCreatedEmail;

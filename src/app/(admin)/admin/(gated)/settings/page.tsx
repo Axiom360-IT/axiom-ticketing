@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Settings"
-      description="SLA targets, business hours, internal email domains, and other configurables."
-      module="M8 — System Settings panel"
+      title={t("settingsTitle")}
+      description={t("settingsDescription")}
+      module={t("settingsModule")}
     />
   );
 }

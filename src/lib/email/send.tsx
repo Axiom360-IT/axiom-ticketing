@@ -1,6 +1,8 @@
 import { render } from "@react-email/render";
+import { getTranslations } from "next-intl/server";
 import { resend } from "./client";
 import { getSetting } from "../settings";
+import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import {
   EscalationAlertEmail,
   type EscalationAlertProps,
@@ -34,67 +36,87 @@ import {
   type TicketResolvedProps,
 } from "./templates/ticket-resolved";
 
-// Discriminated union of all template names + their typed props. Adding a new
-// template means adding a case here AND a render branch in `renderTemplate()`.
+// Discriminated union of all template names + their typed props. Locale is
+// injected by `sendEmail` from the recipient's preference (or default), so
+// callers don't need to plumb it through.
 export type EmailTemplate =
-  | { template: "ticket_created"; data: TicketCreatedProps }
-  | { template: "ticket_assigned"; data: TicketAssignedProps }
-  | { template: "ticket_reply"; data: TicketReplyProps }
-  | { template: "ticket_resolved"; data: TicketResolvedProps }
-  | { template: "ticket_closed"; data: TicketClosedProps }
-  | { template: "ticket_reopened"; data: TicketReopenedProps }
-  | { template: "new_assignment"; data: NewAssignmentProps }
-  | { template: "escalation_alert"; data: EscalationAlertProps };
+  | { template: "ticket_created"; data: Omit<TicketCreatedProps, "locale"> }
+  | { template: "ticket_assigned"; data: Omit<TicketAssignedProps, "locale"> }
+  | { template: "ticket_reply"; data: Omit<TicketReplyProps, "locale"> }
+  | { template: "ticket_resolved"; data: Omit<TicketResolvedProps, "locale"> }
+  | { template: "ticket_closed"; data: Omit<TicketClosedProps, "locale"> }
+  | { template: "ticket_reopened"; data: Omit<TicketReopenedProps, "locale"> }
+  | { template: "new_assignment"; data: Omit<NewAssignmentProps, "locale"> }
+  | {
+      template: "escalation_alert";
+      data: Omit<EscalationAlertProps, "locale">;
+    };
 
 type SendEmailOptions = {
   to: string;
   template: EmailTemplate;
   ticketNumber?: string;
   replyToTicket?: boolean;
+  /** Override the default subject (which is derived from the template). */
   subject?: string;
+  /**
+   * Recipient's preferred locale. Falls back to the app default when omitted
+   * (per ARCHITECTURE §18 — guests get the default; signed-in users will
+   * eventually pass their `users.language`).
+   */
+  locale?: string;
 };
 
-async function renderTemplate(t: EmailTemplate): Promise<string> {
+async function renderTemplate(
+  t: EmailTemplate,
+  locale: AppLocale,
+): Promise<string> {
   switch (t.template) {
     case "ticket_created":
-      return await render(<TicketCreatedEmail {...t.data} />);
+      return await render(<TicketCreatedEmail {...t.data} locale={locale} />);
     case "ticket_assigned":
-      return await render(<TicketAssignedEmail {...t.data} />);
+      return await render(<TicketAssignedEmail {...t.data} locale={locale} />);
     case "ticket_reply":
-      return await render(<TicketReplyEmail {...t.data} />);
+      return await render(<TicketReplyEmail {...t.data} locale={locale} />);
     case "ticket_resolved":
-      return await render(<TicketResolvedEmail {...t.data} />);
+      return await render(<TicketResolvedEmail {...t.data} locale={locale} />);
     case "ticket_closed":
-      return await render(<TicketClosedEmail {...t.data} />);
+      return await render(<TicketClosedEmail {...t.data} locale={locale} />);
     case "ticket_reopened":
-      return await render(<TicketReopenedEmail {...t.data} />);
+      return await render(<TicketReopenedEmail {...t.data} locale={locale} />);
     case "new_assignment":
-      return await render(<NewAssignmentEmail {...t.data} />);
+      return await render(<NewAssignmentEmail {...t.data} locale={locale} />);
     case "escalation_alert":
-      return await render(<EscalationAlertEmail {...t.data} />);
+      return await render(
+        <EscalationAlertEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
-function defaultSubject(t: EmailTemplate, ticketNumber?: string): string {
-  const num = ticketNumber ? `[${ticketNumber}] ` : "";
-  switch (t.template) {
-    case "ticket_created":
-      return `${num}We've received your ticket: ${t.data.subject}`;
-    case "ticket_assigned":
-      return `${num}Your ticket has been assigned: ${t.data.subject}`;
-    case "ticket_reply":
-      return `${num}Re: ${t.data.subject}`;
-    case "ticket_resolved":
-      return `${num}Resolved — was this fixed? ${t.data.subject}`;
-    case "ticket_closed":
-      return `${num}Ticket closed: ${t.data.subject}`;
-    case "ticket_reopened":
-      return `${num}Ticket reopened: ${t.data.subject}`;
-    case "new_assignment":
-      return `${num}New ticket assigned to you: ${t.data.subject}`;
-    case "escalation_alert":
-      return `${num}Ticket escalated: ${t.data.subject}`;
-  }
+const TEMPLATE_NAMESPACE = {
+  ticket_created: "emails.ticketCreated",
+  ticket_assigned: "emails.ticketAssigned",
+  ticket_reply: "emails.ticketReply",
+  ticket_resolved: "emails.ticketResolved",
+  ticket_closed: "emails.ticketClosed",
+  ticket_reopened: "emails.ticketReopened",
+  new_assignment: "emails.newAssignment",
+  escalation_alert: "emails.escalationAlert",
+} as const;
+
+async function defaultSubject(
+  t: EmailTemplate,
+  locale: AppLocale,
+): Promise<string> {
+  const namespace = TEMPLATE_NAMESPACE[t.template];
+  const tr = await getTranslations({ locale, namespace });
+  // Every template's namespace contains a `subject` key with `{ticketNumber}`
+  // and `{subject}` placeholders; data carries both.
+  const data = t.data as { ticketNumber: string; subject: string };
+  return tr("subject", {
+    ticketNumber: data.ticketNumber,
+    subject: data.subject,
+  });
 }
 
 /**
@@ -104,10 +126,13 @@ function defaultSubject(t: EmailTemplate, ticketNumber?: string): string {
  * Inngest functions for retry resilience (per ARCHITECTURE §9.5).
  */
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
-  const { to, template, ticketNumber, replyToTicket, subject } = options;
+  const { to, template, ticketNumber, replyToTicket, subject, locale } =
+    options;
 
-  const html = await renderTemplate(template);
-  const finalSubject = subject ?? defaultSubject(template, ticketNumber);
+  const resolvedLocale = pickLocale(locale) ?? DEFAULT_LOCALE;
+  const html = await renderTemplate(template, resolvedLocale);
+  const finalSubject =
+    subject ?? (await defaultSubject(template, resolvedLocale));
 
   const fromName =
     (await getSetting<string>("default_sender_name")) ?? "Axiom360 Support";

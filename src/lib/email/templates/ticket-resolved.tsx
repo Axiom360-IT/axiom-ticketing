@@ -1,4 +1,5 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketResolvedProps = {
@@ -10,9 +11,10 @@ export type TicketResolvedProps = {
   csatSatisfiedUrl: string;
   csatUnsatisfiedUrl: string;
   trackingUrl: string;
+  locale: string;
 };
 
-export function TicketResolvedEmail({
+export async function TicketResolvedEmail({
   ticketNumber,
   customerName,
   subject,
@@ -21,22 +23,26 @@ export function TicketResolvedEmail({
   csatSatisfiedUrl,
   csatUnsatisfiedUrl,
   trackingUrl,
+  locale,
 }: TicketResolvedProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.ticketResolved",
+  });
   const paragraphs = resolutionNote
     .split(/\n\s*\n/)
     .filter((p) => p.trim().length > 0);
 
   return (
     <EmailLayout
-      preview={`Your ticket ${ticketNumber} has been resolved`}
-      title="Your ticket has been resolved"
+      preview={t("preview", { ticketNumber })}
+      title={t("title")}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {customerName},</Text>
+      <Text style={textStyles.body}>{t("greeting", { customerName })}</Text>
       <Text style={textStyles.body}>
-        <strong>{agentName}</strong> has resolved your ticket{" "}
-        <strong>{ticketNumber}</strong> &mdash;{" "}
-        <strong>&ldquo;{subject}&rdquo;</strong>. Here&apos;s what they did:
+        {t("body", { agentName, ticketNumber, subject })}
       </Text>
 
       <Section
@@ -58,18 +64,14 @@ export function TicketResolvedEmail({
         ))}
       </Section>
 
-      <Text style={textStyles.body}>
-        Did this fix the issue? Your feedback closes the loop. If we
-        don&apos;t hear back within 24 hours, the ticket will close
-        automatically.
-      </Text>
+      <Text style={textStyles.body}>{t("feedbackPrompt")}</Text>
 
       <Section style={{ margin: "16px 0" }}>
         <Link href={csatSatisfiedUrl} style={textStyles.buttonGood}>
-          Yes, this is fixed
+          {t("satisfiedButton")}
         </Link>
         <Link href={csatUnsatisfiedUrl} style={textStyles.buttonBad}>
-          No, this isn&apos;t fixed
+          {t("unsatisfiedButton")}
         </Link>
       </Section>
 
@@ -81,11 +83,13 @@ export function TicketResolvedEmail({
         }}
       />
       <Text style={textStyles.meta}>
-        You can also{" "}
-        <Link href={trackingUrl} style={{ color: "#1e40af" }}>
-          view the ticket
-        </Link>{" "}
-        or reply to this email if you need to add more details.
+        {t.rich("viewLine", {
+          link: (chunks) => (
+            <Link href={trackingUrl} style={{ color: "#1e40af" }}>
+              {chunks}
+            </Link>
+          ),
+        })}
       </Text>
     </EmailLayout>
   );
@@ -103,6 +107,7 @@ TicketResolvedEmail.PreviewProps = {
   csatUnsatisfiedUrl:
     "https://tickets.axiom360.it/csat/confirm?t=AX-0042&tk=unsatisfied-token",
   trackingUrl: "https://tickets.axiom360.it/portal/tickets/AX-0042?token=abc",
+  locale: "en",
 } satisfies TicketResolvedProps;
 
 export default TicketResolvedEmail;

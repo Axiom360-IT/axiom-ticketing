@@ -1,3 +1,6 @@
+"use client";
+
+import { useFormatter, useTranslations } from "next-intl";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -13,19 +16,27 @@ export type ThreadMessage = {
   createdAt: Date;
 };
 
-const CHANNEL_LABEL: Record<string, string> = {
-  email: "Email",
-  portal: "Portal",
-  dashboard: "Dashboard",
-  system: "System",
+const CHANNEL_KEYS: Record<string, "channelEmail" | "channelPortal" | "channelDashboard" | "channelSystem" | "channelSms"> = {
+  email: "channelEmail",
+  portal: "channelPortal",
+  dashboard: "channelDashboard",
+  system: "channelSystem",
+  sms: "channelSms",
 };
 
+const AUTHOR_KEYS = {
+  agent: "authorAgent",
+  customer: "authorCustomer",
+  system: "authorSystem",
+} as const;
+
 export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
+  const t = useTranslations("tickets.messages");
+  const formatter = useFormatter();
+
   if (messages.length === 0) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        No messages yet.
-      </p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("empty")}</p>
     );
   }
 
@@ -55,28 +66,29 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium">{m.authorName}</span>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {m.authorType === "customer"
-                    ? "Customer"
-                    : m.authorType === "agent"
-                      ? "Agent"
-                      : "System"}
+                  {t(AUTHOR_KEYS[m.authorType])}
                 </span>
                 <span className="text-xs text-zinc-400">·</span>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {CHANNEL_LABEL[m.channel] ?? m.channel}
+                  {t(CHANNEL_KEYS[m.channel] ?? "channelDashboard")}
                 </span>
                 {m.isResolutionNote ? (
                   <span className="text-xs font-medium text-green-700 dark:text-green-400">
-                    · Resolution note
+                    · {t("resolutionNoteBadge")}
                   </span>
                 ) : null}
                 {m.isInternalNote ? (
                   <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                    · Internal note
+                    · {t("internalNoteBadge")}
                   </span>
                 ) : null}
                 <span className="ml-auto text-xs text-zinc-400">
-                  {formatTimestamp(m.createdAt)}
+                  {formatter.dateTime(m.createdAt, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
                 </span>
               </div>
               <div className="mt-2 text-sm whitespace-pre-wrap break-words">
@@ -93,13 +105,4 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
-function formatTimestamp(d: Date): string {
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }

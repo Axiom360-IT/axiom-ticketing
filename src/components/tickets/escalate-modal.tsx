@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +32,10 @@ export function EscalateModal({
   canDeescalate,
 }: EscalateModalProps) {
   const router = useRouter();
+  const tModal = useTranslations("tickets.escalateModal");
+  const tActions = useTranslations("tickets.actions");
+  const tCommon = useTranslations("common");
+
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +45,7 @@ export function EscalateModal({
     e.preventDefault();
     setError(null);
     if (reason.trim().length < 10) {
-      setError("Escalation reason must be at least 10 characters.");
+      setError(tModal("minLengthError"));
       return;
     }
     startTransition(async () => {
@@ -50,9 +55,7 @@ export function EscalateModal({
         setOpen(false);
         router.refresh();
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to escalate ticket.",
-        );
+        setError(err instanceof Error ? err.message : tModal("escalateError"));
       }
     });
   }
@@ -64,9 +67,7 @@ export function EscalateModal({
         await deescalateTicket(ticketId);
         router.refresh();
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to de-escalate ticket.",
-        );
+        setError(err instanceof Error ? err.message : tModal("deescalateError"));
       }
     });
   }
@@ -79,21 +80,22 @@ export function EscalateModal({
         onClick={handleDeescalate}
         disabled={isPending}
       >
-        {isPending ? "De-escalating…" : "De-escalate"}
+        {isPending ? tActions("deescalatePending") : tActions("deescalate")}
       </Button>
     );
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline">Escalate</Button>} />
+      <DialogTrigger
+        render={<Button variant="outline">{tActions("escalate")}</Button>}
+      />
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleEscalate} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Escalate ticket</DialogTitle>
+            <DialogTitle>{tModal("escalateTitle")}</DialogTitle>
             <DialogDescription>
-              The ticket stays assigned to you. IT Director and Coordinator are
-              notified to review.
+              {tModal("escalateDescription")}
             </DialogDescription>
           </DialogHeader>
 
@@ -101,7 +103,7 @@ export function EscalateModal({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={4}
-            placeholder="Why does this need senior review? (minimum 10 characters)"
+            placeholder={tModal("reasonPlaceholder")}
             maxLength={1000}
             disabled={isPending}
             autoFocus
@@ -118,10 +120,10 @@ export function EscalateModal({
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
-              Cancel
+              {tCommon("cancel")}
             </DialogClose>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Escalating…" : "Escalate"}
+              {isPending ? tActions("escalatePending") : tActions("escalate")}
             </Button>
           </DialogFooter>
         </form>

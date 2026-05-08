@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +19,10 @@ import { resolveTicket } from "@/app/actions/tickets";
 
 export function ResolveModal({ ticketId }: { ticketId: string }) {
   const router = useRouter();
+  const tModal = useTranslations("tickets.resolveModal");
+  const tActions = useTranslations("tickets.actions");
+  const tCommon = useTranslations("common");
+
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +32,7 @@ export function ResolveModal({ ticketId }: { ticketId: string }) {
     e.preventDefault();
     setError(null);
     if (note.trim().length < 10) {
-      setError("Resolution note must be at least 10 characters.");
+      setError(tModal("minLengthError"));
       return;
     }
     startTransition(async () => {
@@ -37,31 +42,28 @@ export function ResolveModal({ ticketId }: { ticketId: string }) {
         setOpen(false);
         router.refresh();
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to resolve ticket.",
-        );
+        setError(err instanceof Error ? err.message : tModal("genericError"));
       }
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="default">Mark resolved</Button>} />
+      <DialogTrigger
+        render={<Button variant="default">{tActions("resolve")}</Button>}
+      />
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Resolve ticket</DialogTitle>
-            <DialogDescription>
-              Describe what fixed the issue. The note is stored on the ticket
-              and sent to the customer with their CSAT request.
-            </DialogDescription>
+            <DialogTitle>{tModal("title")}</DialogTitle>
+            <DialogDescription>{tModal("description")}</DialogDescription>
           </DialogHeader>
 
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={5}
-            placeholder="Resolution details (minimum 10 characters)…"
+            placeholder={tModal("placeholder")}
             maxLength={5000}
             disabled={isPending}
             autoFocus
@@ -81,10 +83,10 @@ export function ResolveModal({ ticketId }: { ticketId: string }) {
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
-              Cancel
+              {tCommon("cancel")}
             </DialogClose>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Resolving…" : "Resolve"}
+              {isPending ? tActions("resolvePending") : tActions("resolve")}
             </Button>
           </DialogFooter>
         </form>

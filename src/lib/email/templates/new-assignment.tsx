@@ -1,4 +1,5 @@
 import { Link, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type NewAssignmentProps = {
@@ -8,42 +9,42 @@ export type NewAssignmentProps = {
   priority: "low" | "medium" | "high" | "critical";
   customerName: string;
   ticketUrl: string;
+  locale: string;
 };
 
-const PRIORITY_LABEL: Record<NewAssignmentProps["priority"], string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  critical: "CRITICAL",
-};
-
-export function NewAssignmentEmail({
+export async function NewAssignmentEmail({
   ticketNumber,
   technicianName,
   subject,
   priority,
   customerName,
   ticketUrl,
+  locale,
 }: NewAssignmentProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.newAssignment",
+  });
+  const tPriority = await getTranslations({
+    locale,
+    namespace: "tickets.priority",
+  });
   return (
     <EmailLayout
-      preview={`Ticket ${ticketNumber} has been assigned to you`}
-      title="A ticket has been assigned to you"
+      preview={t("preview", { ticketNumber })}
+      title={t("title")}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {technicianName},</Text>
+      <Text style={textStyles.body}>{t("greeting", { technicianName })}</Text>
       <Text style={textStyles.body}>
-        You&apos;ve been assigned ticket <strong>{ticketNumber}</strong>.
+        {t("body", { ticketNumber, subject })}
       </Text>
       <Text style={textStyles.meta}>
-        <strong>Subject:</strong> {subject}
-        <br />
-        <strong>Priority:</strong> {PRIORITY_LABEL[priority]}
-        <br />
-        <strong>Customer:</strong> {customerName}
+        {t("meta", { customerName, priority: tPriority(priority) })}
       </Text>
       <Link href={ticketUrl} style={textStyles.button}>
-        Open ticket
+        {t("view")}
       </Link>
     </EmailLayout>
   );
@@ -56,6 +57,7 @@ NewAssignmentEmail.PreviewProps = {
   priority: "high",
   customerName: "Alex Dean",
   ticketUrl: "https://tickets.axiom360.it/admin/tickets/00000000-0000-0000-0000-000000000000",
+  locale: "en",
 } satisfies NewAssignmentProps;
 
 export default NewAssignmentEmail;

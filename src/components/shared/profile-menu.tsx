@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { LogOut, User as UserIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -31,6 +32,7 @@ function initials(name: string): string {
 
 export function ProfileMenu({ user }: ProfileMenuProps) {
   const router = useRouter();
+  const t = useTranslations("admin.shell");
   const [signingOut, setSigningOut] = useState(false);
 
   async function handleSignOut() {
@@ -45,7 +47,7 @@ export function ProfileMenu({ user }: ProfileMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        aria-label="Profile menu"
+        aria-label={t("profileMenuLabel")}
       >
         <Avatar className="w-7 h-7">
           <AvatarFallback className="text-xs">
@@ -64,14 +66,16 @@ export function ProfileMenu({ user }: ProfileMenuProps) {
               {user.email}
             </span>
             <span className="text-[10px] text-zinc-400 mt-1">
-              {user.roles.join(", ") || "(no roles)"}
+              {user.roles.length > 0
+                ? user.roles.join(", ")
+                : t("profileMenuNoRoles")}
             </span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/admin/profile" />}>
           <UserIcon className="w-4 h-4" aria-hidden="true" />
-          <span>My profile</span>
+          <span>{t("profileMenuMyProfile")}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -80,7 +84,9 @@ export function ProfileMenu({ user }: ProfileMenuProps) {
           variant="destructive"
         >
           <LogOut className="w-4 h-4" aria-hidden="true" />
-          <span>{signingOut ? "Signing out…" : "Sign out"}</span>
+          <span>
+            {signingOut ? t("profileMenuSigningOut") : t("profileMenuSignOut")}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

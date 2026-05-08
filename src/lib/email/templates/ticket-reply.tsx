@@ -1,4 +1,5 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketReplyProps = {
@@ -8,30 +9,34 @@ export type TicketReplyProps = {
   agentName: string;
   body: string;
   trackingUrl: string;
+  locale: string;
 };
 
-export function TicketReplyEmail({
+export async function TicketReplyEmail({
   ticketNumber,
   customerName,
   subject,
   agentName,
   body,
   trackingUrl,
+  locale,
 }: TicketReplyProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.ticketReply",
+  });
   // Simple paragraph splitter so the reply body shows nicely
   const paragraphs = body.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
 
   return (
     <EmailLayout
-      preview={`${agentName} replied to your ticket ${ticketNumber}`}
-      title={`${agentName} replied to your ticket`}
+      preview={t("preview", { agentName, ticketNumber })}
+      title={t("title", { agentName })}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {customerName},</Text>
-      <Text style={textStyles.body}>
-        We&apos;ve sent you an update on{" "}
-        <strong>&ldquo;{subject}&rdquo;</strong>:
-      </Text>
+      <Text style={textStyles.body}>{t("greeting", { customerName })}</Text>
+      <Text style={textStyles.body}>{t("intro", { subject })}</Text>
 
       <Section
         style={{
@@ -52,12 +57,9 @@ export function TicketReplyEmail({
         ))}
       </Section>
 
-      <Text style={textStyles.body}>
-        You can reply to this email to keep the conversation going, or open
-        the ticket in your browser.
-      </Text>
+      <Text style={textStyles.body}>{t("footer")}</Text>
       <Link href={trackingUrl} style={textStyles.button}>
-        View your ticket
+        {t("view")}
       </Link>
       <Hr
         style={{
@@ -66,10 +68,7 @@ export function TicketReplyEmail({
           margin: "20px 0 10px",
         }}
       />
-      <Text style={textStyles.meta}>
-        Reply to this email or click the link above to respond. Mention
-        ticket {ticketNumber} if your mail client doesn&apos;t keep the thread.
-      </Text>
+      <Text style={textStyles.meta}>{t("trailerLine", { ticketNumber })}</Text>
     </EmailLayout>
   );
 }
@@ -81,6 +80,7 @@ TicketReplyEmail.PreviewProps = {
   agentName: "Priya",
   body: "Hi Alex,\n\nI've cleared your Outlook profile cache from our end. Could you reopen Outlook now and let me know if it loads past the splash screen?\n\nThanks,\nPriya",
   trackingUrl: "https://tickets.axiom360.it/portal/tickets/AX-0042?token=abc",
+  locale: "en",
 } satisfies TicketReplyProps;
 
 export default TicketReplyEmail;

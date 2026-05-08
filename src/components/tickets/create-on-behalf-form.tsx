@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,35 +17,42 @@ import { Textarea } from "@/components/ui/textarea";
 import { createTicketOnBehalf } from "@/app/actions/tickets";
 
 const CATEGORY_OPTIONS = [
-  { value: "hardware", label: "Hardware" },
-  { value: "software", label: "Software" },
-  { value: "network", label: "Network" },
-  { value: "access", label: "Access" },
-  { value: "other", label: "Other" },
+  "hardware",
+  "software",
+  "network",
+  "access",
+  "other",
 ] as const;
 
-const PRIORITY_OPTIONS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "critical", label: "Critical" },
-] as const;
+const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
+
+type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
+type PriorityValue = (typeof PRIORITY_OPTIONS)[number];
 
 export function CreateOnBehalfForm() {
   const router = useRouter();
+  const tFields = useTranslations("tickets.submit.fields");
+  const tSubmit = useTranslations("tickets.submit");
+  const tActions = useTranslations("tickets.actions");
+  const tCategory = useTranslations("tickets.category");
+  const tPriority = useTranslations("tickets.priority");
+  const tCommon = useTranslations("common");
 
   const [data, setData] = useState({
     customerName: "",
     customerEmail: "",
     subject: "",
-    category: "" as "" | (typeof CATEGORY_OPTIONS)[number]["value"],
-    priority: "" as "" | (typeof PRIORITY_OPTIONS)[number]["value"],
+    category: "" as "" | CategoryValue,
+    priority: "" as "" | PriorityValue,
     description: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function update<K extends keyof typeof data>(key: K, value: (typeof data)[K]) {
+  function update<K extends keyof typeof data>(
+    key: K,
+    value: (typeof data)[K],
+  ) {
     setData((d) => ({ ...d, [key]: value }));
   }
 
@@ -52,7 +60,7 @@ export function CreateOnBehalfForm() {
     e.preventDefault();
     setError(null);
     if (!data.category || !data.priority) {
-      setError("Choose a category and priority.");
+      setError(tSubmit("chooseCategoryPriority"));
       return;
     }
     setSubmitting(true);
@@ -77,7 +85,7 @@ export function CreateOnBehalfForm() {
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       <div className="grid sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
-          <Label htmlFor="customerName">Customer name</Label>
+          <Label htmlFor="customerName">{tFields("customerName")}</Label>
           <Input
             id="customerName"
             required
@@ -87,7 +95,7 @@ export function CreateOnBehalfForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="customerEmail">Customer email</Label>
+          <Label htmlFor="customerEmail">{tFields("customerEmail")}</Label>
           <Input
             id="customerEmail"
             type="email"
@@ -99,49 +107,49 @@ export function CreateOnBehalfForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="subject">Subject</Label>
+        <Label htmlFor="subject">{tFields("subject")}</Label>
         <Input
           id="subject"
           required
           value={data.subject}
           onChange={(e) => update("subject", e.target.value)}
           maxLength={150}
-          placeholder="Short summary as the customer described it"
+          placeholder={tFields("subjectAgentPlaceholder")}
         />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
-          <Label htmlFor="category">Category</Label>
+          <Label htmlFor="category">{tFields("category")}</Label>
           <Select
             value={data.category}
             onValueChange={(v) => update("category", v as typeof data.category)}
           >
             <SelectTrigger id="category">
-              <SelectValue placeholder="Select category" />
+              <SelectValue placeholder={tFields("categoryPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              {CATEGORY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+              {CATEGORY_OPTIONS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {tCategory(value)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="priority">Priority</Label>
+          <Label htmlFor="priority">{tFields("priority")}</Label>
           <Select
             value={data.priority}
             onValueChange={(v) => update("priority", v as typeof data.priority)}
           >
             <SelectTrigger id="priority">
-              <SelectValue placeholder="Select priority" />
+              <SelectValue placeholder={tFields("priorityPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              {PRIORITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+              {PRIORITY_OPTIONS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {tPriority(value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -150,7 +158,7 @@ export function CreateOnBehalfForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="description">Description</Label>
+        <Label htmlFor="description">{tFields("description")}</Label>
         <Textarea
           id="description"
           required
@@ -159,7 +167,7 @@ export function CreateOnBehalfForm() {
           minLength={20}
           maxLength={5000}
           rows={6}
-          placeholder="What did the customer report? Include any context they gave."
+          placeholder={tFields("descriptionAgentPlaceholder")}
         />
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           {data.description.length}/5000
@@ -181,10 +189,10 @@ export function CreateOnBehalfForm() {
           variant="outline"
           onClick={() => router.push("/admin/tickets")}
         >
-          Cancel
+          {tCommon("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Creating…" : "Create ticket"}
+          {submitting ? tActions("createPending") : tActions("createTicket")}
         </Button>
       </div>
     </form>

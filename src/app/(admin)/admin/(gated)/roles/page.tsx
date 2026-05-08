@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function RolesPage() {
+export default async function RolesPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Roles"
-      description="Custom role creation with the per-module permissions matrix."
-      module="M6 — RBAC management UI"
+      title={t("rolesTitle")}
+      description={t("rolesDescription")}
+      module={t("rolesModule")}
     />
   );
 }

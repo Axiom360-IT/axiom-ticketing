@@ -2,12 +2,16 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { replyToTicket } from "@/app/actions/tickets";
 
 export function ReplyComposer({ ticketId }: { ticketId: string }) {
   const router = useRouter();
+  const tReply = useTranslations("tickets.reply");
+  const tActions = useTranslations("tickets.actions");
+
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -17,7 +21,7 @@ export function ReplyComposer({ ticketId }: { ticketId: string }) {
     setError(null);
     const trimmed = body.trim();
     if (trimmed.length === 0) {
-      setError("Reply cannot be empty.");
+      setError(tReply("errorEmpty"));
       return;
     }
     startTransition(async () => {
@@ -26,7 +30,7 @@ export function ReplyComposer({ ticketId }: { ticketId: string }) {
         setBody("");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to send reply.");
+        setError(err instanceof Error ? err.message : tReply("errorGeneric"));
       }
     });
   }
@@ -37,7 +41,7 @@ export function ReplyComposer({ ticketId }: { ticketId: string }) {
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={5}
-        placeholder="Write a reply to the customer…"
+        placeholder={tReply("placeholder")}
         maxLength={10000}
         disabled={isPending}
       />
@@ -51,10 +55,10 @@ export function ReplyComposer({ ticketId }: { ticketId: string }) {
       ) : null}
       <div className="flex items-center justify-between">
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Reply is emailed to the customer.
+          {tReply("footerHint")}
         </p>
         <Button type="submit" disabled={isPending || body.trim().length === 0}>
-          {isPending ? "Sending…" : "Send reply"}
+          {isPending ? tActions("replyPending") : tActions("reply")}
         </Button>
       </div>
     </form>

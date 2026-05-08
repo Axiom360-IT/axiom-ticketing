@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,19 +18,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { createTicket } from "@/app/actions/tickets";
 
 const CATEGORY_OPTIONS = [
-  { value: "hardware", label: "Hardware" },
-  { value: "software", label: "Software" },
-  { value: "network", label: "Network" },
-  { value: "access", label: "Access" },
-  { value: "other", label: "Other" },
+  "hardware",
+  "software",
+  "network",
+  "access",
+  "other",
 ] as const;
 
-const PRIORITY_OPTIONS = [
-  { value: "low", label: "Low — non-urgent" },
-  { value: "medium", label: "Medium — affects my work" },
-  { value: "high", label: "High — blocking my work" },
-  { value: "critical", label: "Critical — production down" },
-] as const;
+const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
+
+type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
+type PriorityValue = (typeof PRIORITY_OPTIONS)[number];
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -52,6 +51,11 @@ declare global {
 
 export function SubmissionForm() {
   const router = useRouter();
+  const tFields = useTranslations("tickets.submit.fields");
+  const tSubmit = useTranslations("tickets.submit");
+  const tCategory = useTranslations("tickets.category");
+  const tPriorityDesc = useTranslations("tickets.categoryDescription");
+
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
@@ -59,8 +63,8 @@ export function SubmissionForm() {
     customerName: "",
     customerEmail: "",
     subject: "",
-    category: "" as "" | (typeof CATEGORY_OPTIONS)[number]["value"],
-    priority: "" as "" | (typeof PRIORITY_OPTIONS)[number]["value"],
+    category: "" as "" | CategoryValue,
+    priority: "" as "" | PriorityValue,
     description: "",
   });
   const [turnstileToken, setTurnstileToken] = useState<string>("");
@@ -68,7 +72,6 @@ export function SubmissionForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Render Turnstile widget once script is loaded
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY) return;
     let cancelled = false;
@@ -103,7 +106,7 @@ export function SubmissionForm() {
     setError(null);
 
     if (!formData.category || !formData.priority) {
-      setError("Please choose a category and priority.");
+      setError(tSubmit("chooseCategoryPriority"));
       return;
     }
 
@@ -148,7 +151,7 @@ export function SubmissionForm() {
         {/* Honeypot (hidden from humans, filled by bots) */}
         <div className="hidden" aria-hidden="true">
           <label>
-            Website
+            {tSubmit("honeypotLabel")}
             <input
               type="text"
               tabIndex={-1}
@@ -161,7 +164,7 @@ export function SubmissionForm() {
 
         <div className="grid sm:grid-cols-2 gap-5">
           <div className="space-y-1.5">
-            <Label htmlFor="customerName">Your name</Label>
+            <Label htmlFor="customerName">{tFields("yourName")}</Label>
             <Input
               id="customerName"
               required
@@ -172,7 +175,7 @@ export function SubmissionForm() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="customerEmail">Email</Label>
+            <Label htmlFor="customerEmail">{tFields("email")}</Label>
             <Input
               id="customerEmail"
               type="email"
@@ -185,20 +188,20 @@ export function SubmissionForm() {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="subject">Subject</Label>
+          <Label htmlFor="subject">{tFields("subject")}</Label>
           <Input
             id="subject"
             required
             value={formData.subject}
             onChange={(e) => update("subject", e.target.value)}
             maxLength={150}
-            placeholder="Brief summary of the problem"
+            placeholder={tFields("subjectPlaceholder")}
           />
         </div>
 
         <div className="grid sm:grid-cols-2 gap-5">
           <div className="space-y-1.5">
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category">{tFields("category")}</Label>
             <Select
               value={formData.category}
               onValueChange={(v) =>
@@ -206,19 +209,19 @@ export function SubmissionForm() {
               }
             >
               <SelectTrigger id="category">
-                <SelectValue placeholder="Select category" />
+                <SelectValue placeholder={tFields("categoryPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                {CATEGORY_OPTIONS.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {tCategory(value)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="priority">Priority</Label>
+            <Label htmlFor="priority">{tFields("priority")}</Label>
             <Select
               value={formData.priority}
               onValueChange={(v) =>
@@ -226,12 +229,12 @@ export function SubmissionForm() {
               }
             >
               <SelectTrigger id="priority">
-                <SelectValue placeholder="Select priority" />
+                <SelectValue placeholder={tFields("priorityPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                {PRIORITY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                {PRIORITY_OPTIONS.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {tPriorityDesc(value)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -240,7 +243,7 @@ export function SubmissionForm() {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="description">Description</Label>
+          <Label htmlFor="description">{tFields("description")}</Label>
           <Textarea
             id="description"
             required
@@ -249,7 +252,7 @@ export function SubmissionForm() {
             minLength={20}
             maxLength={5000}
             rows={6}
-            placeholder="What happened? What did you expect to happen? Anything you've tried?"
+            placeholder={tFields("descriptionPlaceholder")}
           />
           <p className="text-xs text-zinc-500">
             {formData.description.length}/5000
@@ -261,7 +264,7 @@ export function SubmissionForm() {
           <div ref={turnstileRef} className="flex justify-center" />
         ) : (
           <p className="text-xs text-zinc-500 italic">
-            Cloudflare Turnstile is not configured — captcha is skipped in dev.
+            {tSubmit("captchaSkipped")}
           </p>
         )}
 
@@ -277,7 +280,7 @@ export function SubmissionForm() {
 
         <div className="flex justify-end">
           <Button type="submit" disabled={submitting} size="lg">
-            {submitting ? "Submitting…" : "Submit ticket"}
+            {submitting ? tSubmit("submitting") : tSubmit("submitButton")}
           </Button>
         </div>
       </form>

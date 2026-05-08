@@ -2,12 +2,14 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth/client";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromPath = searchParams.get("from") ?? "/admin";
+  const t = useTranslations("admin.login");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +32,7 @@ export function LoginForm() {
 
     if (result.error) {
       // Generic message — never reveal whether the email or password was wrong.
-      setError("Invalid email or password.");
+      setError(t("genericError"));
       return;
     }
 
@@ -45,7 +47,7 @@ export function LoginForm() {
           htmlFor="email"
           className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
         >
-          Email
+          {t("email")}
         </label>
         <input
           id="email"
@@ -64,7 +66,7 @@ export function LoginForm() {
           htmlFor="password"
           className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
         >
-          Password
+          {t("password")}
         </label>
         <div className="relative">
           <input
@@ -81,7 +83,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t("hidePassword") : t("showPassword")}
             aria-pressed={showPassword}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -141,7 +143,7 @@ export function LoginForm() {
         disabled={loading}
         className="w-full px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
       >
-        {loading ? "Signing in…" : "Sign in"}
+        {loading ? t("submitting") : t("submit")}
       </button>
     </form>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   ClipboardList,
   GitBranch,
@@ -16,23 +17,32 @@ import { cn } from "@/lib/utils";
 
 type NavItem = {
   href: string;
-  label: string;
+  labelKey:
+    | "navTickets"
+    | "navProcurement"
+    | "navReports"
+    | "navUsers"
+    | "navRoles"
+    | "navHierarchy"
+    | "navSettings"
+    | "navAudit";
   icon: typeof Ticket;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/admin/tickets", label: "Tickets", icon: Ticket },
-  { href: "/admin/procurement", label: "Procurement", icon: ShoppingCart },
-  { href: "/admin/reports", label: "Reports", icon: ClipboardList },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/roles", label: "Roles", icon: Shield },
-  { href: "/admin/hierarchy", label: "Hierarchy", icon: GitBranch },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
-  { href: "/admin/audit", label: "Audit Log", icon: History },
+  { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket },
+  { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart },
+  { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList },
+  { href: "/admin/users", labelKey: "navUsers", icon: Users },
+  { href: "/admin/roles", labelKey: "navRoles", icon: Shield },
+  { href: "/admin/hierarchy", labelKey: "navHierarchy", icon: GitBranch },
+  { href: "/admin/settings", labelKey: "navSettings", icon: Settings },
+  { href: "/admin/audit", labelKey: "navAudit", icon: History },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const t = useTranslations("admin.shell");
 
   return (
     <aside className="w-60 shrink-0 bg-slate-900 text-slate-100 flex flex-col h-screen sticky top-0">
@@ -44,12 +54,12 @@ export function Sidebar() {
           <span className="inline-block w-7 h-7 rounded-md bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
             <span className="text-blue-300 text-xs font-bold">A</span>
           </span>
-          Axiom360
+          {t("brand")}
         </Link>
-        <p className="text-[11px] text-slate-500 mt-1 ml-9">Ticketing System</p>
+        <p className="text-[11px] text-slate-500 mt-1 ml-9">{t("tagline")}</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+      <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label={t("mainNavLabel")}>
         <ul className="space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -68,7 +78,7 @@ export function Sidebar() {
                   aria-current={active ? "page" : undefined}
                 >
                   <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  <span>{item.label}</span>
+                  <span>{t(item.labelKey)}</span>
                 </Link>
               </li>
             );
@@ -77,7 +87,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-500">
-        v0.1.0 · MVP build
+        {t("buildLine")}
       </div>
     </aside>
   );

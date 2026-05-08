@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Reports"
-      description="Ticket health metrics and procurement spend dashboards."
-      module="M13 — Reports dashboard"
+      title={t("reportsTitle")}
+      description={t("reportsDescription")}
+      module={t("reportsModule")}
     />
   );
 }

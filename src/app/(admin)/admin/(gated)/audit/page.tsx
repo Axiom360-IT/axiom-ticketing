@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function AuditPage() {
+export default async function AuditPage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="Audit Log"
-      description="Filterable view of every privileged action."
-      module="M12 — Audit log viewer"
+      title={t("auditTitle")}
+      description={t("auditDescription")}
+      module={t("auditModule")}
     />
   );
 }

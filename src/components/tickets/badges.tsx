@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 type StatusBadgeProps = {
@@ -15,14 +18,10 @@ const STATUS_STYLES: Record<string, string> = {
     "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-800",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  resolved: "Resolved",
-  closed: "Closed",
-};
-
 export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const t = useTranslations("tickets.status");
+  // Cast: status is validated at the DB-check level (open/in_progress/resolved/closed)
+  const label = t(status as "open" | "in_progress" | "resolved" | "closed");
   return (
     <span
       className={cn(
@@ -31,7 +30,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className,
       )}
     >
-      {STATUS_LABEL[status] ?? status}
+      {label}
     </span>
   );
 }
@@ -50,14 +49,9 @@ const PRIORITY_STYLES: Record<string, string> = {
     "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  critical: "Critical",
-};
-
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
+  const t = useTranslations("tickets.priority");
+  const label = t(priority as "low" | "medium" | "high" | "critical");
   return (
     <span
       className={cn(
@@ -80,12 +74,13 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
         }}
         aria-hidden="true"
       />
-      {PRIORITY_LABEL[priority] ?? priority}
+      {label}
     </span>
   );
 }
 
 export function EscalatedBadge({ className }: { className?: string }) {
+  const t = useTranslations("tickets");
   return (
     <span
       className={cn(
@@ -94,7 +89,7 @@ export function EscalatedBadge({ className }: { className?: string }) {
         className,
       )}
     >
-      Escalated
+      {t("escalatedBadge")}
     </span>
   );
 }
@@ -106,7 +101,10 @@ export function CategoryBadge({
   category: string;
   className?: string;
 }) {
-  const label = category.charAt(0).toUpperCase() + category.slice(1);
+  const t = useTranslations("tickets.category");
+  const label = t(
+    category as "hardware" | "software" | "network" | "access" | "other",
+  );
   return (
     <span
       className={cn(

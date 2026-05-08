@@ -1,4 +1,5 @@
 import { Link, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketClosedProps = {
@@ -8,39 +9,37 @@ export type TicketClosedProps = {
   // "csat" — customer marked satisfied; "auto" — 24h auto-close after no CSAT.
   reason: "csat" | "auto";
   newTicketUrl: string;
+  locale: string;
 };
 
-export function TicketClosedEmail({
+export async function TicketClosedEmail({
   ticketNumber,
   customerName,
   subject,
   reason,
   newTicketUrl,
+  locale,
 }: TicketClosedProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.ticketClosed",
+  });
   return (
     <EmailLayout
-      preview={`Ticket ${ticketNumber} is now closed`}
-      title="Your ticket is closed"
+      preview={t("preview", { ticketNumber })}
+      title={t("title")}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {customerName},</Text>
-      {reason === "csat" ? (
-        <Text style={textStyles.body}>
-          Thanks for confirming &mdash; ticket{" "}
-          <strong>{ticketNumber}</strong> &ldquo;{subject}&rdquo; is now closed.
-        </Text>
-      ) : (
-        <Text style={textStyles.body}>
-          We hadn&apos;t heard back on ticket <strong>{ticketNumber}</strong>{" "}
-          &ldquo;{subject}&rdquo;, so we&apos;ve closed it for you. If the issue
-          comes back, just open a new ticket and we&apos;ll pick it up.
-        </Text>
-      )}
+      <Text style={textStyles.body}>{t("greeting", { customerName })}</Text>
       <Text style={textStyles.body}>
-        Need help with something else? Open a fresh ticket any time.
+        {reason === "csat"
+          ? t("bodyCsat", { ticketNumber, subject })
+          : t("bodyAuto", { ticketNumber, subject })}
       </Text>
+      <Text style={textStyles.body}>{t("newTicketPrompt")}</Text>
       <Link href={newTicketUrl} style={textStyles.button}>
-        Submit a new ticket
+        {t("newTicket")}
       </Link>
     </EmailLayout>
   );
@@ -52,6 +51,7 @@ TicketClosedEmail.PreviewProps = {
   subject: "Outlook is stuck on the splash screen",
   reason: "csat",
   newTicketUrl: "https://tickets.axiom360.it/portal/submit",
+  locale: "en",
 } satisfies TicketClosedProps;
 
 export default TicketClosedEmail;

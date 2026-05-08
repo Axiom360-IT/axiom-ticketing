@@ -1,16 +1,18 @@
 import { Suspense } from "react";
+import { getTranslations } from "next-intl/server";
 import { LoginForm } from "./login-form";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const t = await getTranslations("admin.login");
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
       <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-8">
         <header className="mb-8">
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-            Sign in
+            {t("title")}
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Axiom360 Ticketing System
+            {t("subtitle")}
           </p>
         </header>
         <Suspense fallback={<LoginFormFallback />}>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +37,9 @@ export default async function TicketsPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
+
+  const t = await getTranslations("tickets.queue");
+  const formatter = await getFormatter();
 
   const { q } = await searchParams;
   const search = q?.trim() ?? "";
@@ -83,19 +87,20 @@ export default async function TicketsPage({
     .orderBy(desc(tickets.createdAt))
     .limit(100);
 
+  const countLine = search
+    ? t("countMatching", { count: rows.length, query: search })
+    : t("count", { count: rows.length });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Tickets</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {rows.length} {rows.length === 1 ? "ticket" : "tickets"}
-            {search ? ` matching "${search}"` : ""}
-          </p>
+          <h1 className="text-2xl font-semibold">{t("title")}</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{countLine}</p>
         </div>
         {canCreate ? (
           <Button render={<Link href="/admin/tickets/new" />}>
-            Create on behalf
+            {t("createOnBehalf")}
           </Button>
         ) : null}
       </div>
@@ -104,7 +109,7 @@ export default async function TicketsPage({
         <Input
           name="q"
           defaultValue={search}
-          placeholder="Search by ticket #, subject, or customer email"
+          placeholder={t("search")}
           className="max-w-md"
         />
       </form>
@@ -114,60 +119,60 @@ export default async function TicketsPage({
           {rows.length === 0 ? (
             <div className="py-16 text-center">
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                {search
-                  ? "No tickets match your search."
-                  : "No tickets yet. They'll appear here as customers submit them."}
+                {search ? t("emptyMatching") : t("empty")}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-4">Ticket</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead className="pr-4">Updated</TableHead>
+                  <TableHead className="px-4">{t("columns.ticket")}</TableHead>
+                  <TableHead>{t("columns.subject")}</TableHead>
+                  <TableHead>{t("columns.status")}</TableHead>
+                  <TableHead>{t("columns.priority")}</TableHead>
+                  <TableHead>{t("columns.customer")}</TableHead>
+                  <TableHead>{t("columns.assignee")}</TableHead>
+                  <TableHead className="pr-4">{t("columns.updated")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((t) => (
-                  <TableRow key={t.id}>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
                     <TableCell className="px-4 font-mono text-xs">
                       <Link
-                        href={`/admin/tickets/${t.id}`}
+                        href={`/admin/tickets/${row.id}`}
                         className="text-blue-600 hover:underline dark:text-blue-400"
                       >
-                        {t.ticketNumber}
+                        {row.ticketNumber}
                       </Link>
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
                       <div className="flex items-center gap-2">
-                        {t.isEscalated ? <EscalatedBadge /> : null}
-                        <span>{t.subject}</span>
+                        {row.isEscalated ? <EscalatedBadge /> : null}
+                        <span>{row.subject}</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={t.status} />
+                      <StatusBadge status={row.status} />
                     </TableCell>
                     <TableCell>
-                      <PriorityBadge priority={t.priority} />
+                      <PriorityBadge priority={row.priority} />
                     </TableCell>
                     <TableCell className="text-sm">
-                      <div>{t.customerName}</div>
+                      <div>{row.customerName}</div>
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {t.customerEmail}
+                        {row.customerEmail}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {t.assignedToName ?? (
-                        <span className="text-zinc-400">Unassigned</span>
+                      {row.assignedToName ?? (
+                        <span className="text-zinc-400">
+                          {t("unassigned")}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="pr-4 text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatRelative(t.updatedAt)}
+                      {formatRelative(row.updatedAt, t, formatter)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -180,14 +185,17 @@ export default async function TicketsPage({
   );
 }
 
-function formatRelative(d: Date): string {
+type RelativeT = Awaited<ReturnType<typeof getTranslations<"tickets.queue">>>;
+type Formatter = Awaited<ReturnType<typeof getFormatter>>;
+
+function formatRelative(d: Date, t: RelativeT, formatter: Formatter): string {
   const ms = Date.now() - d.getTime();
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t("relativeTime.justNow");
+  if (minutes < 60) return t("relativeTime.minutes", { minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("relativeTime.hours", { hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString();
+  if (days < 7) return t("relativeTime.days", { days });
+  return formatter.dateTime(d, { dateStyle: "medium" });
 }

@@ -1,11 +1,13 @@
+import { getTranslations } from "next-intl/server";
 import { ComingSoon } from "@/components/shared/coming-soon";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  const t = await getTranslations("admin.stubs");
   return (
     <ComingSoon
-      title="My Profile"
-      description="Account info, password, 2FA, sessions, and notification preferences."
-      module="M14 — Profile / Account page"
+      title={t("profileTitle")}
+      description={t("profileDescription")}
+      module={t("profileModule")}
     />
   );
 }

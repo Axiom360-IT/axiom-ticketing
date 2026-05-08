@@ -1,4 +1,5 @@
 import { Link, Text } from "@react-email/components";
+import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketReopenedProps = {
@@ -9,40 +10,37 @@ export type TicketReopenedProps = {
   // "agent" — a coordinator/agent reopened from the dashboard.
   reason: "csat_unsatisfied" | "agent";
   trackingUrl: string;
+  locale: string;
 };
 
-export function TicketReopenedEmail({
+export async function TicketReopenedEmail({
   ticketNumber,
   customerName,
   subject,
   reason,
   trackingUrl,
+  locale,
 }: TicketReopenedProps) {
+  const t = await getTranslations({
+    locale,
+    namespace: "emails.ticketReopened",
+  });
   return (
     <EmailLayout
-      preview={`Ticket ${ticketNumber} has been reopened`}
-      title="Your ticket has been reopened"
+      preview={t("preview", { ticketNumber })}
+      title={t("title")}
       ticketNumber={ticketNumber}
+      locale={locale}
     >
-      <Text style={textStyles.body}>Hi {customerName},</Text>
-      {reason === "csat_unsatisfied" ? (
-        <Text style={textStyles.body}>
-          Sorry our last fix didn&apos;t do it. Ticket{" "}
-          <strong>{ticketNumber}</strong> &ldquo;{subject}&rdquo; is reopened
-          and we&apos;re back on it. A technician will follow up shortly.
-        </Text>
-      ) : (
-        <Text style={textStyles.body}>
-          Ticket <strong>{ticketNumber}</strong> &ldquo;{subject}&rdquo; has
-          been reopened by our team and assigned for follow-up.
-        </Text>
-      )}
+      <Text style={textStyles.body}>{t("greeting", { customerName })}</Text>
       <Text style={textStyles.body}>
-        If there&apos;s any extra detail that would help us, just reply to this
-        email and we&apos;ll add it to the ticket.
+        {reason === "csat_unsatisfied"
+          ? t("bodyCsat", { ticketNumber, subject })
+          : t("bodyAgent", { ticketNumber, subject })}
       </Text>
+      <Text style={textStyles.body}>{t("footer")}</Text>
       <Link href={trackingUrl} style={textStyles.button}>
-        View your ticket
+        {t("view")}
       </Link>
     </EmailLayout>
   );
@@ -54,6 +52,7 @@ TicketReopenedEmail.PreviewProps = {
   subject: "Outlook is stuck on the splash screen",
   reason: "csat_unsatisfied",
   trackingUrl: "https://tickets.axiom360.it/portal/tickets/AX-0042?token=abc",
+  locale: "en",
 } satisfies TicketReopenedProps;
 
 export default TicketReopenedEmail;

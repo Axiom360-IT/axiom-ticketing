@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Select,
   SelectContent,
@@ -29,6 +30,8 @@ export function AssignControl({
   technicians,
 }: AssignControlProps) {
   const router = useRouter();
+  const t = useTranslations("tickets.assignControl");
+
   const [value, setValue] = useState<string>(currentAssigneeId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -44,7 +47,7 @@ export function AssignControl({
         router.refresh();
       } catch (err) {
         setValue(previous);
-        setError(err instanceof Error ? err.message : "Failed to assign.");
+        setError(err instanceof Error ? err.message : t("genericError"));
       }
     });
   }
@@ -53,12 +56,12 @@ export function AssignControl({
     <div className="space-y-1.5">
       <Select value={value} onValueChange={handleChange} disabled={isPending}>
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="Unassigned" />
+          <SelectValue placeholder={t("unassigned")} />
         </SelectTrigger>
         <SelectContent>
-          {technicians.map((t) => (
-            <SelectItem key={t.id} value={t.id}>
-              {t.name}
+          {technicians.map((tech) => (
+            <SelectItem key={tech.id} value={tech.id}>
+              {tech.name}
             </SelectItem>
           ))}
         </SelectContent>
