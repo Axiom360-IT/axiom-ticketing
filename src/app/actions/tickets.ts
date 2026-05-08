@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
+import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
@@ -471,13 +472,15 @@ export async function assignTicket(
 
 const replySchema = z.object({
   body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
+  attachmentIds: z.array(z.string().uuid()).max(5).default([]),
 });
 
 export async function replyToTicket(
   ticketId: string,
   body: string,
+  attachmentIds: string[] = [],
 ): Promise<void> {
-  const parsed = replySchema.safeParse({ body });
+  const parsed = replySchema.safeParse({ body, attachmentIds });
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid reply");
   }
@@ -509,15 +512,33 @@ export async function replyToTicket(
   const isFirstAgentReply = ticket.status === "open";
 
   await db.transaction(async (tx) => {
-    await tx.insert(messages).values({
-      ticketId: ticket.id,
-      authorId: user.id,
-      authorEmail: agent.email,
-      authorName: agent.name,
-      authorType: "agent",
-      body: parsed.data.body,
-      channel: "dashboard",
-    });
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorEmail: agent.email,
+        authorName: agent.name,
+        authorType: "agent",
+        body: parsed.data.body,
+        channel: "dashboard",
+      })
+      .returning({ id: messages.id });
+
+    if (parsed.data.attachmentIds.length > 0) {
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(
+          and(
+            inArray(attachments.id, parsed.data.attachmentIds),
+            eq(attachments.ticketId, ticket.id),
+            eq(attachments.uploadedById, user.id),
+            isNull(attachments.messageId),
+            ne(attachments.scanStatus, "quarantined"),
+          ),
+        );
+    }
 
     const update: Partial<typeof tickets.$inferInsert> = {
       updatedAt: new Date(),
@@ -569,13 +590,15 @@ export async function replyToTicket(
 
 const internalNoteSchema = z.object({
   body: z.string().trim().min(1, "Internal note cannot be empty").max(10000),
+  attachmentIds: z.array(z.string().uuid()).max(5).default([]),
 });
 
 export async function addInternalNote(
   ticketId: string,
   body: string,
+  attachmentIds: string[] = [],
 ): Promise<void> {
-  const parsed = internalNoteSchema.safeParse({ body });
+  const parsed = internalNoteSchema.safeParse({ body, attachmentIds });
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid note");
   }
@@ -602,15 +625,35 @@ export async function addInternalNote(
     .limit(1);
   if (!agent) throw new NotFoundError();
 
-  await db.insert(messages).values({
-    ticketId: ticket.id,
-    authorId: user.id,
-    authorEmail: agent.email,
-    authorName: agent.name,
-    authorType: "agent",
-    body: parsed.data.body,
-    channel: "dashboard",
-    isInternalNote: true,
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorEmail: agent.email,
+        authorName: agent.name,
+        authorType: "agent",
+        body: parsed.data.body,
+        channel: "dashboard",
+        isInternalNote: true,
+      })
+      .returning({ id: messages.id });
+
+    if (parsed.data.attachmentIds.length > 0) {
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(
+          and(
+            inArray(attachments.id, parsed.data.attachmentIds),
+            eq(attachments.ticketId, ticket.id),
+            eq(attachments.uploadedById, user.id),
+            isNull(attachments.messageId),
+            ne(attachments.scanStatus, "quarantined"),
+          ),
+        );
+    }
   });
 
   await audit({

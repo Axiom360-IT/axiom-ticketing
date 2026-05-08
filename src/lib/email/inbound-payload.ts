@@ -14,7 +14,7 @@ export type NormalizedInboundEmail = {
   html: string | null;
   /** Lowercased keys, first-occurrence value. */
   headers: Record<string, string>;
-  /** Optional raw MIME — when present, processor may re-parse with mailparser. */
+  /** Optional raw MIME — when present, processor parses with mailparser to ingest attachments. */
   raw?: string;
 };
 

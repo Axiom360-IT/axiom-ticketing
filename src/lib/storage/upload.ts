@@ -5,6 +5,27 @@ import { r2Bucket, r2Client, r2EnvPrefix } from "./client";
 const PRESIGN_TTL_SECONDS = 5 * 60;
 
 /**
+ * Upload bytes directly to R2 from server context (used for inbound email
+ * attachments, where we already have the bytes in memory after mailparser
+ * decoded them, so presigning is unnecessary).
+ */
+export async function uploadObject(
+  storageKey: string,
+  body: Uint8Array,
+  mimeType: string,
+): Promise<void> {
+  await r2Client().send(
+    new PutObjectCommand({
+      Bucket: r2Bucket(),
+      Key: storageKey,
+      Body: body,
+      ContentType: mimeType,
+      ContentLength: body.byteLength,
+    }),
+  );
+}
+
+/**
  * Build the storage key for an attachment. Per ARCHITECTURE §11.2:
  *   <env>/<ticketId>/<attachmentId>/<sanitizedFilename>
  *
