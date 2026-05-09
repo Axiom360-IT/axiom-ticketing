@@ -12,12 +12,10 @@ import { AccountForm } from "@/components/profile/account-form";
 import { PasswordForm } from "@/components/profile/password-form";
 import { PreferencesGrid } from "@/components/profile/preferences-grid";
 import { SessionsList } from "@/components/profile/sessions-list";
-import { TwoFactorSection } from "@/components/profile/two-factor-section";
 import {
   listMyNotificationPreferences,
   listMySessions,
 } from "@/app/actions/profile";
-import { getTwoFactorStatus } from "@/app/actions/two-factor";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -39,10 +37,9 @@ export default async function ProfilePage() {
     .limit(1);
   if (!me) redirect("/admin/login");
 
-  const [sessions, prefs, twoFactor] = await Promise.all([
+  const [sessions, prefs] = await Promise.all([
     listMySessions(),
     listMyNotificationPreferences(),
-    getTwoFactorStatus(),
   ]);
 
   const t = await getTranslations("profile");
@@ -71,18 +68,6 @@ export default async function ProfilePage() {
         </CardHeader>
         <CardContent>
           <PasswordForm />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("twoFactor.title")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TwoFactorSection
-            enabled={twoFactor.enabled}
-            canDisable={twoFactor.canDisable}
-          />
         </CardContent>
       </Card>
 

@@ -2,19 +2,17 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
-import { twoFactor } from "better-auth/plugins";
 import { db } from "../db/client";
 import {
   accounts,
   sessions,
-  twoFactors,
   users,
   verifications,
 } from "../db/schema/auth";
 
-// Note: passkey plugin is NOT enabled in M1. The schema columns exist for
-// when we add it (likely in M14 — Profile page). For MVP login, password +
-// TOTP is sufficient.
+// 2FA is intentionally not enabled at this point — password + lockout +
+// per-action re-auth covers the threat model. The Better Auth twoFactor
+// plugin can be re-added later if/when we want TOTP back.
 
 // Origins allowed to send authenticated requests (CSRF protection).
 // In production this is just the configured app URL.
@@ -41,7 +39,6 @@ export const auth = betterAuth({
       account: accounts,
       session: sessions,
       verification: verifications,
-      twoFactor: twoFactors,
     },
   }),
   emailAndPassword: {
@@ -74,10 +71,9 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins,
-  // `nextCookies()` last so its `after` hook runs after every other plugin
-  // — it forwards Set-Cookie from `auth.api.*` calls in Server Actions
-  // (e.g. signInWithLockout) onto the Next.js response.
-  plugins: [twoFactor({ issuer: "Axiom360 Ticketing" }), nextCookies()],
+  // `nextCookies()` forwards Set-Cookie from `auth.api.*` calls in
+  // Server Actions (e.g. signInWithLockout) onto the Next.js response.
+  plugins: [nextCookies()],
 });
 
 export type Auth = typeof auth;

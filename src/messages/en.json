@@ -283,9 +283,6 @@
       "resetPasswordButton": "Send password reset",
       "resetPasswordSent": "Reset email sent.",
       "unlockButton": "Unlock account",
-      "resetTwoFactorButton": "Reset two-factor",
-      "resetTwoFactorConfirm": "Yes, reset two-factor",
-      "resetTwoFactorWarn": "This wipes their authenticator + backup codes. They'll be forced to re-enrol next sign-in.",
       "deactivatedNote": "Deactivated {when}",
       "createdNote": "Created {when}",
       "lockedNote": "Account locked until {when}",
@@ -729,34 +726,6 @@
       "unknownDevice": "Unknown device",
       "unknownIp": "—"
     },
-    "twoFactorRequired": {
-      "title": "Two-factor authentication required",
-      "subtitle": "Your role grants access to sensitive operations, so we require a second factor on every sign-in. Enrol now to continue — you can't dismiss this screen.",
-      "signOut": "Sign out instead"
-    },
-    "twoFactor": {
-      "title": "Two-factor authentication",
-      "subtitleEnabled": "On. Use your authenticator app at sign-in.",
-      "subtitleDisabled": "Off. Add a second factor to protect your account.",
-      "enableButton": "Enable two-factor",
-      "enabling": "Enabling…",
-      "disableButton": "Disable two-factor",
-      "disabling": "Disabling…",
-      "regenerateButton": "Regenerate backup codes",
-      "regenerating": "Regenerating…",
-      "passwordPrompt": "Confirm your password",
-      "qrTitle": "Scan with your authenticator",
-      "qrHelp": "Open Authy, 1Password, Google Authenticator, or similar and scan the QR code.",
-      "secretLabel": "Or enter this secret manually",
-      "verifyTitle": "Enter the 6-digit code from your app",
-      "verifyButton": "Verify",
-      "verifying": "Verifying…",
-      "verifySuccess": "Verified.",
-      "backupTitle": "Backup codes",
-      "backupHint": "Each code works once. Save these somewhere safe — you won't see them again.",
-      "privilegedNote": "Privileged accounts can't disable two-factor. Talk to a Super Admin if you need help.",
-      "errorGeneric": "Something went wrong."
-    },
     "preferences": {
       "title": "Notification preferences",
       "subtitle": "Email and SMS for each event type. In-app notifications always show in the bell.",
@@ -947,7 +916,7 @@
       "settingsDescription": "SLA targets, business hours, internal email domains, and other configurables.",
       "settingsModule": "M8 — System Settings panel",
       "profileTitle": "My Profile",
-      "profileDescription": "Account info, password, 2FA, sessions, and notification preferences.",
+      "profileDescription": "Account info, password, sessions, and notification preferences.",
       "profileModule": "M14 — Profile / Account page"
     }
   },

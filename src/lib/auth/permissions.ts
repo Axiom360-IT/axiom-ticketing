@@ -114,12 +114,3 @@ export const CUSTOMER_PERMISSIONS: Permission[] = [
   "procurement.create",
 ];
 
-// Privileged permissions — holding any of these mandates 2FA enrolment (per PRD §5.13).
-export const PRIVILEGED_PERMISSIONS: Permission[] = [
-  "users.create",
-  "users.impersonate",
-  "users.unlock",
-  "roles.create",
-  "roles.update",
-  "roles.delete",
-];

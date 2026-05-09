@@ -19,10 +19,6 @@ import {
 // Application-specific user columns (language, hierarchy, soft-delete) are
 // added to the `users` table as additional columns; Better Auth tolerates
 // extra columns it doesn't recognise.
-//
-// 2FA secret + backup codes are stored plaintext in this MVP (Better Auth's
-// twoFactor plugin owns those columns). Field-level encryption for those
-// values is in BACKLOG (requires wrapping the plugin or a custom adapter).
 // ──────────────────────────────────────────────────────────────────────
 
 export const users = pgTable(
@@ -33,8 +29,6 @@ export const users = pgTable(
     emailVerified: boolean("email_verified").notNull().default(false),
     name: text("name").notNull(),
     image: text("image"),
-    // Required by Better Auth twoFactor plugin.
-    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     // ── Application-specific fields (not part of Better Auth's core) ──
     language: text("language").notNull().default("en"),
     // E.164-formatted phone (e.g. "+14165550123") for SMS notifications.
@@ -140,18 +134,6 @@ export const verifications = pgTable("verifications", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),
-});
-
-// Better Auth twoFactor plugin storage.
-// `secret` and `backup_codes` are plain text in this MVP — encryption-at-rest
-// is provided by Neon; field-level encryption is tracked in BACKLOG.md.
-export const twoFactors = pgTable("two_factors", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  secret: text("secret").notNull(),
-  backupCodes: text("backup_codes").notNull(),
 });
 
 // Better Auth passkey plugin storage.
