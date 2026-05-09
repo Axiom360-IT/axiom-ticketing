@@ -44,15 +44,19 @@ export function RateLimitForm({ settingKey, initial }: Props) {
     });
   }
 
+  // next-intl 4.x forbids `.` in message keys (it interprets them as
+  // nesting), so the canonical setting keys (e.g. `rate_limits.login`)
+  // are stored in the messages file with `.` replaced by `__`.
   type LabelKey = Parameters<typeof tLabels>[0];
   type FieldKey = Parameters<typeof tFields>[0];
+  const labelKey = settingKey.replace(/\./g, "__") as LabelKey;
 
   return (
     <form
       onSubmit={handleSubmit}
       className="space-y-3 px-3 py-3 rounded-md border border-zinc-200 dark:border-zinc-800"
     >
-      <div className="text-sm font-medium">{tLabels(settingKey as LabelKey)}</div>
+      <div className="text-sm font-medium">{tLabels(labelKey)}</div>
       <div className="grid sm:grid-cols-2 gap-3">
         {Object.entries(values).map(([fieldKey, current]) => (
           <div key={fieldKey} className="space-y-1.5">

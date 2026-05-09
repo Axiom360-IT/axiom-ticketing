@@ -56,7 +56,12 @@ export function PreferencesGrid({ initial }: Props) {
     });
   }
 
+  // next-intl 4.x forbids `.` in message keys, so the dotted event
+  // type ids (e.g. `ticket.assigned`) are stored under `__` variants.
   type EventLabel = Parameters<typeof tEvents>[0];
+  function labelKeyFor(eventType: string): EventLabel {
+    return eventType.replace(/\./g, "__") as EventLabel;
+  }
 
   return (
     <div className="space-y-3">
@@ -76,7 +81,7 @@ export function PreferencesGrid({ initial }: Props) {
                 className="border-t border-zinc-100 dark:border-zinc-800"
               >
                 <td className="py-2 pr-4">
-                  {tEvents(r.eventType as EventLabel)}
+                  {tEvents(labelKeyFor(r.eventType))}
                 </td>
                 <td className="py-2 pr-4">
                   <input
