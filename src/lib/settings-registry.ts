@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ACCENT_KEYS, GRADIENT_KEYS } from "./branding/presets";
 
 // Single source of truth for every settings key the UI is allowed to touch.
 // Each key maps to a Zod schema; the action layer validates the incoming
@@ -107,6 +108,15 @@ export const SETTING_SCHEMAS = {
     .positive()
     .max(100 * 1024 * 1024),
   "file_upload.allowed_mime_types": z.array(z.string().min(1).max(255)),
+
+  // Branding (public sign-in / submit pages). Atomic object so the
+  // four fields move together — no half-updated brand mid-render.
+  branding: z.object({
+    brandName: z.string().trim().min(1).max(40),
+    brandAccent: z.string().trim().max(20),
+    accentColor: z.enum(ACCENT_KEYS as unknown as [string, ...string[]]),
+    gradientPreset: z.enum(GRADIENT_KEYS as unknown as [string, ...string[]]),
+  }),
 
   // Virus scanning
   "virus_scan.enabled": z.boolean(),

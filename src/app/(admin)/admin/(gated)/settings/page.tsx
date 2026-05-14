@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandingForm } from "@/components/settings/branding-form";
 import { BusinessHoursForm } from "@/components/settings/business-hours-form";
 import { HolidaysList } from "@/components/settings/holidays-list";
 import { RateLimitForm } from "@/components/settings/rate-limit-form";
@@ -14,6 +15,7 @@ import {
 import { SlaTargetsForm } from "@/components/settings/sla-form";
 import { StringListForm } from "@/components/settings/string-list-form";
 import { loadSettingsSnapshot } from "@/app/actions/settings";
+import { DEFAULT_BRANDING, isAccentKey, isGradientKey } from "@/lib/branding/presets";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -37,7 +39,13 @@ const AUTH_RATE_LIMITS = [
   "rate_limits.authenticated.update_setting",
 ] as const;
 
-const SETTINGS_TABS = ["operations", "tickets", "email", "security"] as const;
+const SETTINGS_TABS = [
+  "operations",
+  "tickets",
+  "email",
+  "security",
+  "branding",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function num(v: unknown, fallback: number): number {
@@ -117,6 +125,7 @@ export default async function SettingsPage({
         <SettingsTabLink tab="tickets" active={tab === "tickets"} label={t("tabTickets")} />
         <SettingsTabLink tab="email" active={tab === "email"} label={t("tabEmail")} />
         <SettingsTabLink tab="security" active={tab === "security"} label={t("tabSecurity")} />
+        <SettingsTabLink tab="branding" active={tab === "branding"} label={t("tabBranding")} />
       </nav>
 
       {/* ── Operations ─────────────────────────────────────────────── */}
@@ -387,6 +396,44 @@ export default async function SettingsPage({
             </CardContent>
           </Card>
         </>
+      ) : null}
+
+      {/* ── Branding ───────────────────────────────────────────────── */}
+      {tab === "branding" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{(await getTranslations("settings.branding"))("title")}</CardTitle>
+            <CardDescription>
+              {(await getTranslations("settings.branding"))("subtitle")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BrandingForm
+              initial={(() => {
+                const raw = v["branding"];
+                const obj = raw && typeof raw === "object" && !Array.isArray(raw)
+                  ? (raw as Record<string, unknown>)
+                  : {};
+                return {
+                  brandName:
+                    typeof obj.brandName === "string" && obj.brandName.length > 0
+                      ? obj.brandName
+                      : DEFAULT_BRANDING.brandName,
+                  brandAccent:
+                    typeof obj.brandAccent === "string"
+                      ? obj.brandAccent
+                      : DEFAULT_BRANDING.brandAccent,
+                  accentColor: isAccentKey(obj.accentColor)
+                    ? obj.accentColor
+                    : DEFAULT_BRANDING.accentColor,
+                  gradientPreset: isGradientKey(obj.gradientPreset)
+                    ? obj.gradientPreset
+                    : DEFAULT_BRANDING.gradientPreset,
+                };
+              })()}
+            />
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

@@ -1,5 +1,9 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { getTranslations } from "next-intl/server";
+import { AuthShell } from "@/components/branding/auth-shell";
+import { loadBranding } from "@/lib/branding/load";
+import { ACCENT_CLASSES } from "@/lib/branding/presets";
 import { SubmissionForm } from "./submission-form";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
@@ -23,7 +27,8 @@ export async function generateMetadata() {
 
 export default async function SubmitPage() {
   const t = await getTranslations("tickets.submit");
-  const tCommon = await getTranslations("common");
+  const branding = await loadBranding();
+  const link = ACCENT_CLASSES[branding.accentColor].link;
 
   const session = await getSessionUser();
   let initialName = "";
@@ -39,26 +44,36 @@ export default async function SubmitPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-        <header className="mb-8 text-center">
-          <h1 className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+    <AuthShell branding={branding} width="wide">
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-zinc-900 dark:text-zinc-50">
             {t("title")}
           </h1>
-          <p className="text-zinc-600 dark:text-zinc-400">{t("subtitle")}</p>
-        </header>
-
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm p-6 sm:p-8">
-          <SubmissionForm
-            initialName={initialName}
-            initialEmail={initialEmail}
-          />
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {t("subtitle")}
+          </p>
         </div>
+        {/* Signed-in users see their identity confirmation; guests get
+            an inline nudge that signing in is an option. */}
+        {session ? (
+          <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900">
+            {t("signedInAs", { email: initialEmail })}
+          </span>
+        ) : (
+          <p className="shrink-0 text-xs sm:text-sm text-zinc-600 dark:text-zinc-400">
+            <span>{t("haveAccountPrompt")} </span>
+            <Link
+              href="/portal/sign-in"
+              className={`font-medium whitespace-nowrap ${link}`}
+            >
+              {t("haveAccountLink")}
+            </Link>
+          </p>
+        )}
+      </header>
 
-        <footer className="mt-8 text-center text-xs text-zinc-500">
-          {tCommon("appName")}
-        </footer>
-      </div>
-    </div>
+      <SubmissionForm initialName={initialName} initialEmail={initialEmail} />
+    </AuthShell>
   );
 }

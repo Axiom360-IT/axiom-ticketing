@@ -54,6 +54,16 @@
       "metaTitle": "Sign in — Axiom support",
       "title": "Sign in to your support portal",
       "subtitle": "We'll email you a one-time link.",
+      "panel": {
+        "title": "Support, on your terms.",
+        "subtitle": "Submit a ticket, track every update, and reply right from your inbox.",
+        "featureTrackTitle": "Track every ticket",
+        "featureTrackDescription": "See exactly where your request is — open, in progress, or resolved — in real time.",
+        "featureReplyTitle": "Reply from email or portal",
+        "featureReplyDescription": "Continue any thread by replying to the email, or come back to the portal to attach files.",
+        "featureFastTitle": "No password required",
+        "featureFastDescription": "We'll send a one-time link to your email. Click it and you're in — no password to remember."
+      },
       "emailLabel": "Email",
       "emailPlaceholder": "you@example.com",
       "submitMagic": "Email me a sign-in link",
@@ -92,7 +102,17 @@
       "submit": "Create account",
       "submitting": "Creating…",
       "alreadyHave": "Already have an account?",
-      "signInLink": "Sign in"
+      "signInLink": "Sign in",
+      "panel": {
+        "title": "Your support, in one place.",
+        "subtitle": "Create an account in seconds — no password, no hassle.",
+        "featureTrackTitle": "All your tickets, one inbox",
+        "featureTrackDescription": "Every request you submit lives in your portal, with full history and status.",
+        "featureFastTitle": "Sign in with one click",
+        "featureFastDescription": "We send you a magic link each time — nothing to remember, nothing to leak.",
+        "featureUpdatesTitle": "Updates as they happen",
+        "featureUpdatesDescription": "Email notifications when your ticket moves forward, with the option to reply right back."
+      }
     },
     "tickets": {
       "list": {
@@ -327,6 +347,9 @@
     "submit": {
       "title": "Submit a ticket",
       "subtitle": "Tell us what's wrong and a coordinator will route it to a technician.",
+      "haveAccountPrompt": "Already have an account?",
+      "haveAccountLink": "Sign in →",
+      "signedInAs": "Signed in as {email}",
       "fields": {
         "yourName": "Your name",
         "email": "Email",
@@ -861,7 +884,38 @@
       "tabOperations": "Operations",
       "tabTickets": "Tickets",
       "tabEmail": "Email",
-      "tabSecurity": "Security"
+      "tabSecurity": "Security",
+      "tabBranding": "Branding"
+    },
+    "branding": {
+      "title": "Brand identity",
+      "subtitle": "Wordmark, accent color, and background gradient used on sign-in and submit pages.",
+      "brandNameLabel": "Brand name",
+      "brandNameHint": "Main part of the wordmark, rendered in foreground color.",
+      "brandAccentLabel": "Accent suffix",
+      "brandAccentHint": "Optional suffix rendered in the accent color (e.g. \"360\").",
+      "accentColorLabel": "Accent color",
+      "gradientLabel": "Background gradient",
+      "previewLabel": "Preview",
+      "previewSubtitle": "How sign-in pages will look",
+      "accentOption": {
+        "blue": "Blue",
+        "indigo": "Indigo",
+        "violet": "Violet",
+        "emerald": "Emerald",
+        "amber": "Amber",
+        "rose": "Rose",
+        "slate": "Slate"
+      },
+      "gradientOption": {
+        "blue": "Blue wash",
+        "indigo": "Indigo wash",
+        "violet": "Violet wash",
+        "emerald": "Emerald wash",
+        "amber": "Amber wash",
+        "rose": "Rose wash",
+        "neutral": "Neutral"
+      }
     },
     "actions": {
       "save": "Save",
@@ -1250,8 +1304,8 @@
       "topbarNotificationsTitle": "Notification centre lands in M11"
     },
     "login": {
-      "title": "Sign in",
-      "subtitle": "Axiom360 Ticketing System",
+      "title": "Staff sign-in",
+      "subtitle": "Use your work email to access the admin console.",
       "email": "Email",
       "password": "Password",
       "showPassword": "Show password",
@@ -1259,7 +1313,17 @@
       "submit": "Sign in",
       "submitting": "Signing in…",
       "genericError": "Invalid email or password.",
-      "passwordSetSuccess": "Password set. Sign in below to continue."
+      "passwordSetSuccess": "Password set. Sign in below to continue.",
+      "panel": {
+        "title": "Run support that scales with your team.",
+        "subtitle": "Triage, route, and resolve — with audit trails, SLAs, and procurement built in.",
+        "featureQueueTitle": "One queue, every channel",
+        "featureQueueDescription": "Email, portal, and in-app tickets land in the same pipeline with deduping baked in.",
+        "featureSlaTitle": "SLAs you can trust",
+        "featureSlaDescription": "Business-hours-aware timers, breach alerts, and visible deadlines on every ticket.",
+        "featureGovernanceTitle": "Built for accountability",
+        "featureGovernanceDescription": "Role-aware permissions and an append-only audit log of every privileged action."
+      }
     },
     "setup": {
       "metaTitle": "Set your password — Axiom360",

@@ -1,25 +1,54 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getTranslations } from "next-intl/server";
+import { Inbox, ShieldCheck, Timer } from "lucide-react";
+import { AuthSplitShell } from "@/components/branding/auth-split-shell";
+import { loadBranding } from "@/lib/branding/load";
 import { LoginForm } from "./login-form";
+
+// noindex/nofollow — admin entry point shouldn't be in Google. Doesn't
+// stop attackers (bots discover it anyway) but reduces curious-visitor
+// noise and keeps the URL out of public search results.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage() {
   const t = await getTranslations("admin.login");
+  const tPanel = await getTranslations("admin.login.panel");
+  const branding = await loadBranding();
+
+  const features = [
+    {
+      icon: Inbox,
+      title: tPanel("featureQueueTitle"),
+      description: tPanel("featureQueueDescription"),
+    },
+    {
+      icon: Timer,
+      title: tPanel("featureSlaTitle"),
+      description: tPanel("featureSlaDescription"),
+    },
+    {
+      icon: ShieldCheck,
+      title: tPanel("featureGovernanceTitle"),
+      description: tPanel("featureGovernanceDescription"),
+    },
+  ];
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
-      <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-8">
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-            {t("title")}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {t("subtitle")}
-          </p>
-        </header>
-        <Suspense fallback={<LoginFormFallback />}>
-          <LoginForm />
-        </Suspense>
-      </div>
-    </div>
+    <AuthSplitShell
+      branding={branding}
+      panelTitle={tPanel("title")}
+      panelSubtitle={tPanel("subtitle")}
+      features={features}
+      formTitle={t("title")}
+      formSubtitle={t("subtitle")}
+    >
+      <Suspense fallback={<LoginFormFallback />}>
+        <LoginForm />
+      </Suspense>
+    </AuthSplitShell>
   );
 }
 
