@@ -6,8 +6,6 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-export const dynamic = "force-dynamic";
-
 export async function generateMetadata() {
   const t = await getTranslations("tickets.createOnBehalf");
   return { title: t("title") };

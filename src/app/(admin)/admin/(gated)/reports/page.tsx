@@ -21,8 +21,6 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-export const dynamic = "force-dynamic";
-
 export default async function ReportsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
@@ -76,7 +74,7 @@ export default async function ReportsPage() {
           </p>
         </div>
         {canExport ? (
-          <Button render={<Link href="/api/reports/export" prefetch={false} />}>
+          <Button nativeButton={false} render={<Link href="/api/reports/export" prefetch={false} />}>
             {t("page.exportCsv")}
           </Button>
         ) : null}

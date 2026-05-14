@@ -15,19 +15,7 @@ import {
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
-}
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1h
 

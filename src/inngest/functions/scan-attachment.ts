@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
 import { tickets } from "@/lib/db/schema/tickets";
+import { getAppUrl } from "@/lib/request";
 import { deleteObject, fetchObject } from "@/lib/storage/signed-urls";
 import { scanBytes } from "@/lib/storage/virus-scan";
 import { inngest } from "../client";
@@ -127,8 +128,7 @@ export const scanAttachment = inngest.createFunction(
           if (ticket.assignedToId) recipientUserIds.add(ticket.assignedToId);
 
           if (recipientUserIds.size > 0) {
-            const appUrl =
-              process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+            const appUrl = getAppUrl();
             const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
             await inngest.send({
               name: "notification/dispatch",

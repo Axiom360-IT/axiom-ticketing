@@ -7,6 +7,7 @@ import {
 } from "@/lib/email/inbound-payload";
 import { verifySvixSignature } from "@/lib/email/webhook-signature";
 import { checkRateLimit } from "@/lib/ratelimit";
+import { clientIp } from "@/lib/request";
 import { inngest } from "@/inngest/client";
 
 // Resend inbound webhook entry point. Configure the Resend dashboard to
@@ -50,10 +51,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Flood protection — only counted after signature verification so bad
   // actors can't drain the budget with junk requests. 1000/min ceiling.
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "global";
+  const ip = clientIp(request.headers, "global");
   const limit = await checkRateLimit("inboundEmail", `inbound:ip:${ip}`);
   if (!limit.allowed) {
     const retryAfter = Math.max(

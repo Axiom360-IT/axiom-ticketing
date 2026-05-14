@@ -11,8 +11,6 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 
-export const dynamic = "force-dynamic";
-
 type HierarchyNode = {
   id: string;
   name: string;

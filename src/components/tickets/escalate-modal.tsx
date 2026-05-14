@@ -14,11 +14,27 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   deescalateTicket,
   escalateTicket,
 } from "@/app/actions/tickets";
+
+const ESCALATION_REASONS = [
+  "beyond_scope",
+  "requires_access",
+  "critical_impact",
+  "vendor_involvement",
+  "other",
+] as const;
+type EscalationReason = (typeof ESCALATION_REASONS)[number];
 
 type EscalateModalProps = {
   ticketId: string;
@@ -33,25 +49,32 @@ export function EscalateModal({
 }: EscalateModalProps) {
   const router = useRouter();
   const tModal = useTranslations("tickets.escalateModal");
+  const tReason = useTranslations("tickets.escalationReason");
   const tActions = useTranslations("tickets.actions");
   const tCommon = useTranslations("common");
 
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<EscalationReason | "">("");
+  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleEscalate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (reason.trim().length < 10) {
-      setError(tModal("minLengthError"));
+    if (!reason) {
+      setError(tModal("reasonRequired"));
       return;
     }
     startTransition(async () => {
       try {
-        await escalateTicket(ticketId, reason.trim());
+        await escalateTicket(
+          ticketId,
+          reason,
+          note.trim() || undefined,
+        );
         setReason("");
+        setNote("");
         setOpen(false);
         router.refresh();
       } catch (err) {
@@ -75,11 +98,7 @@ export function EscalateModal({
   if (isEscalated) {
     if (!canDeescalate) return null;
     return (
-      <Button
-        variant="outline"
-        onClick={handleDeescalate}
-        disabled={isPending}
-      >
+      <Button variant="outline" onClick={handleDeescalate} disabled={isPending}>
         {isPending ? tActions("deescalatePending") : tActions("deescalate")}
       </Button>
     );
@@ -99,15 +118,44 @@ export function EscalateModal({
             </DialogDescription>
           </DialogHeader>
 
-          <Textarea
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={4}
-            placeholder={tModal("reasonPlaceholder")}
-            maxLength={1000}
-            disabled={isPending}
-            autoFocus
-          />
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-600 dark:text-zinc-400">
+              {tModal("reasonLabel")}
+            </label>
+            <Select
+              value={reason}
+              onValueChange={(v) => setReason((v ?? "") as EscalationReason | "")}
+              disabled={isPending}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={tModal("reasonPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {ESCALATION_REASONS.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {tReason(r)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-600 dark:text-zinc-400">
+              {tModal("noteLabel")}
+            </label>
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder={tModal("notePlaceholder")}
+              maxLength={1000}
+              disabled={isPending}
+            />
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {note.length}/1000
+            </p>
+          </div>
 
           {error ? (
             <div
@@ -122,7 +170,7 @@ export function EscalateModal({
             <DialogClose render={<Button type="button" variant="outline" />}>
               {tCommon("cancel")}
             </DialogClose>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || !reason}>
               {isPending ? tActions("escalatePending") : tActions("escalate")}
             </Button>
           </DialogFooter>

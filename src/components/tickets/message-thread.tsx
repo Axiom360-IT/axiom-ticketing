@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Download, FileText, Image as ImageIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MessageBody } from "@/components/tickets/message-body";
+import { formatBytes, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getDownloadUrl } from "@/app/actions/attachments";
 
@@ -21,6 +23,7 @@ export type ThreadMessage = {
   authorEmail: string;
   authorType: "agent" | "customer" | "system";
   body: string;
+  bodyFormat: string;
   channel: string;
   isInternalNote: boolean;
   isResolutionNote: boolean;
@@ -103,9 +106,11 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
                   })}
                 </span>
               </div>
-              <div className="mt-2 text-sm whitespace-pre-wrap break-words">
-                {m.body}
-              </div>
+              <MessageBody
+                body={m.body}
+                bodyFormat={m.bodyFormat}
+                className="mt-2"
+              />
               {m.attachments && m.attachments.length > 0 ? (
                 <AttachmentList items={m.attachments} />
               ) : null}
@@ -243,13 +248,3 @@ function AttachmentChip({ attachment }: { attachment: ThreadAttachment }) {
   );
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}

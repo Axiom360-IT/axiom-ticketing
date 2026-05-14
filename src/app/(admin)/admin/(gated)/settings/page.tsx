@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +17,7 @@ import { loadSettingsSnapshot } from "@/app/actions/settings";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
-
-export const dynamic = "force-dynamic";
+import { cn } from "@/lib/utils";
 
 const PUBLIC_RATE_LIMITS = [
   "rate_limits.public_submit",
@@ -36,6 +36,9 @@ const AUTH_RATE_LIMITS = [
   "rate_limits.authenticated.create_role",
   "rate_limits.authenticated.update_setting",
 ] as const;
+
+const SETTINGS_TABS = ["operations", "tickets", "email", "security"] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function num(v: unknown, fallback: number): number {
   return typeof v === "number" ? v : fallback;
@@ -60,7 +63,13 @@ function rateLimitObj(v: unknown): Record<string, number> {
   return {};
 }
 
-export default async function SettingsPage() {
+type SearchParams = Promise<{ tab?: string }>;
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
   if (
@@ -68,6 +77,13 @@ export default async function SettingsPage() {
   ) {
     redirect("/admin");
   }
+
+  const sp = await searchParams;
+  const tab: SettingsTab = (SETTINGS_TABS as readonly string[]).includes(
+    sp.tab ?? "",
+  )
+    ? (sp.tab as SettingsTab)
+    : "operations";
 
   const snapshot = await loadSettingsSnapshot();
   const v = snapshot.values;
@@ -93,255 +109,310 @@ export default async function SettingsPage() {
         </p>
       </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tBh("title")}</CardTitle>
-          <CardDescription>{tBh("subtitle")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <BusinessHoursForm
-            initial={{
-              timezone: str(v["business_hours.timezone"], "UTC"),
-              startHour: num(v["business_hours.start_hour"], 9),
-              endHour: num(v["business_hours.end_hour"], 18),
-              workingDays: strArr(v["business_hours.working_days"]),
-            }}
-          />
-        </CardContent>
-      </Card>
+      <nav
+        aria-label={t("title")}
+        className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800 -mt-2"
+      >
+        <SettingsTabLink tab="operations" active={tab === "operations"} label={t("tabOperations")} />
+        <SettingsTabLink tab="tickets" active={tab === "tickets"} label={t("tabTickets")} />
+        <SettingsTabLink tab="email" active={tab === "email"} label={t("tabEmail")} />
+        <SettingsTabLink tab="security" active={tab === "security"} label={t("tabSecurity")} />
+      </nav>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tSla("title")}</CardTitle>
-          <CardDescription>{tSla("subtitle")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SlaTargetsForm
-            initial={{
-              critical: {
-                responseMinutes: num(v["sla.critical.response_minutes"], 60),
-                resolveMinutes: num(v["sla.critical.resolve_minutes"], 240),
-                respectBusinessHours: bool(
-                  v["sla.critical.respect_business_hours"],
-                  false,
-                ),
-              },
-              high: {
-                responseMinutes: num(v["sla.high.response_minutes"], 240),
-                resolveMinutes: num(v["sla.high.resolve_minutes"], 1440),
-                respectBusinessHours: bool(
-                  v["sla.high.respect_business_hours"],
-                  true,
-                ),
-              },
-              medium: {
-                responseMinutes: num(v["sla.medium.response_minutes"], 480),
-                resolveMinutes: num(v["sla.medium.resolve_minutes"], 2880),
-                respectBusinessHours: bool(
-                  v["sla.medium.respect_business_hours"],
-                  true,
-                ),
-              },
-              low: {
-                responseMinutes: num(v["sla.low.response_minutes"], 1440),
-                resolveMinutes: num(v["sla.low.resolve_minutes"], 7200),
-                respectBusinessHours: bool(
-                  v["sla.low.respect_business_hours"],
-                  true,
-                ),
-              },
-            }}
-          />
-        </CardContent>
-      </Card>
+      {/* ── Operations ─────────────────────────────────────────────── */}
+      {tab === "operations" ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tBh("title")}</CardTitle>
+              <CardDescription>{tBh("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BusinessHoursForm
+                initial={{
+                  timezone: str(v["business_hours.timezone"], "UTC"),
+                  startHour: num(v["business_hours.start_hour"], 9),
+                  endHour: num(v["business_hours.end_hour"], 18),
+                  workingDays: strArr(v["business_hours.working_days"]),
+                }}
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tHol("title")}</CardTitle>
-          <CardDescription>{tHol("subtitle")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <HolidaysList initial={snapshot.holidays} />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tSla("title")}</CardTitle>
+              <CardDescription>{tSla("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SlaTargetsForm
+                initial={{
+                  critical: {
+                    responseMinutes: num(v["sla.critical.response_minutes"], 60),
+                    resolveMinutes: num(v["sla.critical.resolve_minutes"], 240),
+                    respectBusinessHours: bool(
+                      v["sla.critical.respect_business_hours"],
+                      false,
+                    ),
+                  },
+                  high: {
+                    responseMinutes: num(v["sla.high.response_minutes"], 240),
+                    resolveMinutes: num(v["sla.high.resolve_minutes"], 1440),
+                    respectBusinessHours: bool(
+                      v["sla.high.respect_business_hours"],
+                      true,
+                    ),
+                  },
+                  medium: {
+                    responseMinutes: num(v["sla.medium.response_minutes"], 480),
+                    resolveMinutes: num(v["sla.medium.resolve_minutes"], 2880),
+                    respectBusinessHours: bool(
+                      v["sla.medium.respect_business_hours"],
+                      true,
+                    ),
+                  },
+                  low: {
+                    responseMinutes: num(v["sla.low.response_minutes"], 1440),
+                    resolveMinutes: num(v["sla.low.resolve_minutes"], 7200),
+                    respectBusinessHours: bool(
+                      v["sla.low.respect_business_hours"],
+                      true,
+                    ),
+                  },
+                }}
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tDom("title")}</CardTitle>
-          <CardDescription>{tDom("subtitle")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <StringListForm
-            settingKey="internal_email_domains"
-            initial={strArr(v["internal_email_domains"])}
-            i18nNamespace="settings.domains"
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tHol("title")}</CardTitle>
+              <CardDescription>{tHol("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <HolidaysList initial={snapshot.holidays} />
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tProc("title")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <NumberSettingForm
-            settingKey="procurement_approval_threshold"
-            label={tProc("thresholdLabel")}
-            hint={tProc("thresholdHint")}
-            initial={num(v["procurement_approval_threshold"], 0)}
-            min={0}
-            step={0.01}
-          />
-        </CardContent>
-      </Card>
+      {/* ── Tickets ────────────────────────────────────────────────── */}
+      {tab === "tickets" ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tRw("title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <NumberSettingForm
+                settingKey="customer_response_window_hours"
+                label={tRw("label")}
+                initial={num(v["customer_response_window_hours"], 24)}
+                min={1}
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tRw("title")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <NumberSettingForm
-            settingKey="customer_response_window_hours"
-            label={tRw("label")}
-            initial={num(v["customer_response_window_hours"], 24)}
-            min={1}
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tProc("title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <NumberSettingForm
+                settingKey="procurement_approval_threshold"
+                label={tProc("thresholdLabel")}
+                hint={tProc("thresholdHint")}
+                initial={num(v["procurement_approval_threshold"], 0)}
+                min={0}
+                step={0.01}
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tEm("title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <StringSettingForm
-            settingKey="support_email"
-            label={tEm("supportEmail")}
-            initial={str(v["support_email"], "")}
-            type="email"
-          />
-          <StringSettingForm
-            settingKey="inbound_email_domain"
-            label={tEm("inboundDomain")}
-            hint={tEm("inboundDomainHint")}
-            initial={str(v["inbound_email_domain"], "")}
-            readOnly={Boolean(v["inbound_email_domain"])}
-          />
-          <StringSettingForm
-            settingKey="default_sender_name"
-            label={tEm("defaultSenderName")}
-            initial={str(v["default_sender_name"], "")}
-            maxLength={120}
-          />
-          <StringSettingForm
-            settingKey="default_sender_email"
-            label={tEm("defaultSenderEmail")}
-            initial={str(v["default_sender_email"], "")}
-            type="email"
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tDom("title")}</CardTitle>
+              <CardDescription>{tDom("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <StringListForm
+                settingKey="internal_email_domains"
+                initial={strArr(v["internal_email_domains"])}
+                i18nNamespace="settings.domains"
+              />
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tEm("allowlistTitle")}</CardTitle>
-          <CardDescription>{tEm("allowlistDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <BooleanSettingForm
-            settingKey="inbound_sender_allowlist_only"
-            label={tEm("allowlistToggle")}
-            initial={bool(v["inbound_sender_allowlist_only"], false)}
-          />
-        </CardContent>
-      </Card>
+      {/* ── Email ──────────────────────────────────────────────────── */}
+      {tab === "email" ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tEm("title")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StringSettingForm
+                settingKey="support_email"
+                label={tEm("supportEmail")}
+                initial={str(v["support_email"], "")}
+                type="email"
+              />
+              <StringSettingForm
+                settingKey="inbound_email_domain"
+                label={tEm("inboundDomain")}
+                hint={tEm("inboundDomainHint")}
+                initial={str(v["inbound_email_domain"], "")}
+                readOnly={Boolean(v["inbound_email_domain"])}
+              />
+              <StringSettingForm
+                settingKey="default_sender_name"
+                label={tEm("defaultSenderName")}
+                initial={str(v["default_sender_name"], "")}
+                maxLength={120}
+              />
+              <StringSettingForm
+                settingKey="default_sender_email"
+                label={tEm("defaultSenderEmail")}
+                initial={str(v["default_sender_email"], "")}
+                type="email"
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tFu("title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <NumberSettingForm
-            settingKey="file_upload.max_size_bytes"
-            label={tFu("maxSizeLabel")}
-            hint={tFu("maxSizeHint")}
-            initial={num(v["file_upload.max_size_bytes"], 10_485_760)}
-            min={1}
-          />
-          <div>
-            <p className="text-sm font-medium mb-1.5">
-              {tFu("mimeTypesLabel")}
-            </p>
-            <StringListForm
-              settingKey="file_upload.allowed_mime_types"
-              initial={strArr(v["file_upload.allowed_mime_types"])}
-              i18nNamespace="settings.fileUpload"
-            />
-          </div>
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tEm("allowlistTitle")}</CardTitle>
+              <CardDescription>{tEm("allowlistDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BooleanSettingForm
+                settingKey="inbound_sender_allowlist_only"
+                label={tEm("allowlistToggle")}
+                initial={bool(v["inbound_sender_allowlist_only"], false)}
+              />
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tVs("title")}</CardTitle>
-          <CardDescription>{tVs("description")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <BooleanSettingForm
-            settingKey="virus_scan.enabled"
-            label={tVs("enabled")}
-            initial={bool(v["virus_scan.enabled"], false)}
-          />
-          <SelectSettingForm
-            settingKey="virus_scan.provider"
-            label={tVs("providerLabel")}
-            hint={tVs("providerHint")}
-            initial={str(v["virus_scan.provider"], "disabled")}
-            options={[
-              { value: "disabled", label: tVs("providerDisabled") },
-              { value: "eicar", label: tVs("providerEicar") },
-              { value: "clamav-rest", label: tVs("providerClamavRest") },
-            ]}
-          />
-          <StringSettingForm
-            settingKey="virus_scan.endpoint"
-            label={tVs("endpointLabel")}
-            hint={tVs("endpointHint")}
-            initial={str(v["virus_scan.endpoint"], "")}
-            optional
-          />
-        </CardContent>
-      </Card>
+      {/* ── Security ───────────────────────────────────────────────── */}
+      {tab === "security" ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tFu("title")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <NumberSettingForm
+                settingKey="file_upload.max_size_bytes"
+                label={tFu("maxSizeLabel")}
+                hint={tFu("maxSizeHint")}
+                initial={num(v["file_upload.max_size_bytes"], 10_485_760)}
+                min={1}
+              />
+              <div>
+                <p className="text-sm font-medium mb-1.5">
+                  {tFu("mimeTypesLabel")}
+                </p>
+                <StringListForm
+                  settingKey="file_upload.allowed_mime_types"
+                  initial={strArr(v["file_upload.allowed_mime_types"])}
+                  i18nNamespace="settings.fileUpload"
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tRl("publicTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {PUBLIC_RATE_LIMITS.map((k) => (
-            <RateLimitForm
-              key={k}
-              settingKey={k}
-              initial={rateLimitObj(v[k])}
-            />
-          ))}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tVs("title")}</CardTitle>
+              <CardDescription>{tVs("description")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <BooleanSettingForm
+                settingKey="virus_scan.enabled"
+                label={tVs("enabled")}
+                initial={bool(v["virus_scan.enabled"], false)}
+              />
+              <SelectSettingForm
+                settingKey="virus_scan.provider"
+                label={tVs("providerLabel")}
+                hint={tVs("providerHint")}
+                initial={str(v["virus_scan.provider"], "disabled")}
+                options={[
+                  { value: "disabled", label: tVs("providerDisabled") },
+                  { value: "eicar", label: tVs("providerEicar") },
+                  { value: "clamav-rest", label: tVs("providerClamavRest") },
+                ]}
+              />
+              <StringSettingForm
+                settingKey="virus_scan.endpoint"
+                label={tVs("endpointLabel")}
+                hint={tVs("endpointHint")}
+                initial={str(v["virus_scan.endpoint"], "")}
+                optional
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{tRl("authTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {AUTH_RATE_LIMITS.map((k) => (
-            <RateLimitForm
-              key={k}
-              settingKey={k}
-              initial={rateLimitObj(v[k])}
-            />
-          ))}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{tRl("publicTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {PUBLIC_RATE_LIMITS.map((k) => (
+                <RateLimitForm
+                  key={k}
+                  settingKey={k}
+                  initial={rateLimitObj(v[k])}
+                />
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tRl("authTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {AUTH_RATE_LIMITS.map((k) => (
+                <RateLimitForm
+                  key={k}
+                  settingKey={k}
+                  initial={rateLimitObj(v[k])}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function SettingsTabLink({
+  tab,
+  active,
+  label,
+}: {
+  tab: SettingsTab;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={`/admin/settings?tab=${tab}`}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+        active
+          ? "border-blue-600 text-blue-700 dark:border-blue-500 dark:text-blue-400"
+          : "border-transparent text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700",
+      )}
+    >
+      {label}
+    </Link>
   );
 }

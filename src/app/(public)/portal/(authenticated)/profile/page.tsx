@@ -1,0 +1,76 @@
+import type { Metadata } from "next";
+import { eq } from "drizzle-orm";
+import { getTranslations } from "next-intl/server";
+import { AvatarUpload } from "@/components/customer/avatar-upload";
+import { CustomerNotificationPrefs } from "@/components/customer/customer-notification-prefs";
+import { CustomerProfileForm } from "@/components/customer/customer-profile-form";
+import {
+  listMyNotificationPreferences,
+} from "@/app/actions/profile";
+import { requireSessionUser } from "@/lib/auth/session";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
+import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("portal.profile");
+  return { title: t("metaTitle") };
+}
+
+export default async function PortalProfilePage() {
+  const user = await requireSessionUser();
+  const [profile] = await db
+    .select({
+      name: users.name,
+      email: users.email,
+      language: users.language,
+      image: users.image,
+    })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  const prefs = await listMyNotificationPreferences();
+  // image stores the R2 storage key; generate a 1-hour signed URL so the
+  // browser can cache it for the session.
+  const avatarUrl = profile?.image
+    ? await getAvatarSignedUrl(profile.image)
+    : null;
+  const t = await getTranslations("portal.profile");
+  const tNotifs = await getTranslations("portal.profile.notifications");
+
+  return (
+    <section className="max-w-3xl mx-auto py-10 px-4 space-y-10">
+      <div>
+        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          {t("subtitle")}
+        </p>
+      </div>
+
+      <AvatarUpload
+        name={profile?.name ?? ""}
+        currentAvatarUrl={avatarUrl}
+      />
+
+      <CustomerProfileForm
+        initial={{
+          name: profile?.name ?? "",
+          email: profile?.email ?? "",
+          language: profile?.language ?? "en",
+        }}
+      />
+
+      <div>
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          {tNotifs("title")}
+        </h2>
+        <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+          {tNotifs("subtitle")}
+        </p>
+        <CustomerNotificationPrefs initial={prefs} />
+      </div>
+    </section>
+  );
+}

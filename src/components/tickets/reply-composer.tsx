@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { FileText, Lock, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { addInternalNote, replyToTicket } from "@/app/actions/tickets";
 import {
   confirmUpload,
   generateUploadUrl,
 } from "@/app/actions/attachments";
+import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   isAllowedMimeType,
@@ -18,6 +19,16 @@ import {
 } from "@/lib/storage/mime";
 
 const MAX_FILES = 5;
+
+// Naive client-side empty check on HTML strings — server-side
+// `sanitizeMessageHtml` + `htmlToPlainText` is the authoritative gate;
+// this just prevents the submit button activating for an empty editor.
+function isHtmlEmpty(html: string): boolean {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim().length === 0;
+}
 
 type ReplyComposerProps = {
   ticketId: string;
@@ -177,8 +188,7 @@ export function ReplyComposer({
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    const trimmed = body.trim();
-    if (trimmed.length === 0) {
+    if (isHtmlEmpty(body)) {
       setError(tReply("errorEmpty"));
       return;
     }
@@ -189,10 +199,11 @@ export function ReplyComposer({
 
     startTransition(async () => {
       try {
+        // Server sanitizes the HTML; we send the editor's raw output.
         if (internal) {
-          await addInternalNote(ticketId, trimmed, readyIds);
+          await addInternalNote(ticketId, body, readyIds);
         } else {
-          await replyToTicket(ticketId, trimmed, readyIds);
+          await replyToTicket(ticketId, body, readyIds);
         }
         setBody("");
         setIsInternal(false);
@@ -211,7 +222,7 @@ export function ReplyComposer({
   }
 
   const submitDisabled =
-    isSubmitting || body.trim().length === 0 || hasUploadingFile;
+    isSubmitting || isHtmlEmpty(body) || hasUploadingFile;
 
   return (
     <form
@@ -222,19 +233,18 @@ export function ReplyComposer({
           "bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900",
       )}
     >
-      <Textarea
+      <RichTextEditor
         value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={5}
+        onChange={setBody}
         placeholder={
           internal ? tReply("internalPlaceholder") : tReply("placeholder")
         }
-        maxLength={10000}
         disabled={isSubmitting}
         className={cn(
           internal &&
             "bg-amber-50/60 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800",
         )}
+        minHeight={140}
       />
 
       {pendingFiles.length > 0 ? (
@@ -256,7 +266,7 @@ export function ReplyComposer({
               </span>
               <span className="text-[10px] uppercase tracking-wide shrink-0">
                 {p.status === "uploading"
-                  ? tAtt("uploading", { fileName: "" }).trim().replace(":", "")
+                  ? tAtt("uploadingShort")
                   : p.status === "confirming"
                     ? "Verifying…"
                     : p.status === "ready"
@@ -350,8 +360,3 @@ export function ReplyComposer({
   );
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}

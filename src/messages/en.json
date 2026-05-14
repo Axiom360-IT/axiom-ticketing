@@ -12,7 +12,187 @@
     "yes": "Yes",
     "no": "No",
     "search": "Search",
-    "actions": "Actions"
+    "actions": "Actions",
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page}",
+      "rowsPerPage": "Rows per page"
+    },
+    "richText": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "bulletList": "Bulleted list",
+      "orderedList": "Numbered list",
+      "link": "Insert link",
+      "linkPrompt": "Enter the URL (https or mailto):"
+    },
+    "view": "View",
+    "edit": "Edit",
+    "assign": "Assign",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "openMenu": "Open menu",
+    "deleteConfirmTitle": "Delete this item?",
+    "deleteConfirmBody": "This action cannot be undone.",
+    "typeToConfirm": "Type {value} to confirm"
+  },
+  "portal": {
+    "guest": {
+      "signInLink": "Have an account? Sign in",
+      "footerHint": "You're using a one-click link from your confirmation email. Replies are recorded against this ticket.",
+      "viewingAs": "Viewing as {email}"
+    },
+    "shell": {
+      "signedInAs": "Signed in as {email}",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…",
+      "myTickets": "My tickets",
+      "profile": "Profile"
+    },
+    "signIn": {
+      "metaTitle": "Sign in — Axiom support",
+      "title": "Sign in to your support portal",
+      "subtitle": "We'll email you a one-time link.",
+      "emailLabel": "Email",
+      "emailPlaceholder": "you@example.com",
+      "submitMagic": "Email me a sign-in link",
+      "submittingMagic": "Sending…",
+      "usePassword": "Use a password instead",
+      "useMagic": "Use a sign-in link instead",
+      "passwordLabel": "Password",
+      "submitPassword": "Sign in",
+      "submittingPassword": "Signing in…",
+      "noAccount": "Don't have an account?",
+      "signUpLink": "Create one",
+      "errors": {
+        "invalidEmail": "Enter a valid email address.",
+        "tooManyByEmail": "Too many sign-in requests for this email. Try again later.",
+        "tooManyByIp": "Too many sign-in requests from your network. Try again later.",
+        "expired": "That sign-in link expired. Request a new one.",
+        "missing": "That sign-in link is invalid.",
+        "invalidCredentials": "Invalid email or password."
+      }
+    },
+    "signInSent": {
+      "metaTitle": "Check your email — Axiom support",
+      "title": "Check your email",
+      "body": "We sent a sign-in link to {email}. The link expires in 10 minutes.",
+      "resend": "Send another link",
+      "back": "Back to sign in"
+    },
+    "signUp": {
+      "metaTitle": "Create your portal — Axiom support",
+      "title": "Create your support portal",
+      "subtitle": "Sign up with your email — no password required.",
+      "nameLabel": "Your name",
+      "namePlaceholder": "Jane Doe",
+      "emailLabel": "Email",
+      "emailPlaceholder": "you@example.com",
+      "submit": "Create account",
+      "submitting": "Creating…",
+      "alreadyHave": "Already have an account?",
+      "signInLink": "Sign in"
+    },
+    "tickets": {
+      "list": {
+        "title": "My tickets",
+        "subtitle": "Tickets you've submitted to our team.",
+        "newTicket": "New ticket",
+        "empty": "You haven't submitted any tickets yet.",
+        "createFirst": "Submit your first ticket",
+        "lastUpdated": "Updated {when}",
+        "openedAt": "Opened {when}"
+      },
+      "detail": {
+        "metaTitle": "{ticketNumber} — Axiom support",
+        "openedAt": "Opened {when}",
+        "back": "Back to tickets",
+        "closedNotice": "This ticket is closed. Submit a new ticket if you need more help.",
+        "noMessages": "No messages yet."
+      },
+      "new": {
+        "metaTitle": "New ticket — Axiom support",
+        "title": "Submit a ticket",
+        "subtitle": "Tell us what's wrong and we'll route it to the right team.",
+        "subjectLabel": "Subject",
+        "subjectPlaceholder": "Brief summary of the problem",
+        "categoryLabel": "Category",
+        "categoryPlaceholder": "Select category",
+        "priorityLabel": "Priority",
+        "priorityPlaceholder": "Select priority",
+        "descriptionLabel": "Description",
+        "descriptionPlaceholder": "What happened? What did you expect to happen? Anything you've tried?",
+        "submit": "Submit ticket",
+        "submitting": "Submitting…",
+        "errors": {
+          "tooMany": "You've reached today's ticket limit. Try again tomorrow."
+        }
+      },
+      "reply": {
+        "label": "Reply",
+        "placeholder": "Type your reply…",
+        "submit": "Send reply",
+        "submitting": "Sending…",
+        "closedNotice": "You can't reply to a closed ticket."
+      },
+      "thread": {
+        "you": "You",
+        "agent": "Support team",
+        "system": "System"
+      }
+    },
+    "profile": {
+      "metaTitle": "Profile — Axiom support",
+      "title": "Profile",
+      "subtitle": "Update your details and notification preferences.",
+      "avatar": {
+        "avatarAlt": "{name}'s profile picture",
+        "fileInputLabel": "Choose avatar image",
+        "upload": "Upload picture",
+        "change": "Change picture",
+        "uploading": "Uploading…",
+        "remove": "Remove",
+        "hint": "PNG, JPEG, GIF, or WEBP — up to {maxMb} MB.",
+        "errorUnsupportedType": "Use a PNG, JPEG, GIF, or WEBP image.",
+        "errorTooLarge": "Image is too large — max {maxMb} MB.",
+        "errorUploadFailed": "Upload failed. Please try again."
+      },
+      "nameLabel": "Name",
+      "emailLabel": "Email",
+      "phoneLabel": "Phone (for SMS)",
+      "phonePlaceholder": "+14165550123",
+      "languageLabel": "Language",
+      "languageOptions": {
+        "en": "English"
+      },
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saved": "Profile updated.",
+      "notifications": {
+        "title": "Notification preferences",
+        "subtitle": "Choose how you'd like to hear from us about your tickets.",
+        "emailColumn": "Email",
+        "smsColumn": "SMS",
+        "events": {
+          "ticket__assigned": "When my ticket is assigned",
+          "ticket__customer_replied": "When my ticket gets a reply"
+        }
+      },
+      "sessions": {
+        "title": "Active sessions",
+        "subtitle": "Sign out from other devices you don't recognize.",
+        "current": "This device",
+        "revoke": "Sign out",
+        "revoking": "Signing out…"
+      }
+    },
+    "errors": {
+      "title": "Something went wrong",
+      "description": "We hit an unexpected error loading your portal.",
+      "tryAgain": "Try again",
+      "ticketNotFound": "We couldn't find that ticket."
+    }
   },
   "errors": {
     "validation": "Please check the form for errors.",
@@ -20,7 +200,23 @@
     "rateLimited": "Too many requests. Try again in {minutes} minutes.",
     "unexpected": "Something went wrong. Please try again.",
     "notFound": "Not found.",
-    "unauthenticated": "Please sign in to continue."
+    "unauthenticated": "Please sign in to continue.",
+    "boundary": {
+      "title": "Something went wrong",
+      "description": "An unexpected error interrupted this page. The team has been notified.",
+      "tryAgain": "Try again",
+      "goHome": "Go to home"
+    },
+    "admin": {
+      "title": "Something went wrong",
+      "description": "We hit an unexpected error loading this page.",
+      "tryAgain": "Try again"
+    },
+    "notFoundPage": {
+      "title": "Page not found",
+      "description": "We couldn't find the page you're looking for.",
+      "goHome": "Go to home"
+    }
   },
   "forms": {
     "required": "This field is required.",
@@ -52,10 +248,12 @@
       "columns": {
         "ticket": "Ticket",
         "subject": "Subject",
+        "category": "Category",
         "status": "Status",
         "priority": "Priority",
         "customer": "Customer",
         "assignee": "Assignee",
+        "created": "Created",
         "updated": "Updated"
       },
       "unassigned": "Unassigned",
@@ -173,16 +371,33 @@
       "title": "Resolve ticket",
       "description": "Describe what fixed the issue. The note is stored on the ticket and sent to the customer with their CSAT request.",
       "placeholder": "Resolution details (minimum 10 characters)…",
+      "noteLabel": "Resolution note",
       "minLengthError": "Resolution note must be at least 10 characters.",
+      "skipCheckbox": "Skip resolution note (edge case)",
+      "skipCheckboxHint": "For duplicates, customer cancellations, or similar — the reason is logged in the audit trail.",
+      "skipDescription": "No resolution note will be sent to the customer. Briefly explain why this ticket can be resolved without one.",
+      "skipPlaceholder": "Reason for skipping (e.g., duplicate of AX-0034, customer cancelled)…",
+      "skipReasonLabel": "Skip reason",
+      "skipReasonMinError": "Skip reason must be at least 10 characters.",
       "genericError": "Failed to resolve ticket."
     },
     "escalateModal": {
       "escalateTitle": "Escalate ticket",
       "escalateDescription": "The ticket stays assigned to you. IT Director and Coordinator are notified to review.",
-      "reasonPlaceholder": "Why does this need senior review? (minimum 10 characters)",
-      "minLengthError": "Escalation reason must be at least 10 characters.",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Pick the closest reason…",
+      "noteLabel": "Additional context (optional)",
+      "notePlaceholder": "Anything else the IT Director should know? (max 1000 characters)",
+      "reasonRequired": "Pick a reason for escalation.",
       "escalateError": "Failed to escalate ticket.",
       "deescalateError": "Failed to de-escalate ticket."
+    },
+    "escalationReason": {
+      "beyond_scope": "Beyond my scope",
+      "requires_access": "Requires access I don't have",
+      "critical_impact": "Critical impact",
+      "vendor_involvement": "Needs vendor involvement",
+      "other": "Other"
     },
     "reply": {
       "placeholder": "Write a reply to the customer…",
@@ -202,6 +417,43 @@
       "assignTo": "Assign to…",
       "saving": "Saving…",
       "genericError": "Failed to update assignment."
+    },
+    "filters": {
+      "status": "Status",
+      "priority": "Priority",
+      "category": "Category",
+      "stream": "Stream",
+      "assignee": "Assignee",
+      "anyAssignee": "Any assignee",
+      "unassigned": "Unassigned",
+      "technicians": "Technicians",
+      "escalatedOnly": "Escalated only",
+      "from": "From",
+      "to": "To",
+      "clearAll": "{count, plural, =1 {Clear 1 filter} other {Clear # filters}}",
+      "active": "{count, plural, =0 {No filters} =1 {1 filter active} other {# filters active}}"
+    },
+    "stream": {
+      "internal": "Internal",
+      "external": "External"
+    },
+    "rowActions": {
+      "openMenuFor": "Actions for {ticket}",
+      "assignTitle": "Assign {ticket}",
+      "assignDescription": "Pick a technician, coordinator, or director to handle this ticket.",
+      "selectTechnician": "Select a person…",
+      "assigning": "Assigning…",
+      "editTitle": "Edit {ticket}",
+      "editDescription": "Change the assignee. For status changes, escalation, replies, and other edits, open the full ticket.",
+      "editHint": "Need more?",
+      "openFullTicket": "Open full ticket",
+      "createdLabel": "Created",
+      "updatedLabel": "Updated",
+      "deleteTitle": "Delete {ticket}?",
+      "deleteDescription": "Soft-deletes the ticket and hides it from all queues. The audit trail and message history are preserved.",
+      "deleteConfirmMismatch": "Type the exact ticket number to confirm.",
+      "deleting": "Deleting…",
+      "genericError": "Something went wrong. Please try again."
     },
     "csat": {
       "satisfiedTitle": "Glad it's fixed",
@@ -233,6 +485,7 @@
       "download": "Download attachment",
       "uploadButton": "Attach files",
       "uploading": "Uploading {fileName}…",
+      "uploadingShort": "Uploading…",
       "uploadFailed": "{fileName}: {error}",
       "uploadSuccess": "{fileName} attached",
       "remove": "Remove",
@@ -255,6 +508,10 @@
       "filterStatusAll": "All",
       "count": "{count, plural, =0 {No users} =1 {# user} other {# users}}",
       "empty": "No users match the filters.",
+      "tabInternal": "Internal staff",
+      "tabExternal": "External customers",
+      "tabHintInternal": "Staff who can be assigned tickets — Super Admin, IT Director, Coordinator, Technician.",
+      "tabHintExternal": "Customers who file tickets via the portal or email.",
       "columns": {
         "name": "Name",
         "email": "Email",
@@ -262,14 +519,31 @@
         "status": "Status",
         "createdAt": "Created"
       },
-      "noRoles": "(no roles)"
+      "noRoles": "(no roles)",
+      "selfBadge": "You"
+    },
+    "rowActions": {
+      "openMenuFor": "Actions for {user}",
+      "openFullProfile": "Open full profile",
+      "editTitle": "Edit {user}",
+      "editDescription": "Update name and role assignments. Sessions, password reset, and deactivation cascade live on the full profile.",
+      "editHint": "Need more?",
+      "saving": "Saving…",
+      "deactivateTitle": "Deactivate {user}?",
+      "deactivateDescription": "Choosing what happens to descendants (move-up vs reassign) is required. We'll take you to the full profile to pick — the user stays active until you confirm there.",
+      "openDeactivate": "Continue to deactivate",
+      "opening": "Opening…",
+      "reactivateTitle": "Reactivate {user}?",
+      "reactivateDescription": "The user can sign in again immediately. You can re-deactivate later if needed.",
+      "reactivating": "Reactivating…"
     },
     "create": {
       "title": "Create user",
       "subtitle": "The user will receive a welcome email at the address you enter.",
       "cardTitle": "Account",
       "submit": "Create user",
-      "submitting": "Creating…"
+      "submitting": "Creating…",
+      "welcomeEmailHint": "The user receives a welcome email with a link to set their own password — no password to share."
     },
     "edit": {
       "title": "Edit user",
@@ -347,6 +621,9 @@
       "filterAny": "—",
       "qty": "× {count}",
       "ticketLink": "{number} — {subject}"
+    },
+    "rowActions": {
+      "openFullRequest": "Open full request"
     },
     "section": {
       "title": "Procurement requests",
@@ -430,6 +707,19 @@
         "description": "Description"
       }
     },
+    "rowActions": {
+      "openMenuFor": "Actions for {role}",
+      "openFullRole": "Open full role editor",
+      "permissionsLabel": "Permissions",
+      "noPermissions": "(no permissions)",
+      "editTitle": "Edit role {role}",
+      "editDescription": "Update name and description. Permission grants are edited on the full role page.",
+      "editHint": "Edit permissions?",
+      "saving": "Saving…",
+      "deleteTitle": "Delete role {role}?",
+      "deleteDescription": "Removes the role and its permission grants. Anyone holding the role must be reassigned first.",
+      "deleting": "Deleting…"
+    },
     "create": {
       "title": "Create role",
       "subtitle": "Pick a name and the permissions this role should grant.",
@@ -464,15 +754,114 @@
         "settings": "Settings",
         "audit": "Audit log"
       },
-      "selectAll": "Select all",
+      "moduleDescription": {
+        "tickets": "Submit, assign, and resolve customer support requests.",
+        "procurement": "Hardware and software purchase requests tied to tickets.",
+        "reports": "Ticket health, SLA compliance, and procurement spend.",
+        "users": "Staff and customer accounts.",
+        "roles": "Custom roles and per-action permission grants.",
+        "settings": "SLA targets, business hours, email, and security knobs.",
+        "audit": "Append-only record of every privileged action."
+      },
+      "selectAll": "Grant all in this module",
+      "selectedCount": "{selected} of {total} selected",
       "locked": "Locked",
-      "lockedTooltip": "You don't hold this permission yourself, so you can't grant it."
+      "lockedTooltip": "You don't hold this permission yourself, so you can't grant it. Ask the Super Admin.",
+      "lockedHidden": "{count, plural, =1 {1 permission hidden — Locked} other {# permissions hidden — Locked}}",
+      "showLocked": "Show locked",
+      "hideLocked": "Hide locked",
+      "label": {
+        "tickets__view": "View tickets",
+        "tickets__create": "Create tickets",
+        "tickets__update": "Update tickets",
+        "tickets__assign": "Assign tickets",
+        "tickets__reply": "Reply to customers",
+        "tickets__internal_note": "Add internal notes",
+        "tickets__resolve": "Mark tickets resolved",
+        "tickets__resolve_skip_note": "Skip the resolution note (override)",
+        "tickets__reopen": "Reopen tickets",
+        "tickets__escalate": "Escalate to senior staff",
+        "tickets__deescalate": "De-escalate",
+        "tickets__delete": "Delete tickets",
+        "tickets__export": "Export tickets",
+        "procurement__view": "View procurement",
+        "procurement__create": "Create procurement requests",
+        "procurement__update": "Update procurement requests",
+        "procurement__approve": "Approve procurement",
+        "procurement__reject": "Reject procurement",
+        "procurement__mark_purchased": "Mark as purchased",
+        "procurement__mark_delivered": "Mark as delivered",
+        "procurement__export": "Export procurement",
+        "reports__view": "View reports",
+        "reports__export": "Export reports",
+        "users__view": "View users",
+        "users__create": "Create users",
+        "users__update": "Update users",
+        "users__deactivate": "Deactivate users",
+        "users__reactivate": "Reactivate users",
+        "users__reset_password": "Reset passwords",
+        "users__impersonate": "Impersonate users",
+        "users__unlock": "Unlock locked accounts",
+        "roles__view": "View roles",
+        "roles__create": "Create roles",
+        "roles__update": "Update roles",
+        "roles__delete": "Delete roles",
+        "settings__view": "View settings",
+        "settings__update": "Update settings",
+        "audit__view": "View audit log",
+        "audit__export": "Export audit log"
+      },
+      "description": {
+        "tickets__view": "Read the ticket queue and ticket detail pages.",
+        "tickets__create": "File a new ticket on behalf of a customer.",
+        "tickets__update": "Edit ticket fields like priority and category.",
+        "tickets__assign": "Pick a technician to handle a ticket.",
+        "tickets__reply": "Send replies to the customer (visible in their portal).",
+        "tickets__internal_note": "Add notes only the team can see.",
+        "tickets__resolve": "Mark a ticket resolved (requires a resolution note).",
+        "tickets__resolve_skip_note": "Bypass the resolution-note requirement in edge cases (audited).",
+        "tickets__reopen": "Reopen a resolved or closed ticket.",
+        "tickets__escalate": "Flag a ticket as needing senior attention.",
+        "tickets__deescalate": "Clear the escalation flag.",
+        "tickets__delete": "Soft-delete a ticket (preserves audit trail).",
+        "tickets__export": "Export tickets to CSV.",
+        "procurement__view": "Read procurement requests against tickets.",
+        "procurement__create": "File a hardware or software purchase request.",
+        "procurement__update": "Edit a procurement request before approval.",
+        "procurement__approve": "Approve pending procurement requests.",
+        "procurement__reject": "Reject pending procurement requests with a reason.",
+        "procurement__mark_purchased": "Record that the purchase has been made.",
+        "procurement__mark_delivered": "Record that the item has arrived.",
+        "procurement__export": "Export procurement to CSV.",
+        "reports__view": "See the reports dashboard.",
+        "reports__export": "Export reports to CSV.",
+        "users__view": "Read the user list and user profiles.",
+        "users__create": "Create new staff or customer accounts.",
+        "users__update": "Edit user names, language, and role assignments.",
+        "users__deactivate": "Disable a user account (soft-delete).",
+        "users__reactivate": "Re-enable a deactivated user account.",
+        "users__reset_password": "Send a password reset link to a user.",
+        "users__impersonate": "Temporarily act as another user (audited).",
+        "users__unlock": "Clear an account-lockout from too many failed sign-ins.",
+        "roles__view": "Read the role list and role configurations.",
+        "roles__create": "Define a new role.",
+        "roles__update": "Edit role names, descriptions, and permission grants.",
+        "roles__delete": "Remove a role (only when no users hold it).",
+        "settings__view": "Read system-wide configuration values.",
+        "settings__update": "Change system-wide configuration values.",
+        "audit__view": "Read the append-only audit log.",
+        "audit__export": "Export audit-log entries to CSV."
+      }
     }
   },
   "settings": {
     "page": {
       "title": "System settings",
-      "subtitle": "Live values used across the app. Changes take effect immediately."
+      "subtitle": "Live values used across the app. Changes take effect immediately.",
+      "tabOperations": "Operations",
+      "tabTickets": "Tickets",
+      "tabEmail": "Email",
+      "tabSecurity": "Security"
     },
     "actions": {
       "save": "Save",
@@ -537,7 +926,7 @@
       "title": "Email configuration",
       "supportEmail": "Support email (public-facing)",
       "inboundDomain": "Inbound email domain",
-      "inboundDomainHint": "Used for ticket+AX-XXXX@<domain> threading. Read-only after first set.",
+      "inboundDomainHint": "Used for ticket+AX-XXXX@your-domain.com threading. Read-only after first set.",
       "defaultSenderName": "Default sender name",
       "defaultSenderEmail": "Default sender email",
       "allowlistTitle": "Inbound sender allowlist",
@@ -755,7 +1144,8 @@
       "viewAll": "View all",
       "markAllRead": "Mark all as read",
       "markAllReadPending": "Marking…",
-      "unreadCount": "{count, plural, =0 {No unread} =1 {1 unread} other {# unread}}"
+      "unreadCount": "{count, plural, =0 {No unread} =1 {1 unread} other {# unread}}",
+      "unreadAriaLive": "{count, plural, =1 {You have 1 unread notification} other {You have # unread notifications}}"
     },
     "ticket": {
       "assigned": {
@@ -848,6 +1238,8 @@
       "topbarSearchAriaLabel": "Global search",
       "topbarSearchTitle": "Search across the system",
       "topbarSearchEmpty": "Start typing — tickets, users, procurement.",
+      "topbarSearchHintEmpty": "Type a ticket number, name, or email to search.",
+      "topbarSearchHintShort": "Keep typing — at least 2 characters.",
       "topbarSearchNoResults": "No matches for \"{query}\".",
       "topbarSearchSectionTickets": "Tickets",
       "topbarSearchSectionUsers": "Users",
@@ -866,18 +1258,50 @@
       "hidePassword": "Hide password",
       "submit": "Sign in",
       "submitting": "Signing in…",
-      "genericError": "Invalid email or password."
+      "genericError": "Invalid email or password.",
+      "passwordSetSuccess": "Password set. Sign in below to continue."
+    },
+    "setup": {
+      "metaTitle": "Set your password — Axiom360",
+      "title": "Set your password",
+      "subtitle": "Pick a password to finish setting up your account.",
+      "passwordLabel": "New password",
+      "passwordHint": "At least 12 characters.",
+      "confirmLabel": "Confirm password",
+      "submit": "Set password and continue",
+      "submitting": "Setting password…",
+      "errorTooShort": "Password must be at least 12 characters.",
+      "errorMismatch": "Passwords don't match.",
+      "missingTokenTitle": "Setup link missing",
+      "missingTokenBody": "This page expects a setup token in the URL. Open the link from your welcome email.",
+      "goToLogin": "Go to sign in"
     },
     "landing": {
-      "welcome": "Welcome",
-      "subtitle": "You're signed in. The admin shell is in place. Ticketing UI lands in M3.",
-      "sessionTitle": "Session",
-      "sessionDescription": "What this account can do right now.",
-      "userIdLabel": "User ID:",
-      "rolesLabel": "Roles:",
-      "permissionsLabel": "Permissions:",
-      "noRoles": "(none)",
-      "permissionsActive": "{count} active"
+      "welcome": "Welcome back",
+      "rolesPrefix": "Signed in as",
+      "noRoles": "(no roles)",
+      "quickStatsLabel": "Quick stats",
+      "sectionsLabel": "Sections",
+      "statOpenTickets": "Open tickets",
+      "statUnassigned": "Unassigned",
+      "statPendingProcurement": "Pending approval",
+      "statActiveUsers": "Active users",
+      "cardTicketsTitle": "Tickets",
+      "cardTicketsDescription": "Triage the queue, assign work, reply to customers.",
+      "cardProcurementTitle": "Procurement",
+      "cardProcurementDescription": "Hardware and software requests against tickets.",
+      "cardUsersTitle": "Users",
+      "cardUsersDescription": "Create staff, edit profiles, deactivate accounts.",
+      "cardRolesTitle": "Roles",
+      "cardRolesDescription": "Custom roles and per-module permission grants.",
+      "cardHierarchyTitle": "Hierarchy",
+      "cardHierarchyDescription": "See who created whom — the org tree.",
+      "cardReportsTitle": "Reports",
+      "cardReportsDescription": "Ticket health, SLA compliance, procurement spend.",
+      "cardSettingsTitle": "Settings",
+      "cardSettingsDescription": "SLA targets, business hours, email, security.",
+      "cardAuditTitle": "Audit log",
+      "cardAuditDescription": "Append-only record of every privileged action."
     },
     "comingSoon": {
       "buildsIn": "Builds in {module}"
@@ -1074,6 +1498,37 @@
       "ifYou": "If this was you and you've forgotten your password, use the password reset flow once the lock lifts. If it wasn't you, please change your password right after sign-in and consider enabling two-factor authentication.",
       "support": "If you need to get back in sooner, contact your administrator — they can unlock the account.",
       "subject": "Your Axiom account has been temporarily locked"
+    },
+    "customerMagicLink": {
+      "preview": "Sign in to your Axiom support portal",
+      "title": "Sign in to your support portal",
+      "body": "Click the button below to sign in. No password needed.",
+      "button": "Sign in",
+      "expiry": "This link expires in 10 minutes and can only be used once.",
+      "ifNotYou": "If you didn't request this email, you can safely ignore it.",
+      "subject": "Your Axiom sign-in link"
+    },
+    "staffSetupInvite": {
+      "previewSet": "Set your Axiom360 password to get started",
+      "previewReset": "Reset your Axiom360 password",
+      "titleSet": "Welcome to Axiom360",
+      "titleReset": "Reset your password",
+      "bodySet": "Hi {name}, your Axiom360 account has been created. Click below to set your password and sign in.",
+      "bodyReset": "Hi {name}, click below to set a new password for your Axiom360 account.",
+      "buttonSet": "Set my password",
+      "buttonReset": "Reset my password",
+      "expiry": "This link is valid for 24 hours. After that, ask an admin to send a new one.",
+      "ifNotYou": "If you weren't expecting this email, you can safely ignore it.",
+      "subject": "Set your Axiom360 password"
+    },
+    "customerWelcome": {
+      "preview": "Welcome to your Axiom support portal",
+      "title": "Welcome to your support portal",
+      "greeting": "Hi {customerName},",
+      "claimedBody": "{count, plural, =1 {We found 1 existing ticket linked to your email and added it to your portal.} other {We found # existing tickets linked to your email and added them to your portal.}}",
+      "noClaimedBody": "Your portal is ready. You can submit and track tickets from here.",
+      "button": "Open my portal",
+      "subject": "Welcome to your Axiom support portal"
     }
   }
 }

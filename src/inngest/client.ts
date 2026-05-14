@@ -14,9 +14,6 @@ export type Events = {
   "attachment/uploaded": {
     data: { attachmentId: string };
   };
-  "setting/updated": {
-    data: { key: string };
-  };
 
   // ── Notification fan-out (M11) ────────────────────────────────────
   //

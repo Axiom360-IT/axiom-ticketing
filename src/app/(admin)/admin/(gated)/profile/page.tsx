@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AccountForm } from "@/components/profile/account-form";
+import { AvatarUpload } from "@/components/customer/avatar-upload";
 import { PasswordForm } from "@/components/profile/password-form";
 import { PreferencesGrid } from "@/components/profile/preferences-grid";
 import { SessionsList } from "@/components/profile/sessions-list";
@@ -19,8 +20,7 @@ import {
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-
-export const dynamic = "force-dynamic";
+import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 export default async function ProfilePage() {
   const user = await getSessionUser();
@@ -31,6 +31,7 @@ export default async function ProfilePage() {
       name: users.name,
       email: users.email,
       language: users.language,
+      image: users.image,
     })
     .from(users)
     .where(eq(users.id, user.id))
@@ -41,6 +42,9 @@ export default async function ProfilePage() {
     listMySessions(),
     listMyNotificationPreferences(),
   ]);
+
+  // image stores the R2 storage key; sign with 1h TTL for browser caching.
+  const avatarUrl = me.image ? await getAvatarSignedUrl(me.image) : null;
 
   const t = await getTranslations("profile");
 
@@ -57,8 +61,15 @@ export default async function ProfilePage() {
         <CardHeader>
           <CardTitle>{t("account.title")}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <AccountForm initial={me} />
+        <CardContent className="space-y-6">
+          <AvatarUpload name={me.name} currentAvatarUrl={avatarUrl} />
+          <AccountForm
+            initial={{
+              name: me.name,
+              email: me.email,
+              language: me.language,
+            }}
+          />
         </CardContent>
       </Card>
 

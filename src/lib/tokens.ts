@@ -40,6 +40,20 @@ export function signGuestToken(ticketNumber: string, email: string): string {
   return Buffer.from(`${payload}:${sig}`).toString("base64url");
 }
 
+/**
+ * Builds the canonical guest tracking URL for outbound emails.
+ * Single source of truth — every email template that needs a "view your
+ * ticket" link uses this so URL pattern changes touch one place.
+ */
+export function guestTicketUrl(
+  appUrl: string,
+  ticketNumber: string,
+  customerEmail: string,
+): string {
+  const token = signGuestToken(ticketNumber, customerEmail);
+  return `${appUrl}/portal/guest/tickets/${ticketNumber}?token=${token}`;
+}
+
 /** Verifies a guest token. Returns the email of the original submitter on success, null on failure. */
 export function verifyGuestToken(
   token: string,

@@ -247,6 +247,15 @@ This repository is **proprietary and confidential — Axiom360 internal use only
 
 ---
 
+## Customer portal
+
+Customers manage their tickets at `/portal/*` (separate from the agent dashboard at `/admin/*`).
+
+- **Sign in / sign up:** `/portal/sign-in` (magic link by default; email + password fallback). Magic-link delivery is rate-limited at 3/email/h and 10/IP/h. Tokens expire in 10 minutes and are single-use.
+- **Reconciliation:** the first time a customer signs up, every legacy ticket whose `customer_email` matches their verified email is atomically claimed (auditing the count). Idempotent; runs inside Better Auth's `databaseHooks.user.create.after`. Run `pnpm db:backfill-customers` to claim historical tickets for accounts created before this lands.
+- **What customers can do:** view only their own tickets (enforced by `ticketsVisibilityCondition` + `customerVisibleMessages`), reply (creates a `channel: "portal"` message), create new tickets (5/user/day), update profile + notification preferences.
+- **What customers can NOT do:** see internal notes, see other customers' tickets, reach `/admin/*` (the layout's role check redirects non-Customer roles to `/admin`).
+
 ## Contact
 
 - **Project owner:** Junaid Ahmed (Axiom360)

@@ -8,6 +8,10 @@ import { r2Bucket, r2Client } from "./client";
 import { MAGIC_BYTES_PREFIX_SIZE } from "./magic-bytes";
 
 const PRESIGN_TTL_SECONDS = 5 * 60;
+// Avatars are visible across many pages and are not sensitive (the user
+// chose to publish them). A longer TTL means the browser can cache the
+// image cross-page; a leaked URL still expires within an hour.
+const AVATAR_PRESIGN_TTL_SECONDS = 60 * 60;
 
 /**
  * Generate a short-lived signed GET URL. `disposition: "attachment"` adds
@@ -83,6 +87,22 @@ export async function objectExists(storageKey: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Generate a signed GET URL for an avatar. Longer TTL than other
+ * downloads (1 hour vs 5 minutes) so the browser can cache the image
+ * across page renders. Avatars are not sensitive — the user chose to
+ * publish them.
+ */
+export async function getAvatarSignedUrl(storageKey: string): Promise<string> {
+  const cmd = new GetObjectCommand({
+    Bucket: r2Bucket(),
+    Key: storageKey,
+  });
+  return getSignedUrl(r2Client(), cmd, {
+    expiresIn: AVATAR_PRESIGN_TTL_SECONDS,
+  });
 }
 
 /** Delete an object — used when magic-byte verification fails. */

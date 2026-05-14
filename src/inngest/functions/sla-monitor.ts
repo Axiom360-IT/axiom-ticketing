@@ -3,6 +3,7 @@ import { cron } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
+import { getAppUrl } from "@/lib/request";
 import { inngest } from "../client";
 
 // SLA monitor — runs every 5 minutes per ARCHITECTURE §27.
@@ -148,7 +149,7 @@ async function dispatch(
   // only sends the email leg when `email` is supplied here.
   if (!t.assignedToId) return;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppUrl();
   const ticketUrl = `${appUrl}/admin/tickets/${t.id}`;
 
   const wantsSms = type === "sla.warning_80" || type === "sla.breached";

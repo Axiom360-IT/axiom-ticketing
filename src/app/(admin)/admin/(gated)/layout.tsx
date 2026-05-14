@@ -9,6 +9,7 @@ import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { Sidebar } from "@/components/shared/sidebar";
 import { SkipLink } from "@/components/shared/skip-link";
 import { Topbar } from "@/components/shared/topbar";
+import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
@@ -44,9 +45,13 @@ export default async function AdminGatedLayout({
   let displayEmail = session.user.email;
   let displayName = session.user.name;
   let bannerName: string | null = null;
+  // image stores the R2 storage key (or null). For the impersonation
+  // case we show the impersonated user's avatar so the topbar matches
+  // the rest of the UI.
+  let displayImageKey: string | null = session.user.image ?? null;
   if (imp) {
     const [t] = await db
-      .select({ name: users.name, email: users.email })
+      .select({ name: users.name, email: users.email, image: users.image })
       .from(users)
       .where(eq(users.id, imp.targetId))
       .limit(1);
@@ -54,8 +59,12 @@ export default async function AdminGatedLayout({
       displayEmail = t.email;
       displayName = t.name;
       bannerName = t.name;
+      displayImageKey = t.image ?? null;
     }
   }
+  const displayAvatarUrl = displayImageKey
+    ? await getAvatarSignedUrl(displayImageKey)
+    : null;
 
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
@@ -69,6 +78,7 @@ export default async function AdminGatedLayout({
             email: displayEmail,
             name: displayName,
             roles: [...user.roleNames],
+            avatarUrl: displayAvatarUrl,
           }}
         />
         <main

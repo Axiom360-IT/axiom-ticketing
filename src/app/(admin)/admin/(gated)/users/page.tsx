@@ -3,14 +3,6 @@ import { redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,17 +11,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  StickyActionsCell,
+  StickyActionsHead,
+} from "@/components/ui/row-actions";
+import {
+  Pagination,
+  parsePage,
+  parsePageSize,
+} from "@/components/ui/pagination";
+import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { UrlSearchInput } from "@/components/ui/url-search-input";
+import { UserRowActions } from "@/components/users/user-row-actions";
 import { listAllRoles, listUsersForAdmin } from "@/app/actions/users";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { cn } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
+type Audience = "internal" | "external";
 
 type SearchParams = Promise<{
   q?: string;
   roleId?: string;
   status?: "active" | "inactive" | "all";
+  tab?: Audience;
+  page?: string;
+  pageSize?: string;
 }>;
 
 export default async function UsersListPage({
@@ -45,14 +53,48 @@ export default async function UsersListPage({
   }
 
   const t = await getTranslations("users.list");
+  const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
 
-  const { q, roleId, status = "active" } = await searchParams;
-  const [rows, roles, canCreate] = await Promise.all([
-    listUsersForAdmin({ query: q, roleId, status }),
+  const sp = await searchParams;
+  const { q, roleId, status = "active", tab = "internal" } = sp;
+  const audience: Audience = tab === "external" ? "external" : "internal";
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+
+  // For row-action ICON visibility we use the raw permission grant —
+  // the per-target check (descendant hierarchy, last-active-Super-Admin,
+  // self-action) runs server-side when the user clicks. Showing the
+  // icon for users you ultimately can't edit gives a confusing "click
+  // → forbidden" — but the alternative is N can() calls per page render
+  // (one per row). The dialog shows the actionable error if the action
+  // is refused.
+  const canEdit = user.permissions.has("users.update");
+  const canDeactivate = user.permissions.has("users.deactivate");
+  const canReactivate = user.permissions.has("users.reactivate");
+
+  const [allRows, roles, canCreate] = await Promise.all([
+    listUsersForAdmin({ query: q, roleId, status, audience }),
     listAllRoles(),
     can(user, "users.create", { type: "global" }, productionContext),
   ]);
+
+  // listUsersForAdmin filters in JS (audience + role + query) — paginate
+  // here on the post-filter list. Acceptable at small org scale; if the
+  // user table grows beyond a few thousand active rows, push filters
+  // into SQL and switch to LIMIT/OFFSET in the helper.
+  const offset = (page - 1) * pageSize;
+  const rows = allRows.slice(offset, offset + pageSize);
+  const hasMore = allRows.length > offset + pageSize;
+
+  function tabHref(target: Audience): string {
+    const params = new URLSearchParams();
+    params.set("tab", target);
+    if (q) params.set("q", q);
+    if (roleId) params.set("roleId", roleId);
+    if (status !== "active") params.set("status", status);
+    return `/admin/users?${params.toString()}`;
+  }
 
   return (
     <div className="space-y-4">
@@ -64,36 +106,65 @@ export default async function UsersListPage({
           </p>
         </div>
         {canCreate ? (
-          <Button render={<Link href="/admin/users/new" />}>
+          <Button nativeButton={false} render={<Link href="/admin/users/new" />}>
             {t("createButton")}
           </Button>
         ) : null}
       </div>
 
-      <form
-        className="flex flex-wrap gap-2 items-end"
-        action="/admin/users"
-        method="get"
+      <nav
+        aria-label={t("title")}
+        className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800"
       >
+        <TabLink
+          href={tabHref("internal")}
+          active={audience === "internal"}
+          label={t("tabInternal")}
+        />
+        <TabLink
+          href={tabHref("external")}
+          active={audience === "external"}
+          label={t("tabExternal")}
+        />
+      </nav>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">
+        {audience === "internal" ? t("tabHintInternal") : t("tabHintExternal")}
+      </p>
+
+      <div className="flex flex-wrap gap-2 items-end">
         <div className="flex-1 min-w-[14rem]">
-          <Input
-            name="q"
-            defaultValue={q ?? ""}
+          <UrlSearchInput
+            initialValue={q ?? ""}
             placeholder={t("search")}
             className="max-w-md"
           />
         </div>
 
-        <RoleFilter roles={roles} initial={roleId} label={t("filterRole")} />
-
-        <StatusFilter
-          initial={status}
-          label={t("filterStatus")}
-          tActive={t("filterStatusActive")}
-          tInactive={t("filterStatusInactive")}
-          tAll={t("filterStatusAll")}
+        <UrlFilterSelect
+          name="roleId"
+          label={t("filterRole")}
+          value={roleId ?? ""}
+          anyLabel={t("filterRoleAll")}
+          options={roles.map((r) => ({ value: r.id, label: r.name }))}
+          triggerClassName="w-44"
         />
-      </form>
+
+        <UrlFilterSelect
+          name="status"
+          label={t("filterStatus")}
+          // Empty string is the "default = active" UI sentinel here, but
+          // the URL needs explicit values to round-trip. Always pass the
+          // current value through; never blank.
+          value={status}
+          showAny={false}
+          options={[
+            { value: "active", label: t("filterStatusActive") },
+            { value: "inactive", label: t("filterStatusInactive") },
+            { value: "all", label: t("filterStatusAll") },
+          ]}
+          triggerClassName="w-32"
+        />
+      </div>
 
       <Card className="p-0">
         <CardContent className="p-0">
@@ -109,21 +180,27 @@ export default async function UsersListPage({
                   <TableHead>{t("columns.email")}</TableHead>
                   <TableHead>{t("columns.roles")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
-                  <TableHead className="pr-4">
-                    {t("columns.createdAt")}
-                  </TableHead>
+                  <TableHead>{t("columns.createdAt")}</TableHead>
+                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="px-4">
-                      <Link
-                        href={`/admin/users/${u.id}`}
-                        className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
-                      >
-                        {u.name}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/users/${u.id}`}
+                          className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
+                        >
+                          {u.name}
+                        </Link>
+                        {u.id === user.id ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900">
+                            {t("selfBadge")}
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-zinc-600 dark:text-zinc-300">
                       {u.email}
@@ -144,9 +221,19 @@ export default async function UsersListPage({
                         tInactive={t("filterStatusInactive")}
                       />
                     </TableCell>
-                    <TableCell className="pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
                       {formatter.dateTime(u.createdAt, { dateStyle: "medium" })}
                     </TableCell>
+                    <StickyActionsCell>
+                      <UserRowActions
+                        user={u}
+                        isSelf={u.id === user.id}
+                        canEdit={canEdit}
+                        canDeactivate={canDeactivate}
+                        canReactivate={canReactivate}
+                        allRoles={roles}
+                      />
+                    </StickyActionsCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -154,7 +241,50 @@ export default async function UsersListPage({
           )}
         </CardContent>
       </Card>
+
+      <Pagination
+        pathname="/admin/users"
+        page={page}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
+        labels={{
+          previous: tCommon("pagination.previous"),
+          next: tCommon("pagination.next"),
+          page: tCommon("pagination.page", { page }),
+          rowsPerPage: tCommon("pagination.rowsPerPage"),
+        }}
+      />
     </div>
+  );
+}
+
+function TabLink({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+        active
+          ? "border-blue-600 text-blue-700 dark:border-blue-500 dark:text-blue-400"
+          : "border-transparent text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700",
+      )}
+    >
+      {label}
+    </Link>
   );
 }
 
@@ -180,60 +310,3 @@ function StatusBadge({
   );
 }
 
-function RoleFilter({
-  roles,
-  initial,
-  label,
-}: {
-  roles: { id: string; name: string }[];
-  initial?: string;
-  label: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-xs text-zinc-500 dark:text-zinc-400">{label}</label>
-      <select
-        name="roleId"
-        defaultValue={initial ?? ""}
-        className="h-8 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
-      >
-        <option value="">{/* all roles */ ""}</option>
-        {roles.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function StatusFilter({
-  initial,
-  label,
-  tActive,
-  tInactive,
-  tAll,
-}: {
-  initial?: string;
-  label: string;
-  tActive: string;
-  tInactive: string;
-  tAll: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-xs text-zinc-500 dark:text-zinc-400">{label}</label>
-      <Select name="status" defaultValue={initial ?? "active"}>
-        <SelectTrigger className="h-8 w-32">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="active">{tActive}</SelectItem>
-          <SelectItem value="inactive">{tInactive}</SelectItem>
-          <SelectItem value="all">{tAll}</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}

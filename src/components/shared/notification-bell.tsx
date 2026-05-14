@@ -7,7 +7,6 @@ import { Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -98,16 +97,21 @@ export function NotificationBell({ initial }: Props) {
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
         {data.unreadCount > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-medium leading-none">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-medium leading-none">
             {data.unreadCount > 99 ? "99+" : data.unreadCount}
           </span>
         ) : null}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {data.unreadCount > 0
+            ? t("unreadAriaLive", { count: data.unreadCount })
+            : ""}
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between px-2 py-1">
-          <DropdownMenuLabel className="font-medium">
+          <span className="text-xs font-medium text-muted-foreground">
             {t("unreadCount", { count: data.unreadCount })}
-          </DropdownMenuLabel>
+          </span>
           {data.unreadCount > 0 ? (
             <button
               type="button"

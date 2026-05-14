@@ -49,7 +49,18 @@ declare global {
   }
 }
 
-export function SubmissionForm() {
+type SubmissionFormProps = {
+  /** Pre-fill from session when the visitor is signed in.
+   * The server still treats this submission as a public/web_form ticket;
+   * the prefill is purely a UX convenience. */
+  initialName?: string;
+  initialEmail?: string;
+};
+
+export function SubmissionForm({
+  initialName = "",
+  initialEmail = "",
+}: SubmissionFormProps = {}) {
   const router = useRouter();
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
@@ -60,8 +71,8 @@ export function SubmissionForm() {
   const widgetIdRef = useRef<string | null>(null);
 
   const [formData, setFormData] = useState({
-    customerName: "",
-    customerEmail: "",
+    customerName: initialName,
+    customerEmail: initialEmail,
     subject: "",
     category: "" as "" | CategoryValue,
     priority: "" as "" | PriorityValue,

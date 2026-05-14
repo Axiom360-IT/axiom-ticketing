@@ -12,7 +12,6 @@ import { holidays } from "@/lib/db/schema/holidays";
 import { settings as settingsTable } from "@/lib/db/schema/settings";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
-import { invalidateSetting } from "@/lib/settings";
 import {
   isValidSettingKey,
   READ_ONLY_AFTER_FIRST_SET,
@@ -20,14 +19,7 @@ import {
   SETTING_SCHEMAS,
   type SettingKey,
 } from "@/lib/settings-registry";
-import { inngest } from "@/inngest/client";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
+import { ForbiddenError } from "@/lib/errors";
 
 export type UpdateSettingResult =
   | { ok: true }
@@ -108,16 +100,6 @@ export async function updateSetting(
         updatedAt: new Date(),
       },
     });
-
-  // Invalidate this instance's cache immediately, AND emit the event so
-  // other instances pick up the change. Local-first matters because the
-  // current request might re-read the setting before Inngest delivers.
-  invalidateSetting(key);
-  try {
-    await inngest.send({ name: "setting/updated", data: { key } });
-  } catch (err) {
-    console.error("[updateSetting] inngest emit failed:", err);
-  }
 
   await audit({
     actorId: caller.id,

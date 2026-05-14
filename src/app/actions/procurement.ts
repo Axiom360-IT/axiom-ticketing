@@ -13,22 +13,11 @@ import { users } from "@/lib/db/schema/auth";
 import { procurementRequests } from "@/lib/db/schema/procurement";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
+import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { inngest } from "@/inngest/client";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
-}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -214,7 +203,7 @@ export async function createProcurementRequest(
               itemName: data.itemName,
               quantity: data.quantity,
               urgency: data.urgency,
-              adminUrl: `${appUrl()}/admin/procurement/${row.id}`,
+              adminUrl: `${getAppUrl()}/admin/procurement/${row.id}`,
             },
           },
         },
@@ -248,7 +237,7 @@ export async function createProcurementRequest(
             itemName: data.itemName,
             quantity: data.quantity,
             urgency: data.urgency,
-            adminUrl: `${appUrl()}/admin/procurement/${row.id}`,
+            adminUrl: `${getAppUrl()}/admin/procurement/${row.id}`,
           },
         },
       });
@@ -336,7 +325,7 @@ export async function approveProcurement(
                 itemName: r.itemName,
                 quantity: r.quantity,
                 urgency: r.urgency,
-                adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+                adminUrl: `${getAppUrl()}/admin/procurement/${requestId}`,
               },
             },
           },
@@ -394,7 +383,7 @@ export async function approveProcurement(
             ticketNumber: ticket?.ticketNumber ?? "",
             itemName: r.itemName,
             quantity: r.quantity,
-            adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+            adminUrl: `${getAppUrl()}/admin/procurement/${requestId}`,
           },
         },
       });
@@ -477,7 +466,7 @@ export async function rejectProcurement(
             ticketNumber: ticket?.ticketNumber ?? "",
             itemName: r.itemName,
             reason: parsed.data.reason,
-            adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+            adminUrl: `${getAppUrl()}/admin/procurement/${requestId}`,
           },
         },
       });
@@ -580,7 +569,7 @@ export async function markDelivered(
             ticketNumber: ticket?.ticketNumber ?? "",
             itemName: r.itemName,
             quantity: r.quantity,
-            adminUrl: `${appUrl()}/admin/procurement/${requestId}`,
+            adminUrl: `${getAppUrl()}/admin/procurement/${requestId}`,
           },
         },
       });
@@ -620,7 +609,7 @@ export type ProcurementListFilters = {
 };
 
 export async function listProcurementForAdmin(
-  filters: ProcurementListFilters,
+  filters: ProcurementListFilters & { page?: number; pageSize?: number },
 ) {
   const caller = await requireSessionUser();
   if (
@@ -646,7 +635,13 @@ export async function listProcurementForAdmin(
     where.push(eq(procurementRequests.requestedById, caller.id));
   }
 
-  const rows = await db
+  const page = filters.page && filters.page >= 1 ? filters.page : 1;
+  const pageSize = filters.pageSize && filters.pageSize >= 1 ? filters.pageSize : 25;
+  // +1 row to detect "has more" without a separate COUNT query.
+  const limit = pageSize + 1;
+  const offset = (page - 1) * pageSize;
+
+  const rawRows = await db
     .select({
       id: procurementRequests.id,
       ticketId: procurementRequests.ticketId,
@@ -662,9 +657,11 @@ export async function listProcurementForAdmin(
     .from(procurementRequests)
     .where(where.length > 0 ? and(...where) : undefined)
     .orderBy(desc(procurementRequests.createdAt))
-    .limit(200);
+    .limit(limit)
+    .offset(offset);
 
-  return rows;
+  const hasMore = rawRows.length > pageSize;
+  return { items: rawRows.slice(0, pageSize), hasMore };
 }
 
 export async function getProcurementDetail(id: string) {
@@ -690,8 +687,3 @@ export async function getProcurementDetail(id: string) {
   return r;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
-
-function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-}

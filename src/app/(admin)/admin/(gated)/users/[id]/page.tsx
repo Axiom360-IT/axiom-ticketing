@@ -19,8 +19,6 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { rolePermissions, userRoles } from "@/lib/db/schema/rbac";
 
-export const dynamic = "force-dynamic";
-
 export default async function EditUserPage({
   params,
 }: {

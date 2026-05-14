@@ -4,13 +4,6 @@ import { inArray } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -18,6 +11,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  StickyActionsCell,
+  StickyActionsHead,
+} from "@/components/ui/row-actions";
+import {
+  Pagination,
+  parsePage,
+  parsePageSize,
+} from "@/components/ui/pagination";
+import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { ProcurementRowActions } from "@/components/procurement/procurement-row-actions";
 import { ProcurementStatusBadge } from "@/components/procurement/status-badge";
 import { listProcurementForAdmin } from "@/app/actions/procurement";
 import { can } from "@/lib/auth/can";
@@ -25,8 +29,6 @@ import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
-
-export const dynamic = "force-dynamic";
 
 const STATUSES = [
   "pending_coordinator_approval",
@@ -43,6 +45,8 @@ type SearchParams = Promise<{
   status?: string;
   type?: string;
   urgency?: string;
+  page?: string;
+  pageSize?: string;
 }>;
 
 export default async function ProcurementListPage({
@@ -59,10 +63,14 @@ export default async function ProcurementListPage({
   }
 
   const sp = await searchParams;
-  const rows = await listProcurementForAdmin({
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+  const { items: rows, hasMore } = await listProcurementForAdmin({
     status: sp.status,
     type: sp.type,
     urgency: sp.urgency,
+    page,
+    pageSize,
   });
 
   // Resolve ticket numbers in one round-trip
@@ -85,6 +93,7 @@ export default async function ProcurementListPage({
   const tType = await getTranslations("procurement.type");
   const tUrgency = await getTranslations("procurement.urgency");
   const tStatus = await getTranslations("procurement.status");
+  const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
 
   return (
@@ -96,39 +105,32 @@ export default async function ProcurementListPage({
         </p>
       </div>
 
-      <form
-        className="flex flex-wrap gap-3 items-end"
-        action="/admin/procurement"
-        method="get"
-      >
-        <FilterSelect
+      <div className="flex flex-wrap gap-3 items-end">
+        <UrlFilterSelect
           name="status"
           label={t("filterStatus")}
-          initial={sp.status}
+          value={sp.status ?? ""}
           anyLabel={t("filterAny")}
           options={STATUSES.map((s) => ({ value: s, label: tStatus(s) }))}
+          triggerClassName="w-44"
         />
-        <FilterSelect
+        <UrlFilterSelect
           name="type"
           label={t("filterType")}
-          initial={sp.type}
+          value={sp.type ?? ""}
           anyLabel={t("filterAny")}
-          options={TYPES.map((v) => ({
-            value: v,
-            label: tType(v),
-          }))}
+          options={TYPES.map((v) => ({ value: v, label: tType(v) }))}
+          triggerClassName="w-40"
         />
-        <FilterSelect
+        <UrlFilterSelect
           name="urgency"
           label={t("filterUrgency")}
-          initial={sp.urgency}
+          value={sp.urgency ?? ""}
           anyLabel={t("filterAny")}
-          options={URGENCIES.map((v) => ({
-            value: v,
-            label: tUrgency(v),
-          }))}
+          options={URGENCIES.map((v) => ({ value: v, label: tUrgency(v) }))}
+          triggerClassName="w-40"
         />
-      </form>
+      </div>
 
       <Card className="p-0">
         <CardContent className="p-0">
@@ -147,9 +149,8 @@ export default async function ProcurementListPage({
                   <TableHead>{t("columns.status")}</TableHead>
                   <TableHead>{t("columns.requester")}</TableHead>
                   <TableHead>{t("columns.ticket")}</TableHead>
-                  <TableHead className="pr-4">
-                    {t("columns.createdAt")}
-                  </TableHead>
+                  <TableHead>{t("columns.createdAt")}</TableHead>
+                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -189,11 +190,28 @@ export default async function ProcurementListPage({
                         {numberByTicket.get(r.ticketId) ?? ""}
                       </Link>
                     </TableCell>
-                    <TableCell className="pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
                       {formatter.dateTime(r.createdAt, {
                         dateStyle: "medium",
                       })}
                     </TableCell>
+                    <StickyActionsCell>
+                      <ProcurementRowActions
+                        request={{
+                          id: r.id,
+                          itemName: r.itemName,
+                          quantity: r.quantity,
+                          type: r.type,
+                          urgency: r.urgency,
+                          status: r.status,
+                          estimatedCost: r.estimatedCost,
+                          requestedByEmail: r.requestedByEmail,
+                          ticketId: r.ticketId,
+                          ticketNumber: numberByTicket.get(r.ticketId) ?? null,
+                          createdAt: r.createdAt,
+                        }}
+                      />
+                    </StickyActionsCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -201,39 +219,24 @@ export default async function ProcurementListPage({
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
 
-function FilterSelect({
-  name,
-  label,
-  initial,
-  options,
-  anyLabel,
-}: {
-  name: string;
-  label: string;
-  initial?: string;
-  options: { value: string; label: string }[];
-  anyLabel: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-xs text-zinc-500 dark:text-zinc-400">{label}</label>
-      <Select name={name} defaultValue={initial ?? ""}>
-        <SelectTrigger className="h-8 w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="">{anyLabel}</SelectItem>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Pagination
+        pathname="/admin/procurement"
+        page={page}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
+        labels={{
+          previous: tCommon("pagination.previous"),
+          next: tCommon("pagination.next"),
+          page: tCommon("pagination.page", { page }),
+          rowsPerPage: tCommon("pagination.rowsPerPage"),
+        }}
+      />
     </div>
   );
 }

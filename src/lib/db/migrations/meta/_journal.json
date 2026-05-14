@@ -36,6 +36,20 @@
       "when": 1778360204184,
       "tag": "0004_awesome_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778669985708,
+      "tag": "0005_complete_magus",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778680712735,
+      "tag": "0006_jittery_rhodey",
+      "breakpoints": true
     }
   ]
 }

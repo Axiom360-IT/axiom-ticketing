@@ -102,7 +102,11 @@ export function GlobalSearch() {
   }, [query]);
 
   const items = flatten(result);
-  const showDropdown = open && (query.trim().length >= 2 || isPending);
+  const trimmedLen = query.trim().length;
+  const tooShort = trimmedLen > 0 && trimmedLen < 2;
+  // Show the dropdown whenever the input is focused — gives the user
+  // immediate feedback. The dropdown body branches on state below.
+  const showDropdown = open;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
@@ -174,7 +178,15 @@ export function GlobalSearch() {
           role="listbox"
           className="absolute left-0 right-0 mt-1 max-h-96 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-lg z-30"
         >
-          {isPending ? (
+          {trimmedLen === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+              {t("topbarSearchHintEmpty")}
+            </p>
+          ) : tooShort ? (
+            <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+              {t("topbarSearchHintShort")}
+            </p>
+          ) : isPending ? (
             <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
               {t("topbarSearchLoading")}
             </p>

@@ -12,6 +12,18 @@ import {
   type AttachmentQuarantinedProps,
 } from "./templates/attachment-quarantined";
 import {
+  CustomerMagicLinkEmail,
+  type CustomerMagicLinkProps,
+} from "./templates/customer-magic-link";
+import {
+  CustomerWelcomeEmail,
+  type CustomerWelcomeProps,
+} from "./templates/customer-welcome";
+import {
+  StaffSetupInviteEmail,
+  type StaffSetupInviteProps,
+} from "./templates/staff-setup-invite";
+import {
   EscalationAlertEmail,
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
@@ -111,6 +123,18 @@ export type EmailTemplate =
   | {
       template: "attachment_quarantined";
       data: Omit<AttachmentQuarantinedProps, "locale">;
+    }
+  | {
+      template: "customer_magic_link";
+      data: Omit<CustomerMagicLinkProps, "locale">;
+    }
+  | {
+      template: "customer_welcome";
+      data: Omit<CustomerWelcomeProps, "locale">;
+    }
+  | {
+      template: "staff_setup_invite";
+      data: Omit<StaffSetupInviteProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -181,6 +205,18 @@ async function renderTemplate(
       return await render(
         <AttachmentQuarantinedEmail {...t.data} locale={locale} />,
       );
+    case "customer_magic_link":
+      return await render(
+        <CustomerMagicLinkEmail {...t.data} locale={locale} />,
+      );
+    case "customer_welcome":
+      return await render(
+        <CustomerWelcomeEmail {...t.data} locale={locale} />,
+      );
+    case "staff_setup_invite":
+      return await render(
+        <StaffSetupInviteEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -201,6 +237,9 @@ const TEMPLATE_NAMESPACE = {
   procurement_delivered: "emails.procurementDelivered",
   account_lockout: "emails.accountLockout",
   attachment_quarantined: "emails.attachmentQuarantined",
+  customer_magic_link: "emails.customerMagicLink",
+  customer_welcome: "emails.customerWelcome",
+  staff_setup_invite: "emails.staffSetupInvite",
 } as const;
 
 async function defaultSubject(
@@ -235,9 +274,15 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const finalSubject =
     subject ?? (await defaultSubject(template, resolvedLocale));
 
+  // Env vars take precedence over DB settings so dev can point sends at
+  // Resend's sandbox (`onboarding@resend.dev`) before the production domain
+  // is verified in M19, without polluting the seeded settings table.
   const fromName =
-    (await getSetting<string>("default_sender_name")) ?? "Axiom360 Support";
+    process.env.RESEND_FROM_NAME ??
+    (await getSetting<string>("default_sender_name")) ??
+    "Axiom360 Support";
   const fromEmail =
+    process.env.RESEND_FROM_EMAIL ??
     (await getSetting<string>("default_sender_email")) ??
     "support@axiom360.it";
   const inboundDomain =

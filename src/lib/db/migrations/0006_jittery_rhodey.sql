@@ -1,0 +1,2 @@
+ALTER TABLE "messages" ADD COLUMN "body_format" text DEFAULT 'text' NOT NULL;--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_body_format_check" CHECK ("messages"."body_format" IN ('text','html'));

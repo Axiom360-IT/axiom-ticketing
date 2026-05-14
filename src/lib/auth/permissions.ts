@@ -12,6 +12,10 @@ export const PERMISSIONS = [
   "tickets.reply",
   "tickets.internal_note",
   "tickets.resolve",
+  // PRD §5.6 / Spec §8.2 — Coordinator override that lets the user resolve
+  // a ticket WITHOUT a resolution note in genuine edge cases (duplicate,
+  // customer cancelled). The audit log captures the reason.
+  "tickets.resolve_skip_note",
   "tickets.reopen",
   "tickets.escalate",
   "tickets.deescalate",
@@ -83,6 +87,7 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   "tickets.reply",
   "tickets.internal_note",
   "tickets.resolve",
+  "tickets.resolve_skip_note",
   "tickets.reopen",
   "tickets.deescalate",
   "procurement.view",

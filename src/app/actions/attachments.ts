@@ -3,13 +3,13 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
-import { can } from "@/lib/auth/can";
+import { can, isStrictCustomer } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
-import { tickets } from "@/lib/db/schema/tickets";
+import { messages } from "@/lib/db/schema/messages";
 import {
   downloadDispositionFor,
   isAllowedMimeType,
@@ -27,32 +27,8 @@ import {
   presignUploadUrl,
 } from "@/lib/storage/upload";
 import { inngest } from "@/inngest/client";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
-}
-
-async function loadTicketScope(ticketId: string) {
-  const [t] = await db
-    .select({
-      id: tickets.id,
-      assignedToId: tickets.assignedToId,
-      customerId: tickets.customerId,
-    })
-    .from(tickets)
-    .where(eq(tickets.id, ticketId))
-    .limit(1);
-  return t;
-}
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { loadTicketScope } from "@/lib/tickets/load";
 
 // ── generateUploadUrl ───────────────────────────────────────────────
 
@@ -339,6 +315,7 @@ export async function getDownloadUrl(
     .select({
       id: attachments.id,
       ticketId: attachments.ticketId,
+      messageId: attachments.messageId,
       storageKey: attachments.storageKey,
       mimeType: attachments.mimeType,
       fileName: attachments.fileName,
@@ -361,6 +338,20 @@ export async function getDownloadUrl(
     ))
   ) {
     throw new ForbiddenError();
+  }
+
+  // Defense in depth: a Customer holds tickets.view on their own ticket, so the
+  // permission gate alone would let them download internal-note attachments
+  // whose IDs they happen to know. Block at the message-visibility seam.
+  if (att.messageId && isStrictCustomer(user)) {
+    const [msg] = await db
+      .select({ isInternalNote: messages.isInternalNote })
+      .from(messages)
+      .where(eq(messages.id, att.messageId))
+      .limit(1);
+    if (msg?.isInternalNote) {
+      throw new ForbiddenError();
+    }
   }
 
   if (att.scanStatus === "quarantined") {

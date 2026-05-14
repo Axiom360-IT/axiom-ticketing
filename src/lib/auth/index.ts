@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { magicLink } from "better-auth/plugins";
+import { assignCustomerRole, claimTicketsForCustomer } from "../customer/reconcile";
 import { db } from "../db/client";
 import {
   accounts,
@@ -9,6 +11,7 @@ import {
   users,
   verifications,
 } from "../db/schema/auth";
+import { sendEmail } from "../email/send";
 
 // 2FA is intentionally not enabled at this point — password + lockout +
 // per-action re-auth covers the threat model. The Better Auth twoFactor
@@ -46,6 +49,35 @@ export const auth = betterAuth({
     minPasswordLength: 12,
     // Email verification turns on once Resend is wired up in M3.
     requireEmailVerification: false,
+    // Better Auth invokes this whenever `auth.api.requestPasswordReset`
+    // is called — used by both the admin "Reset password" action AND
+    // by the staff-creation flow (the new user is sent here as their
+    // welcome). The `flow` discriminator drives copy in the template.
+    sendResetPassword: async ({ user, token }) => {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const setupUrl = `${appUrl}/admin/setup?token=${encodeURIComponent(token)}`;
+      // First-time staff don't yet have a `lastLoginAt`. We treat that
+      // as "set" copy ("Welcome to Axiom360"); existing users get the
+      // "reset" copy. Falls back to "set" if the field isn't on the
+      // user object (Better Auth sometimes hands us a thin user shape).
+      const lastLogin = (user as { lastLoginAt?: Date | null }).lastLoginAt;
+      const flow: "set" | "reset" = lastLogin ? "reset" : "set";
+      try {
+        await sendEmail({
+          to: user.email,
+          template: {
+            template: "staff_setup_invite",
+            data: { recipientName: user.name, setupUrl, flow },
+          },
+        });
+      } catch (err) {
+        // Silent in prod (preserves the generic-success contract Better
+        // Auth expects); surface in dev so failed sends aren't invisible.
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[sendResetPassword] failed:", err);
+        }
+      }
+    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7-day absolute max (customer default)
@@ -71,9 +103,31 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins,
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await assignCustomerRole(user.id);
+          await claimTicketsForCustomer(user.id, user.email);
+        },
+      },
+    },
+  },
   // `nextCookies()` forwards Set-Cookie from `auth.api.*` calls in
   // Server Actions (e.g. signInWithLockout) onto the Next.js response.
-  plugins: [nextCookies()],
+  plugins: [
+    magicLink({
+      expiresIn: 60 * 10,
+      rateLimit: { window: 60 * 60, max: 3 },
+      sendMagicLink: async ({ email, url }) => {
+        await sendEmail({
+          to: email,
+          template: { template: "customer_magic_link", data: { url } },
+        });
+      },
+    }),
+    nextCookies(),
+  ],
 });
 
 export type Auth = typeof auth;

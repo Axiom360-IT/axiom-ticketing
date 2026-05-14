@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
+import { getAppUrl } from "@/lib/request";
 import { inngest } from "../client";
 
 // Hourly cron — finds tickets resolved more than 24h ago that the customer
@@ -43,7 +44,7 @@ export const autoCloseResolvedTickets = inngest.createFunction(
       return { closed: 0 };
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = getAppUrl();
 
     // Close each ticket in its own step so a single email failure can't roll
     // the whole batch back, and Inngest can retry just the failing ones.

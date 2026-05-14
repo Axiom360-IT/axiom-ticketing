@@ -33,8 +33,6 @@ import { messages } from "@/lib/db/schema/messages";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
 import { tickets } from "@/lib/db/schema/tickets";
 
-export const dynamic = "force-dynamic";
-
 const ORIGIN_KEYS: Record<string, "originWebForm" | "originEmail" | "originPortal"> = {
   web_form: "originWebForm",
   email: "originEmail",
@@ -52,6 +50,7 @@ export default async function TicketDetailPage({
   const t = await getTranslations("tickets.detail");
   const tQueue = await getTranslations("tickets.queue");
   const tCsat = await getTranslations("tickets.csat");
+  const tEscalationReason = await getTranslations("tickets.escalationReason");
   const formatter = await getFormatter();
 
   const { id } = await params;
@@ -79,6 +78,7 @@ export default async function TicketDetailPage({
     canReply,
     canInternalNote,
     canResolve,
+    canResolveSkipNote,
     canAssign,
     canEscalate,
     canDeescalate,
@@ -89,6 +89,7 @@ export default async function TicketDetailPage({
     can(user, "tickets.reply", ticketScope, productionContext),
     can(user, "tickets.internal_note", ticketScope, productionContext),
     can(user, "tickets.resolve", ticketScope, productionContext),
+    can(user, "tickets.resolve_skip_note", ticketScope, productionContext),
     can(user, "tickets.assign", ticketScope, productionContext),
     can(user, "tickets.escalate", ticketScope, productionContext),
     can(user, "tickets.deescalate", ticketScope, productionContext),
@@ -108,6 +109,7 @@ export default async function TicketDetailPage({
       authorEmail: messages.authorEmail,
       authorType: messages.authorType,
       body: messages.body,
+      bodyFormat: messages.bodyFormat,
       channel: messages.channel,
       isInternalNote: messages.isInternalNote,
       isResolutionNote: messages.isResolutionNote,
@@ -295,7 +297,12 @@ export default async function TicketDetailPage({
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {canResolve ? <ResolveModal ticketId={ticket.id} /> : null}
+                  {canResolve ? (
+                    <ResolveModal
+                      ticketId={ticket.id}
+                      canSkipNote={canResolveSkipNote}
+                    />
+                  ) : null}
                   {(canEscalate && !ticket.isEscalated) ||
                   (canDeescalate && ticket.isEscalated) ? (
                     <EscalateModal
@@ -370,9 +377,21 @@ export default async function TicketDetailPage({
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
-                <p className="whitespace-pre-wrap">
-                  {ticket.escalationReason}
+                <p className="font-medium">
+                  {tEscalationReason(
+                    ticket.escalationReason as
+                      | "beyond_scope"
+                      | "requires_access"
+                      | "critical_impact"
+                      | "vendor_involvement"
+                      | "other",
+                  )}
                 </p>
+                {ticket.escalationNote ? (
+                  <p className="whitespace-pre-wrap text-zinc-600 dark:text-zinc-300">
+                    {ticket.escalationNote}
+                  </p>
+                ) : null}
                 {ticket.escalatedAt ? (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     {formatter.dateTime(ticket.escalatedAt, {

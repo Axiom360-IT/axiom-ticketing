@@ -1,9 +1,19 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, desc, eq, ilike, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -14,10 +24,25 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import {
+  StickyActionsCell,
+  StickyActionsHead,
+} from "@/components/ui/row-actions";
+import {
+  Pagination,
+  pageWindow,
+  parsePage,
+  parsePageSize,
+  takePage,
+} from "@/components/ui/pagination";
+import {
+  CategoryBadge,
   EscalatedBadge,
   PriorityBadge,
   StatusBadge,
 } from "@/components/tickets/badges";
+import { TicketFilters } from "@/components/tickets/ticket-filters";
+import { UrlSearchInput } from "@/components/ui/url-search-input";
+import { TicketRowActions } from "@/components/tickets/ticket-row-actions";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { ticketsVisibilityCondition } from "@/lib/auth/scope";
@@ -25,10 +50,58 @@ import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { tickets } from "@/lib/db/schema/tickets";
+import { listAssignableTechnicians } from "@/lib/tickets/load";
 
-export const dynamic = "force-dynamic";
+// Filter query string contract:
+//   ?q=text                            free-text search
+//   &status=open,in_progress           CSV multi-select
+//   &priority=high,critical            CSV multi-select
+//   &category=hardware,network         CSV multi-select
+//   &assignee=<uuid>|unassigned        single-select
+//   &escalated=1                       presence = true
+//   &from=YYYY-MM-DD                   created on/after this date
+//   &to=YYYY-MM-DD                     created on/before this date
+type SearchParams = Promise<{
+  q?: string;
+  status?: string;
+  priority?: string;
+  category?: string;
+  stream?: string;
+  assignee?: string;
+  escalated?: string;
+  from?: string;
+  to?: string;
+  page?: string;
+  pageSize?: string;
+}>;
 
-type SearchParams = Promise<{ q?: string }>;
+const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
+const TICKET_CATEGORIES = [
+  "hardware",
+  "software",
+  "network",
+  "access",
+  "other",
+] as const;
+const TICKET_STREAMS = ["internal", "external"] as const;
+
+/** Split a CSV query-string value, drop empties, and intersect with the
+ * allowed set so a junk URL parameter can't poison a `WHERE col IN (...)`
+ * clause. Returns undefined when no valid values remain (so the caller
+ * can skip emitting the clause entirely). */
+function parseEnumCsv<T extends string>(
+  raw: string | undefined,
+  allowed: readonly T[],
+): T[] | undefined {
+  if (!raw) return undefined;
+  const allow = new Set<string>(allowed);
+  const picked = raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => allow.has(v)) as T[];
+  return picked.length > 0 ? picked : undefined;
+}
 
 export default async function TicketsPage({
   searchParams,
@@ -39,38 +112,88 @@ export default async function TicketsPage({
   if (!user) redirect("/admin/login");
 
   const t = await getTranslations("tickets.queue");
+  const tCommon = await getTranslations("common");
+  const tFilters = await getTranslations("tickets.filters");
   const formatter = await getFormatter();
 
-  const { q } = await searchParams;
-  const search = q?.trim() ?? "";
+  const sp = await searchParams;
+  const search = sp.q?.trim() ?? "";
+  const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
+  const filterPriority = parseEnumCsv(sp.priority, TICKET_PRIORITIES);
+  const filterCategory = parseEnumCsv(sp.category, TICKET_CATEGORIES);
+  const filterStream = parseEnumCsv(sp.stream, TICKET_STREAMS);
+  const filterAssignee = sp.assignee?.trim() || undefined;
+  const filterEscalated = sp.escalated === "1";
+  const filterFrom = sp.from?.trim() || undefined;
+  const filterTo = sp.to?.trim() || undefined;
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+  const { limit, offset } = pageWindow(page, pageSize);
 
-  const canCreate = await can(
-    user,
-    "tickets.create",
-    { type: "global" },
-    productionContext,
-  );
+  const [canCreate, canAssignGlobal, canDeleteGlobal] = await Promise.all([
+    can(user, "tickets.create", { type: "global" }, productionContext),
+    can(user, "tickets.assign", { type: "global" }, productionContext),
+    can(user, "tickets.delete", { type: "global" }, productionContext),
+  ]);
 
-  const visibility = ticketsVisibilityCondition(user);
-  const searchClause: SQL | undefined = search
-    ? or(
-        ilike(tickets.ticketNumber, `%${search}%`),
-        ilike(tickets.subject, `%${search}%`),
-        ilike(tickets.customerEmail, `%${search}%`),
-        ilike(tickets.customerName, `%${search}%`),
-      )
-    : undefined;
+  // Technicians needed for both the inline assignee filter dropdown
+  // AND the per-row Assign action — fetch once.
+  const technicians = canAssignGlobal ? await listAssignableTechnicians() : [];
 
-  const where =
-    visibility && searchClause
-      ? and(visibility, searchClause)
-      : (visibility ?? searchClause);
+  // Build the WHERE clause as an array of conditions; AND them together
+  // so each filter is independent and trivially extensible.
+  const conditions: SQL[] = [ticketsVisibilityCondition(user)];
 
-  const rows = await db
+  if (search) {
+    const orClause = or(
+      ilike(tickets.ticketNumber, `%${search}%`),
+      ilike(tickets.subject, `%${search}%`),
+      ilike(tickets.customerEmail, `%${search}%`),
+      ilike(tickets.customerName, `%${search}%`),
+    );
+    if (orClause) conditions.push(orClause);
+  }
+  if (filterStatus) conditions.push(inArray(tickets.status, filterStatus));
+  if (filterPriority) conditions.push(inArray(tickets.priority, filterPriority));
+  if (filterCategory) conditions.push(inArray(tickets.category, filterCategory));
+  if (filterStream) conditions.push(inArray(tickets.stream, filterStream));
+  if (filterAssignee === "unassigned") {
+    conditions.push(isNull(tickets.assignedToId));
+  } else if (filterAssignee) {
+    conditions.push(eq(tickets.assignedToId, filterAssignee));
+  }
+  if (filterEscalated) conditions.push(eq(tickets.isEscalated, true));
+  if (filterFrom) {
+    const fromDate = new Date(`${filterFrom}T00:00:00.000Z`);
+    if (!Number.isNaN(fromDate.getTime())) {
+      conditions.push(gte(tickets.createdAt, fromDate));
+    }
+  }
+  if (filterTo) {
+    // End-of-day inclusive — UTC midnight of the next day.
+    const toDate = new Date(`${filterTo}T23:59:59.999Z`);
+    if (!Number.isNaN(toDate.getTime())) {
+      conditions.push(lte(tickets.createdAt, toDate));
+    }
+  }
+
+  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+  const activeFilterCount =
+    (filterStream ? 1 : 0) +
+    (filterStatus ? 1 : 0) +
+    (filterPriority ? 1 : 0) +
+    (filterCategory ? 1 : 0) +
+    (filterAssignee ? 1 : 0) +
+    (filterEscalated ? 1 : 0) +
+    (filterFrom || filterTo ? 1 : 0);
+
+  const rawRows = await db
     .select({
       id: tickets.id,
       ticketNumber: tickets.ticketNumber,
       subject: tickets.subject,
+      category: tickets.category,
       status: tickets.status,
       priority: tickets.priority,
       isEscalated: tickets.isEscalated,
@@ -85,7 +208,9 @@ export default async function TicketsPage({
     .leftJoin(users, eq(users.id, tickets.assignedToId))
     .where(where)
     .orderBy(desc(tickets.createdAt))
-    .limit(100);
+    .limit(limit)
+    .offset(offset);
+  const { items: rows, hasMore } = takePage(rawRows, pageSize);
 
   const countLine = search
     ? t("countMatching", { count: rows.length, query: search })
@@ -96,23 +221,41 @@ export default async function TicketsPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{t("title")}</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">{countLine}</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {countLine}
+            {activeFilterCount > 0
+              ? ` · ${tFilters("active", { count: activeFilterCount })}`
+              : null}
+          </p>
         </div>
         {canCreate ? (
-          <Button render={<Link href="/admin/tickets/new" />}>
+          <Button nativeButton={false} render={<Link href="/admin/tickets/new" />}>
             {t("createOnBehalf")}
           </Button>
         ) : null}
       </div>
 
-      <form className="flex gap-2" action="/admin/tickets" method="get">
-        <Input
-          name="q"
-          defaultValue={search}
-          placeholder={t("search")}
-          className="max-w-md"
-        />
-      </form>
+      <UrlSearchInput
+        initialValue={search}
+        placeholder={t("search")}
+        className="max-w-md"
+      />
+
+      <TicketFilters
+        initial={{
+          status: filterStatus ?? [],
+          priority: filterPriority ?? [],
+          category: filterCategory ?? [],
+          stream: filterStream ?? [],
+          assignee: filterAssignee ?? "",
+          escalated: filterEscalated,
+          from: filterFrom ?? "",
+          to: filterTo ?? "",
+          q: search,
+        }}
+        technicians={technicians}
+        activeCount={activeFilterCount}
+      />
 
       <Card className="p-0">
         <CardContent className="p-0">
@@ -128,11 +271,14 @@ export default async function TicketsPage({
                 <TableRow>
                   <TableHead className="px-4">{t("columns.ticket")}</TableHead>
                   <TableHead>{t("columns.subject")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
+                  <TableHead>{t("columns.category")}</TableHead>
                   <TableHead>{t("columns.priority")}</TableHead>
+                  <TableHead>{t("columns.status")}</TableHead>
                   <TableHead>{t("columns.customer")}</TableHead>
                   <TableHead>{t("columns.assignee")}</TableHead>
-                  <TableHead className="pr-4">{t("columns.updated")}</TableHead>
+                  <TableHead>{t("columns.created")}</TableHead>
+                  <TableHead>{t("columns.updated")}</TableHead>
+                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -153,10 +299,13 @@ export default async function TicketsPage({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={row.status} />
+                      <CategoryBadge category={row.category} />
                     </TableCell>
                     <TableCell>
                       <PriorityBadge priority={row.priority} />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={row.status} />
                     </TableCell>
                     <TableCell className="text-sm">
                       <div>{row.customerName}</div>
@@ -171,9 +320,21 @@ export default async function TicketsPage({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {formatter.dateTime(row.createdAt, { dateStyle: "medium" })}
+                    </TableCell>
+                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
                       {formatRelative(row.updatedAt, t, formatter)}
                     </TableCell>
+                    <StickyActionsCell>
+                      <TicketRowActions
+                        ticket={row}
+                        technicians={technicians}
+                        canAssign={canAssignGlobal}
+                        canEdit={canAssignGlobal}
+                        canDelete={canDeleteGlobal}
+                      />
+                    </StickyActionsCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -181,6 +342,24 @@ export default async function TicketsPage({
           )}
         </CardContent>
       </Card>
+
+      <Pagination
+        pathname="/admin/tickets"
+        page={page}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
+        labels={{
+          previous: tCommon("pagination.previous"),
+          next: tCommon("pagination.next"),
+          page: tCommon("pagination.page", { page }),
+          rowsPerPage: tCommon("pagination.rowsPerPage"),
+        }}
+      />
     </div>
   );
 }

@@ -6,7 +6,8 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
-import { signGuestToken, verifyCsatToken } from "@/lib/tokens";
+import { getAppUrl } from "@/lib/request";
+import { guestTicketUrl, verifyCsatToken } from "@/lib/tokens";
 
 // One-click CSAT confirmation. The link in the resolved-email HMAC-encodes
 // (ticketNumber, response) so a single GET is enough — no DB lookup is
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     redirect(`/csat/result?status=ok&response=${response}`);
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppUrl();
 
   if (response === "satisfied") {
     await db
@@ -178,8 +179,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   // Confirm to the customer that we've reopened.
   try {
-    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
     await sendEmail({
       to: ticket.customerEmail,
       template: {

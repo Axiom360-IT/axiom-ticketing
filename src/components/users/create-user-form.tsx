@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { createUser } from "@/app/actions/users";
-import { cn } from "@/lib/utils";
+import {
+  RoleMultiSelect,
+  type RoleOption,
+} from "@/components/users/role-multi-select";
 
-type Role = { id: string; name: string };
-
-export function CreateUserForm({ roles }: { roles: Role[] }) {
+export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
   const router = useRouter();
   const { runWithReauth, gate } = useReauthGate();
   const tFields = useTranslations("users.fields");
@@ -22,24 +23,14 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
   const [data, setData] = useState({
     name: "",
     email: "",
-    password: "",
     language: "en",
   });
-  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   function update<K extends keyof typeof data>(k: K, v: (typeof data)[K]) {
     setData((d) => ({ ...d, [k]: v }));
-  }
-
-  function toggleRole(id: string) {
-    setSelectedRoles((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -50,7 +41,7 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
       () =>
         createUser({
           ...data,
-          roleIds: [...selectedRoles],
+          roleIds: selectedRoles,
         }),
       "superAdmin",
     );
@@ -90,20 +81,6 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
 
       <div className="grid sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
-          <Label htmlFor="password">{tFields("password")}</Label>
-          <Input
-            id="password"
-            type="password"
-            required
-            minLength={12}
-            value={data.password}
-            onChange={(e) => update("password", e.target.value)}
-          />
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {tFields("passwordHint")}
-          </p>
-        </div>
-        <div className="space-y-1.5">
           <Label htmlFor="language">{tFields("language")}</Label>
           <Input
             id="language"
@@ -112,31 +89,22 @@ export function CreateUserForm({ roles }: { roles: Role[] }) {
             maxLength={10}
           />
         </div>
+        <div className="space-y-1.5">
+          {/* No password field — admin doesn't set the password.
+              The user receives a welcome email with a setup link. */}
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-7">
+            {tCreate("welcomeEmailHint")}
+          </p>
+        </div>
       </div>
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{tFields("roles")}</legend>
-        <div className="flex flex-wrap gap-2">
-          {roles.map((r) => {
-            const on = selectedRoles.has(r.id);
-            return (
-              <button
-                type="button"
-                key={r.id}
-                onClick={() => toggleRole(r.id)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full border text-sm transition-colors",
-                  on
-                    ? "bg-blue-600 text-white border-blue-700"
-                    : "bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900",
-                )}
-                aria-pressed={on}
-              >
-                {r.name}
-              </button>
-            );
-          })}
-        </div>
+        <RoleMultiSelect
+          roles={roles}
+          value={selectedRoles}
+          onChange={setSelectedRoles}
+        />
       </fieldset>
 
       {error ? (

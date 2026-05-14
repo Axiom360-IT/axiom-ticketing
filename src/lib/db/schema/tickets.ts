@@ -39,7 +39,15 @@ export const tickets = pgTable(
     escalatedById: uuid("escalated_by_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // One of: beyond_scope | requires_access | critical_impact |
+    // vendor_involvement | other  (NULL when not escalated). Enforced by
+    // the `tickets_escalation_reason_check` CHECK constraint below so a
+    // missed app-level validation can't poison the categorical column.
     escalationReason: text("escalation_reason"),
+    // Free-text supplementary detail captured when the technician
+    // escalates (optional). Lives next to the categorical reason so
+    // reporting can group by enum without losing context.
+    escalationNote: text("escalation_note"),
     csatResponse: text("csat_response"),
     csatRespondedAt: timestamp("csat_responded_at", { withTimezone: true }),
     responseDueAt: timestamp("response_due_at", { withTimezone: true }),
@@ -104,6 +112,10 @@ export const tickets = pgTable(
     check(
       "tickets_csat_check",
       sql`${t.csatResponse} IS NULL OR ${t.csatResponse} IN ('satisfied','unsatisfied')`,
+    ),
+    check(
+      "tickets_escalation_reason_check",
+      sql`${t.escalationReason} IS NULL OR ${t.escalationReason} IN ('beyond_scope','requires_access','critical_impact','vendor_involvement','other')`,
     ),
   ],
 );

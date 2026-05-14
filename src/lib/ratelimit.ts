@@ -62,6 +62,21 @@ export const ratelimits = {
   authCreateUser: makeLimiter(50, "1 h"),
   authCreateRole: makeLimiter(20, "1 d"),
   authUpdateSetting: makeLimiter(100, "1 d"),
+
+  // ── Customer portal ──────────────────────────────────────────
+  /** Magic-link request: 3 per email per hour. */
+  magicLinkByEmail: makeLimiter(3, "1 h"),
+  /** Magic-link request: 10 per IP per hour. */
+  magicLinkByIp: makeLimiter(10, "1 h"),
+  /** Customer ticket creation from the portal: 5 per user per day. */
+  customerCreateTicket: makeLimiter(5, "1 d"),
+  /** Guest reply via signed token: keyed by ticket number, prevents
+   * abuse of a leaked token to flood a single ticket. Generous because
+   * legitimate guests may write a long back-and-forth. */
+  guestReplyByTicket: makeLimiter(30, "1 h"),
+  /** Guest reply: secondary IP-keyed cap so one attacker can't exhaust
+   * the per-ticket limit across many leaked tokens. */
+  guestReplyByIp: makeLimiter(60, "1 h"),
 };
 
 export type RateLimitKey = keyof typeof ratelimits;

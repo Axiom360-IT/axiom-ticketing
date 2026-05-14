@@ -9,6 +9,8 @@ type TopbarProps = {
     email: string;
     name: string;
     roles: string[];
+    /** Server-resolved signed URL for the user's avatar, or null. */
+    avatarUrl?: string | null;
   };
 };
 
@@ -21,7 +23,12 @@ export async function Topbar({ user }: TopbarProps) {
       <div className="flex items-center gap-2">
         <NotificationBell initial={initialNotifications} />
         <ProfileMenu
-          user={{ name: user.name, email: user.email, roles: user.roles }}
+          user={{
+            name: user.name,
+            email: user.email,
+            roles: user.roles,
+            avatarUrl: user.avatarUrl ?? null,
+          }}
         />
       </div>
     </header>

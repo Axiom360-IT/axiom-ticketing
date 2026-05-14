@@ -49,7 +49,7 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
             href="/portal/submit"
-            className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors min-h-[44px]"
           >
             {t("submitAnother")}
           </Link>

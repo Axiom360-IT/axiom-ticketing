@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/ratelimit";
+import { clientIp } from "@/lib/request";
 
 // Edge proxy (formerly `middleware.ts` — Next.js 16 renamed the file
 // convention). Two responsibilities:
@@ -12,17 +13,11 @@ import { checkRateLimit } from "@/lib/ratelimit";
 //    is enforced inside the sign-in Server Action, not here — the proxy
 //    only sees the IP, not the email.
 
-function clientIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]?.trim() || "unknown";
-  return req.headers.get("x-real-ip") ?? "unknown";
-}
-
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname.startsWith("/api/auth/sign-in")) {
-    const ip = clientIp(req);
+    const ip = clientIp(req.headers);
     const result = await checkRateLimit("login", `signin:ip:${ip}`);
     if (!result.allowed) {
       const retryAfter = Math.max(
@@ -58,9 +53,31 @@ export async function proxy(req: NextRequest) {
     }
   }
 
+  // Customer portal authenticated routes — anonymous /portal/submit and
+  // /portal/sign-in fall through unchanged.
+  if (
+    pathname === "/portal/tickets" ||
+    pathname.startsWith("/portal/tickets/") ||
+    pathname === "/portal/profile" ||
+    pathname.startsWith("/portal/profile/") ||
+    pathname === "/portal/sign-out"
+  ) {
+    const sessionToken = req.cookies.get("better-auth.session_token");
+    if (!sessionToken) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/portal/sign-in";
+      url.searchParams.set("from", pathname);
+      return NextResponse.redirect(url);
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/auth/sign-in/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/api/auth/sign-in/:path*",
+    "/portal/:path*",
+  ],
 };

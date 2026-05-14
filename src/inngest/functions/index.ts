@@ -12,7 +12,6 @@ import { autoCloseResolvedTickets } from "./auto-close-resolved";
 import { cleanupOldNotifications } from "./cleanup-old-notifications";
 import { cleanupStaleLockouts } from "./cleanup-stale-lockouts";
 import { dispatchNotification } from "./dispatch-notification";
-import { invalidateSettingsCache } from "./invalidate-settings-cache";
 import { processInboundEmail } from "./process-inbound-email";
 import { scanAttachment } from "./scan-attachment";
 import { sendEmailNotification } from "./send-email-notification";
@@ -24,7 +23,6 @@ export const functions = [
   autoCloseResolvedTickets,
   processInboundEmail,
   scanAttachment,
-  invalidateSettingsCache,
   slaMonitor,
   dispatchNotification,
   sendEmailNotification,

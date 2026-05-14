@@ -41,6 +41,18 @@ export function attachmentStorageKey(
 }
 
 /**
+ * Build the storage key for a user's profile avatar. Timestamp suffix
+ * means uploading a new avatar produces a new key — the old object is
+ * removed by `removeAvatar`, but if cleanup ever fails, browsers won't
+ * serve a cached version of the wrong image.
+ *   <env>/avatars/<userId>/<timestamp>.<ext>
+ */
+export function avatarStorageKey(userId: string, ext: string): string {
+  const safeExt = ext.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 5);
+  return `${r2EnvPrefix()}/avatars/${userId}/${Date.now()}.${safeExt}`;
+}
+
+/**
  * Generate a presigned PUT URL the client can upload to directly.
  * The Server Action that creates the attachment row controls all the
  * inputs to this — there is no caller-supplied content type from the

@@ -17,14 +17,15 @@ const MODULE_ORDER = [
   "settings",
   "audit",
 ] as const;
+type Module = (typeof MODULE_ORDER)[number];
 
-function groupedByModule(): Record<(typeof MODULE_ORDER)[number], Permission[]> {
-  const out = {} as Record<(typeof MODULE_ORDER)[number], Permission[]>;
+function groupedByModule(): Record<Module, Permission[]> {
+  const out = {} as Record<Module, Permission[]>;
   for (const m of MODULE_ORDER) out[m] = [];
   for (const p of PERMISSIONS) {
     const [m] = p.split(".");
     if ((MODULE_ORDER as readonly string[]).includes(m)) {
-      out[m as (typeof MODULE_ORDER)[number]].push(p);
+      out[m as Module].push(p);
     }
   }
   return out;
@@ -50,6 +51,20 @@ export function PermissionsMatrix({
   onChange,
 }: Props) {
   const t = useTranslations("roles.matrix");
+  // Dynamic-key lookups against the i18n bundle. next-intl complains
+  // statically about unknown keys; cast to keep call sites readable.
+  const tLabel = useTranslations("roles.matrix.label") as unknown as (
+    key: string,
+  ) => string;
+  const tDesc = useTranslations("roles.matrix.description") as unknown as (
+    key: string,
+  ) => string;
+  const tModule = useTranslations("roles.matrix.module") as unknown as (
+    key: string,
+  ) => string;
+  const tModuleDesc = useTranslations(
+    "roles.matrix.moduleDescription",
+  ) as unknown as (key: string) => string;
 
   const groups = useMemo(() => groupedByModule(), []);
   const callerSet = useMemo(
@@ -63,6 +78,7 @@ export function PermissionsMatrix({
     for (const m of MODULE_ORDER) init[m] = true;
     return init;
   });
+  const [showLockedFor, setShowLockedFor] = useState<Set<Module>>(new Set());
 
   function isLocked(p: Permission): boolean {
     if (readOnly) return true;
@@ -80,7 +96,7 @@ export function PermissionsMatrix({
     }
   }
 
-  function toggleModule(module: (typeof MODULE_ORDER)[number], on: boolean) {
+  function toggleModule(module: Module, on: boolean) {
     const perms = groups[module].filter((p) => !isLocked(p));
     const set = new Set(value);
     if (on) {
@@ -91,45 +107,68 @@ export function PermissionsMatrix({
     onChange([...set]);
   }
 
+  function toggleShowLocked(module: Module) {
+    setShowLockedFor((prev) => {
+      const next = new Set(prev);
+      if (next.has(module)) next.delete(module);
+      else next.add(module);
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-3">
       {MODULE_ORDER.map((m) => {
         const perms = groups[m];
         if (perms.length === 0) return null;
-        const granular = perms.filter((p) => !isLocked(p));
+
+        const grantable = perms.filter((p) => !isLocked(p));
+        const locked = perms.filter((p) => isLocked(p));
         const allOn =
-          granular.length > 0 && granular.every((p) => valueSet.has(p));
-        const someOn = granular.some((p) => valueSet.has(p));
+          grantable.length > 0 && grantable.every((p) => valueSet.has(p));
+        const someOn = grantable.some((p) => valueSet.has(p));
         const expanded = open[m];
+        const showingLocked = showLockedFor.has(m);
+        const visiblePerms = showingLocked ? perms : grantable;
+        const selectedCount = perms.filter((p) => valueSet.has(p)).length;
 
         return (
           <div
             key={m}
             className="border border-zinc-200 dark:border-zinc-800 rounded-md overflow-hidden"
           >
-            <div className="flex items-center gap-3 px-3 py-2 bg-zinc-50 dark:bg-zinc-900">
-              <button
-                type="button"
-                onClick={() =>
-                  setOpen((prev) => ({ ...prev, [m]: !prev[m] }))
-                }
-                className="flex items-center gap-1.5 text-sm font-medium"
-                aria-expanded={expanded}
-              >
-                <ChevronDown
-                  className={cn(
-                    "size-3.5 transition-transform",
-                    !expanded && "-rotate-90",
-                  )}
-                  aria-hidden="true"
-                />
-                {t(`module.${m}`)}
-              </button>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-auto">
-                {perms.filter((p) => valueSet.has(p)).length}/{perms.length}
-              </span>
-              {!readOnly ? (
-                <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none">
+            {/* ── Module header ─────────────────────────────────── */}
+            <div className="px-3 py-3 bg-zinc-50 dark:bg-zinc-900">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpen((prev) => ({ ...prev, [m]: !prev[m] }))
+                  }
+                  className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100 -ml-1 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  aria-expanded={expanded}
+                >
+                  <ChevronDown
+                    className={cn(
+                      "size-4 transition-transform",
+                      !expanded && "-rotate-90",
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span>{tModule(m)}</span>
+                </button>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-auto whitespace-nowrap">
+                  {t("selectedCount", {
+                    selected: selectedCount,
+                    total: perms.length,
+                  })}
+                </span>
+              </div>
+              <p className="mt-1 ml-5 text-xs text-zinc-500 dark:text-zinc-400">
+                {tModuleDesc(m)}
+              </p>
+              {!readOnly && grantable.length > 0 ? (
+                <label className="mt-2 ml-5 inline-flex items-center gap-2 text-xs cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={allOn}
@@ -137,53 +176,88 @@ export function PermissionsMatrix({
                       if (el) el.indeterminate = !allOn && someOn;
                     }}
                     onChange={(e) => toggleModule(m, e.target.checked)}
-                    disabled={granular.length === 0}
+                    className="size-3.5 accent-blue-600"
                   />
-                  <span>{t("selectAll")}</span>
+                  <span className="font-medium">{t("selectAll")}</span>
                 </label>
               ) : null}
             </div>
+
+            {/* ── Module body (per-action checkboxes) ──────────────── */}
             {expanded ? (
               <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {perms.map((p) => {
-                  const locked = isLocked(p);
+                {visiblePerms.map((p) => {
+                  const lockedNow = isLocked(p);
                   return (
                     <li
                       key={p}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 text-sm",
-                        locked && "opacity-60",
+                        "px-3 py-2.5",
+                        lockedNow && "bg-zinc-50/40 dark:bg-zinc-900/40",
                       )}
                     >
-                      <input
-                        id={`perm-${p}`}
-                        type="checkbox"
-                        checked={valueSet.has(p)}
-                        disabled={locked}
-                        onChange={(e) => toggle(p, e.target.checked)}
-                        className="size-3.5"
-                      />
-                      <label
-                        htmlFor={`perm-${p}`}
-                        className={cn(
-                          "flex-1 cursor-pointer select-none font-mono text-xs",
-                          locked && "cursor-not-allowed",
-                        )}
-                      >
-                        {p}
-                      </label>
-                      {locked && !readOnly ? (
-                        <span
-                          className="inline-flex items-center gap-1 text-[10px] text-zinc-400"
-                          title={t("lockedTooltip")}
-                        >
-                          <Lock className="size-3" aria-hidden="true" />
-                          {t("locked")}
-                        </span>
-                      ) : null}
+                      <div className="flex items-start gap-3">
+                        <input
+                          id={`perm-${p}`}
+                          type="checkbox"
+                          checked={valueSet.has(p)}
+                          disabled={lockedNow}
+                          onChange={(e) => toggle(p, e.target.checked)}
+                          className={cn(
+                            "size-4 mt-0.5 accent-blue-600",
+                            lockedNow && "cursor-not-allowed",
+                          )}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <label
+                            htmlFor={`perm-${p}`}
+                            className={cn(
+                              "block text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer select-none",
+                              lockedNow && "cursor-not-allowed text-zinc-500",
+                            )}
+                          >
+                            {tLabel(p.replace(/\./g, "__"))}
+                          </label>
+                          <p
+                            className={cn(
+                              "mt-0.5 text-xs text-zinc-500 dark:text-zinc-400",
+                              lockedNow && "italic",
+                            )}
+                          >
+                            {tDesc(p.replace(/\./g, "__"))}
+                          </p>
+                        </div>
+                        {lockedNow && !readOnly ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 shrink-0"
+                            title={t("lockedTooltip")}
+                          >
+                            <Lock className="size-3" aria-hidden="true" />
+                            {t("locked")}
+                          </span>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}
+                {/* Locked footer — explains hidden count + toggle. */}
+                {!readOnly && locked.length > 0 ? (
+                  <li className="px-3 py-2 bg-zinc-50/60 dark:bg-zinc-900/60 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Lock className="size-3" aria-hidden="true" />
+                      {showingLocked
+                        ? t("lockedTooltip")
+                        : t("lockedHidden", { count: locked.length })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleShowLocked(m)}
+                      className="text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      {showingLocked ? t("hideLocked") : t("showLocked")}
+                    </button>
+                  </li>
+                ) : null}
               </ul>
             ) : null}
           </div>

@@ -8,18 +8,25 @@ import { audit } from "@/lib/audit";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { checkRateLimit, enforceUserRateLimit } from "@/lib/ratelimit";
+import { clientIp, getAppUrl } from "@/lib/request";
+import { loadTicketScope } from "@/lib/tickets/load";
+import {
+  htmlToPlainText,
+  sanitizeMessageHtml,
+} from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
-import { signCsatToken, signGuestToken } from "@/lib/tokens";
+import { guestTicketUrl, signCsatToken } from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 // ── Public ticket submission (no auth required) ──────────────────────
@@ -33,7 +40,10 @@ const TICKET_CATEGORIES = [
 ] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
-export const createTicketSchema = z.object({
+// Module-private — Next.js 16 forbids non-async-function exports from
+// "use server" files. Schemas + types stay internal; callers pass plain
+// objects to the actions and the schema validates server-side.
+const createTicketSchema = z.object({
   customerName: z.string().trim().min(1, "Name is required").max(120),
   customerEmail: z.string().trim().toLowerCase().email("Enter a valid email"),
   subject: z
@@ -53,9 +63,9 @@ export const createTicketSchema = z.object({
   honeypot: z.string().optional(),
 });
 
-export type CreateTicketInput = z.infer<typeof createTicketSchema>;
+type CreateTicketInput = z.infer<typeof createTicketSchema>;
 
-export type CreateTicketResult =
+type CreateTicketResult =
   | { ok: true; ticketNumber: string }
   | { ok: false; error: string };
 
@@ -76,10 +86,7 @@ export async function createTicket(
 
   // 3. Read request metadata
   const h = await headers();
-  const ip =
-    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    h.get("x-real-ip") ??
-    "unknown";
+  const ip = clientIp(h);
   const userAgent = h.get("user-agent") ?? undefined;
 
   // 4. Rate limits — IP and email
@@ -130,7 +137,7 @@ export async function createTicket(
   });
 
   // 8. Insert ticket + initial message in a transaction
-  await db.transaction(async (tx) => {
+  await transactional(async (tx) => {
     const [ticket] = await tx
       .insert(tickets)
       .values({
@@ -181,9 +188,8 @@ export async function createTicket(
 
   // 10. Send confirmation email (inline for now; Inngest fan-out comes later)
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticketNumber, data.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticketNumber, data.customerEmail);
 
     await sendEmail({
       to: data.customerEmail,
@@ -213,7 +219,7 @@ export async function createTicket(
 
 // ── Coordinator: create on behalf of a customer ──────────────────────
 
-export const createOnBehalfSchema = z.object({
+const createOnBehalfSchema = z.object({
   customerName: z.string().trim().min(1, "Name is required").max(120),
   customerEmail: z.string().trim().toLowerCase().email("Enter a valid email"),
   subject: z
@@ -230,8 +236,8 @@ export const createOnBehalfSchema = z.object({
     .max(5000),
 });
 
-export type CreateOnBehalfInput = z.infer<typeof createOnBehalfSchema>;
-export type CreateOnBehalfResult =
+type CreateOnBehalfInput = z.infer<typeof createOnBehalfSchema>;
+type CreateOnBehalfResult =
   | { ok: true; ticketNumber: string }
   | { ok: false; error: string };
 
@@ -269,7 +275,7 @@ export async function createTicketOnBehalf(
     priority: data.priority as Priority,
   });
 
-  await db.transaction(async (tx) => {
+  await transactional(async (tx) => {
     const [ticket] = await tx
       .insert(tickets)
       .values({
@@ -318,9 +324,8 @@ export async function createTicketOnBehalf(
 
   // Confirmation email to the customer (best-effort).
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticketNumber, data.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticketNumber, data.customerEmail);
     await sendEmail({
       to: data.customerEmail,
       template: {
@@ -341,41 +346,6 @@ export async function createTicketOnBehalf(
 
   revalidatePath("/admin/tickets");
   return { ok: true, ticketNumber };
-}
-
-// ── Helpers shared by authenticated actions ──────────────────────────
-
-async function loadTicketScope(ticketId: string) {
-  const [t] = await db
-    .select({
-      id: tickets.id,
-      ticketNumber: tickets.ticketNumber,
-      subject: tickets.subject,
-      assignedToId: tickets.assignedToId,
-      customerId: tickets.customerId,
-      customerEmail: tickets.customerEmail,
-      customerName: tickets.customerName,
-      status: tickets.status,
-      isEscalated: tickets.isEscalated,
-      priority: tickets.priority,
-    })
-    .from(tickets)
-    .where(eq(tickets.id, ticketId))
-    .limit(1);
-  return t;
-}
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
 }
 
 // ── Assignment ──────────────────────────────────────────────────────
@@ -441,9 +411,8 @@ export async function assignTicket(
 
   // Notify customer (best-effort)
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
     await sendEmail({
       to: ticket.customerEmail,
       template: {
@@ -467,7 +436,7 @@ export async function assignTicket(
   // event; the dispatcher gates email/sms by the user's preferences and
   // always inserts an in-app notification.
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     await inngest.send({
       name: "notification/dispatch",
@@ -515,6 +484,58 @@ export async function assignTicket(
   revalidatePath(`/admin/tickets/${ticketId}`);
 }
 
+// ── Soft delete ─────────────────────────────────────────────────────
+// Sets `deletedAt` + `deletedById`. The row stays in the DB so message
+// history, attachments, and audit references remain intact (FKs into
+// tickets are `onDelete: "restrict"`). Default visibility scope hides
+// soft-deleted rows from all lists.
+
+type DeleteTicketResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function deleteTicket(
+  ticketId: string,
+): Promise<DeleteTicketResult> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.delete",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (ticket.deletedAt) {
+    return { ok: false, error: "Ticket is already deleted." };
+  }
+
+  const now = new Date();
+  await db
+    .update(tickets)
+    .set({ deletedAt: now, deletedById: user.id, updatedAt: now })
+    .where(eq(tickets.id, ticketId));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.delete",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { deletedAt: null },
+    after: { deletedAt: now.toISOString() },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
 // ── Reply (visible to customer) ──────────────────────────────────────
 
 const replySchema = z.object({
@@ -559,7 +580,15 @@ export async function replyToTicket(
   // First agent reply sets first_response_at (used by SLA monitor in M9)
   const isFirstAgentReply = ticket.status === "open";
 
-  await db.transaction(async (tx) => {
+  // Editor produces HTML; allowlist-strip server-side before storage.
+  // Reject if visible content is empty (user submitted only forbidden
+  // tags or whitespace).
+  const cleanBody = sanitizeMessageHtml(parsed.data.body);
+  if (htmlToPlainText(cleanBody).length === 0) {
+    throw new Error("Reply cannot be empty");
+  }
+
+  await transactional(async (tx) => {
     const [inserted] = await tx
       .insert(messages)
       .values({
@@ -568,7 +597,8 @@ export async function replyToTicket(
         authorEmail: agent.email,
         authorName: agent.name,
         authorType: "agent",
-        body: parsed.data.body,
+        body: cleanBody,
+        bodyFormat: "html",
         channel: "dashboard",
       })
       .returning({ id: messages.id });
@@ -608,9 +638,8 @@ export async function replyToTicket(
 
   // Email the customer (best-effort)
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
     await sendEmail({
       to: ticket.customerEmail,
       template: {
@@ -620,7 +649,10 @@ export async function replyToTicket(
           customerName: ticket.customerName,
           subject: ticket.subject,
           agentName: agent.name,
-          body: parsed.data.body,
+          // Outbound notification carries plain text only — the full
+          // formatted reply is visible in the portal via trackingUrl.
+          // Avoids email-client HTML compatibility surprises for V1.
+          body: htmlToPlainText(cleanBody),
           trackingUrl,
         },
       },
@@ -674,7 +706,13 @@ export async function addInternalNote(
     .limit(1);
   if (!agent) throw new NotFoundError();
 
-  await db.transaction(async (tx) => {
+  // Internal notes also use the rich-text editor on the dashboard.
+  const cleanBody = sanitizeMessageHtml(parsed.data.body);
+  if (htmlToPlainText(cleanBody).length === 0) {
+    throw new Error("Internal note cannot be empty");
+  }
+
+  await transactional(async (tx) => {
     const [inserted] = await tx
       .insert(messages)
       .values({
@@ -683,7 +721,8 @@ export async function addInternalNote(
         authorEmail: agent.email,
         authorName: agent.name,
         authorType: "agent",
-        body: parsed.data.body,
+        body: cleanBody,
+        bodyFormat: "html",
         channel: "dashboard",
         isInternalNote: true,
       })
@@ -721,21 +760,40 @@ export async function addInternalNote(
 
 // ── Resolve ──────────────────────────────────────────────────────────
 
-const resolveSchema = z.object({
-  note: z
-    .string()
-    .trim()
-    .min(10, "Resolution note must be at least 10 characters")
-    .max(5000),
-});
+// Two resolution paths:
+// - "note": the standard flow — author writes ≥10 chars explaining the
+//   fix, message is stored with isResolutionNote=true, customer-visible.
+// - "skip": Coordinator override (gated by `tickets.resolve_skip_note`).
+//   No customer-facing resolution note. The skip reason is captured as
+//   an internal note (so the team has visibility) AND in the audit log.
+const resolveSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("note"),
+    note: z
+      .string()
+      .trim()
+      .min(10, "Resolution note must be at least 10 characters")
+      .max(5000),
+  }),
+  z.object({
+    kind: z.literal("skip"),
+    skipReason: z
+      .string()
+      .trim()
+      .min(10, "Skip reason must be at least 10 characters")
+      .max(500),
+  }),
+]);
+
+export type ResolveTicketInput = z.infer<typeof resolveSchema>;
 
 export async function resolveTicket(
   ticketId: string,
-  note: string,
+  input: ResolveTicketInput,
 ): Promise<void> {
-  const parsed = resolveSchema.safeParse({ note });
+  const parsed = resolveSchema.safeParse(input);
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message ?? "Invalid note");
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
   }
 
   const user = await requireSessionUser();
@@ -746,6 +804,19 @@ export async function resolveTicket(
     !(await can(
       user,
       "tickets.resolve",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  // Skip-note path requires a separate, more privileged permission.
+  if (
+    parsed.data.kind === "skip" &&
+    !(await can(
+      user,
+      "tickets.resolve_skip_note",
       { type: "ticket", ticket },
       productionContext,
     ))
@@ -764,17 +835,32 @@ export async function resolveTicket(
     .limit(1);
   if (!agent) throw new NotFoundError();
 
-  await db.transaction(async (tx) => {
-    await tx.insert(messages).values({
-      ticketId: ticket.id,
-      authorId: user.id,
-      authorEmail: agent.email,
-      authorName: agent.name,
-      authorType: "agent",
-      body: parsed.data.note,
-      channel: "dashboard",
-      isResolutionNote: true,
-    });
+  await transactional(async (tx) => {
+    if (parsed.data.kind === "note") {
+      await tx.insert(messages).values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorEmail: agent.email,
+        authorName: agent.name,
+        authorType: "agent",
+        body: parsed.data.note,
+        channel: "dashboard",
+        isResolutionNote: true,
+      });
+    } else {
+      // Skip path: write the skip reason as an internal note so the team
+      // sees WHY no resolution note exists. Customer thread stays clean.
+      await tx.insert(messages).values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorEmail: agent.email,
+        authorName: agent.name,
+        authorType: "agent",
+        body: `Resolved without resolution note (Coordinator override). Reason: ${parsed.data.skipReason}`,
+        channel: "dashboard",
+        isInternalNote: true,
+      });
+    }
     await tx
       .update(tickets)
       .set({
@@ -791,15 +877,21 @@ export async function resolveTicket(
     targetType: "ticket",
     targetId: ticket.ticketNumber,
     before: { status: ticket.status },
-    after: { status: "resolved" },
+    after:
+      parsed.data.kind === "note"
+        ? { status: "resolved", resolution_note_provided: true }
+        : {
+            status: "resolved",
+            resolution_note_provided: false,
+            skip_reason: parsed.data.skipReason,
+          },
   });
 
   // CSAT email — best-effort. Auto-close runs hourly in
   // `inngest/functions/auto-close-resolved.ts`.
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
     const satToken = signCsatToken(ticket.ticketNumber, "satisfied");
     const unsatToken = signCsatToken(ticket.ticketNumber, "unsatisfied");
     await sendEmail({
@@ -811,7 +903,10 @@ export async function resolveTicket(
           customerName: ticket.customerName,
           subject: ticket.subject,
           agentName: agent.name,
-          resolutionNote: parsed.data.note,
+          // Skip path: customer never sees the internal skip reason.
+          // Template renders the resolution-note section conditionally
+          // when this string is empty.
+          resolutionNote: parsed.data.kind === "note" ? parsed.data.note : "",
           csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
           csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
           trackingUrl,
@@ -875,9 +970,8 @@ export async function reopenTicket(ticketId: string): Promise<void> {
 
   // Notify customer (best-effort)
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const guestToken = signGuestToken(ticket.ticketNumber, ticket.customerEmail);
-    const trackingUrl = `${appUrl}/portal/tickets/${ticket.ticketNumber}?token=${guestToken}`;
+    const appUrl = getAppUrl();
+    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
     await sendEmail({
       to: ticket.customerEmail,
       template: {
@@ -903,19 +997,29 @@ export async function reopenTicket(ticketId: string): Promise<void> {
 
 // ── Escalate / De-escalate ───────────────────────────────────────────
 
+const ESCALATION_REASONS = [
+  "beyond_scope",
+  "requires_access",
+  "critical_impact",
+  "vendor_involvement",
+  "other",
+] as const;
+type EscalationReason = (typeof ESCALATION_REASONS)[number];
+
 const escalateSchema = z.object({
-  reason: z
-    .string()
-    .trim()
-    .min(10, "Escalation reason must be at least 10 characters")
-    .max(1000),
+  // Spec §3.2 — categorical so reporting can group cleanly.
+  reason: z.enum(ESCALATION_REASONS),
+  // Optional supplementary context (max 1000 chars). Stored alongside
+  // the categorical reason; never replaces it.
+  note: z.string().trim().max(1000).optional(),
 });
 
 export async function escalateTicket(
   ticketId: string,
-  reason: string,
+  reason: EscalationReason,
+  note?: string,
 ): Promise<void> {
-  const parsed = escalateSchema.safeParse({ reason });
+  const parsed = escalateSchema.safeParse({ reason, note });
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid reason");
   }
@@ -953,6 +1057,7 @@ export async function escalateTicket(
       escalatedAt: new Date(),
       escalatedById: user.id,
       escalationReason: parsed.data.reason,
+      escalationNote: parsed.data.note?.length ? parsed.data.note : null,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));
@@ -962,12 +1067,12 @@ export async function escalateTicket(
     action: "ticket.escalate",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { reason: parsed.data.reason },
+    after: { reason: parsed.data.reason, note: parsed.data.note ?? null },
   });
 
   // Notify IT Director + Coordinator via dispatch fan-out.
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     const technicianName = actor?.name ?? "An agent";
     await inngest.send({
@@ -1032,6 +1137,7 @@ export async function deescalateTicket(ticketId: string): Promise<void> {
       escalatedAt: null,
       escalatedById: null,
       escalationReason: null,
+      escalationNote: null,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));

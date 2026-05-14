@@ -11,25 +11,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  StickyActionsCell,
+  StickyActionsHead,
+} from "@/components/ui/row-actions";
+import {
+  Pagination,
+  parsePage,
+  parsePageSize,
+} from "@/components/ui/pagination";
+import { RoleRowActions } from "@/components/roles/role-row-actions";
 import { listRolesForAdmin } from "@/app/actions/roles";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-export const dynamic = "force-dynamic";
+type SearchParams = Promise<{ page?: string; pageSize?: string }>;
 
-export default async function RolesListPage() {
+export default async function RolesListPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
   if (!(await can(user, "roles.view", { type: "global" }, productionContext))) {
     redirect("/admin");
   }
 
-  const [rows, canCreate] = await Promise.all([
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+
+  const [allRows, canCreate, canEdit, canDelete] = await Promise.all([
     listRolesForAdmin(),
     can(user, "roles.create", { type: "global" }, productionContext),
+    can(user, "roles.update", { type: "global" }, productionContext),
+    can(user, "roles.delete", { type: "global" }, productionContext),
   ]);
   const t = await getTranslations("roles.list");
+  const tCommon = await getTranslations("common");
+
+  // listRolesForAdmin returns the full set (small list — typically <20).
+  // Paginate at the page level for visual consistency with other tables.
+  const offset = (page - 1) * pageSize;
+  const rows = allRows.slice(offset, offset + pageSize);
+  const hasMore = allRows.length > offset + pageSize;
 
   return (
     <div className="space-y-4">
@@ -41,7 +68,7 @@ export default async function RolesListPage() {
           </p>
         </div>
         {canCreate ? (
-          <Button render={<Link href="/admin/roles/new" />}>
+          <Button nativeButton={false} render={<Link href="/admin/roles/new" />}>
             {t("createButton")}
           </Button>
         ) : null}
@@ -55,9 +82,8 @@ export default async function RolesListPage() {
                 <TableHead className="px-4">{t("columns.name")}</TableHead>
                 <TableHead>{t("columns.type")}</TableHead>
                 <TableHead>{t("columns.users")}</TableHead>
-                <TableHead className="pr-4">
-                  {t("columns.description")}
-                </TableHead>
+                <TableHead>{t("columns.description")}</TableHead>
+                <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -81,15 +107,40 @@ export default async function RolesListPage() {
                   <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
                     {t("userCount", { count: r.userCount })}
                   </TableCell>
-                  <TableCell className="pr-4 text-xs text-zinc-500 dark:text-zinc-400">
+                  <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
                     {r.description ?? ""}
                   </TableCell>
+                  <StickyActionsCell>
+                    <RoleRowActions
+                      role={r}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
+                    />
+                  </StickyActionsCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <Pagination
+        pathname="/admin/roles"
+        page={page}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
+        labels={{
+          previous: tCommon("pagination.previous"),
+          next: tCommon("pagination.next"),
+          page: tCommon("pagination.page", { page }),
+          rowsPerPage: tCommon("pagination.rowsPerPage"),
+        }}
+      />
     </div>
   );
 }

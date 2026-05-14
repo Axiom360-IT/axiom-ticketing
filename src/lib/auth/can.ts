@@ -132,12 +132,32 @@ export async function can(
     case "users.deactivate":
     case "users.reset_password":
       if (target.type !== "user") return false;
-      // No self-action for these — prevents self-lockout
-      if (target.user.id === user.id) return false;
+      // Self-action gating differs by action:
+      //   - deactivate / reset_password: blocked outright. These are the
+      //     two ways a user can lock themselves out, and "I'd never do
+      //     that" is exactly when they do.
+      //   - update: allowed. Editing your own name/language/roles is
+      //     normal. The "can't grant what you don't have" rule still
+      //     applies on the role-assignment side, so a non-Super-Admin
+      //     can't sneak themselves an elevated role this way.
+      if (action !== "users.update" && target.user.id === user.id) {
+        return false;
+      }
       if (action === "users.deactivate") {
         if (!ctx) throw new Error("CanContext required for users.deactivate");
         if (await ctx.isLastActiveSuperAdmin(target.user.id)) return false;
       }
+      // Self-update bypasses the hierarchy check below — you always
+      // have authority over your own row.
+      if (action === "users.update" && target.user.id === user.id) {
+        return true;
+      }
+      // Super Admin bypasses the hierarchy gate. The spec calls Super
+      // Admin "all permissions across all modules"; without this, a
+      // seeded Super Admin can't manage seeded peers because nobody
+      // has `createdById` pointing at them. Keeps the descendant rule
+      // for non-Super-Admin grantees who must respect the hierarchy.
+      if (user.roleNames.has("Super Admin")) return true;
       if (!ctx) throw new Error("CanContext required for user-scope actions");
       return await ctx.isDescendantOf(target.user.id, user.id);
 

@@ -17,8 +17,6 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-export const dynamic = "force-dynamic";
-
 type SearchParams = Promise<{
   from?: string;
   to?: string;
@@ -88,7 +86,7 @@ export default async function AuditPage({
           </p>
         </div>
         {canExport ? (
-          <Button render={<Link href={exportUrl} prefetch={false} />}>
+          <Button nativeButton={false} render={<Link href={exportUrl} prefetch={false} />}>
             {t("page.exportCsv")}
           </Button>
         ) : null}
@@ -167,7 +165,7 @@ export default async function AuditPage({
         </div>
         <div className="md:col-span-3 lg:col-span-6 flex gap-2">
           <Button type="submit">{t("filters.apply")}</Button>
-          <Button render={<Link href="/admin/audit" />} variant="outline">
+          <Button nativeButton={false} render={<Link href="/admin/audit" />} variant="outline">
             {t("filters.reset")}
           </Button>
         </div>

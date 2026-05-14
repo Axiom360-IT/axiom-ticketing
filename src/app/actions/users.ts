@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -9,7 +10,7 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { requireSessionUser } from "@/lib/auth/session";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import {
   rolePermissions,
@@ -18,20 +19,9 @@ import {
 } from "@/lib/db/schema/rbac";
 import { clearFailures } from "@/lib/auth/lockout";
 import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
-}
+import { getAppUrl } from "@/lib/request";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -121,7 +111,6 @@ export async function getDescendants(
 const createUserSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().toLowerCase().email().max(255),
-  password: z.string().min(12).max(200),
   language: z.string().trim().min(2).max(10).default("en"),
   roleIds: z.array(z.string().uuid()).default([]),
 });
@@ -180,12 +169,19 @@ export async function createUser(
     return { ok: false, error: "A user with that email already exists." };
   }
 
+  // Welcome-email flow: admin doesn't set a password. We create the
+  // account with a strong random one (Better Auth requires a password
+  // at signUpEmail time), then immediately trigger the password-reset
+  // flow which emails the user a setup link via the Better Auth
+  // `sendResetPassword` callback configured in lib/auth/index.ts. The
+  // random password is never returned and never logged.
   let createdId: string;
   try {
+    const tempPassword = `${randomBytes(24).toString("base64url")}A1!`;
     const result = await auth.api.signUpEmail({
       body: {
         email: data.email,
-        password: data.password,
+        password: tempPassword,
         name: data.name,
       },
     });
@@ -224,6 +220,26 @@ export async function createUser(
     targetId: createdId,
     after: { email: data.email, roleIds: data.roleIds },
   });
+
+  // Send the welcome / set-your-password email. Better Auth issues a
+  // signed reset token and invokes the `sendResetPassword` callback in
+  // `lib/auth/index.ts` which routes through our staff_setup_invite
+  // template. Best-effort — admin still sees a successful create even
+  // if email send fails (logged to dev console for diagnosis; ops can
+  // resend via the existing "Reset password" admin action).
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    await auth.api.requestPasswordReset({
+      body: {
+        email: data.email,
+        redirectTo: `${appUrl}/admin/login?reset=ok`,
+      },
+    });
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[createUser] welcome email send failed:", err);
+    }
+  }
 
   revalidatePath("/admin/users");
   return { ok: true, userId: createdId };
@@ -278,13 +294,26 @@ export async function updateUser(
         error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
       };
     }
+    // Lockout guard: don't let the last active Super Admin lose the
+    // role via a role update. We already block this for `deactivate`;
+    // this closes the symmetric path. Applies to self-edits AND
+    // edits-by-another (an admin removing SA from the only remaining
+    // SA would brick the org just the same).
+    const willStillBeSuperAdmin = await rolesIncludeSuperAdmin(data.roleIds);
+    if (
+      !willStillBeSuperAdmin &&
+      (await productionContext.isLastActiveSuperAdmin(userId))
+    ) {
+      return {
+        ok: false,
+        error:
+          "You can't remove the Super Admin role from the only active Super Admin. Grant Super Admin to another user first.",
+      };
+    }
     // M17: granting Super Admin in an update also requires fresh
     // password confirmation, even if the user already had it before
     // — the operation is sensitive enough either way.
-    if (
-      (await rolesIncludeSuperAdmin(data.roleIds)) &&
-      !(await isReauthFresh(caller.id))
-    ) {
+    if (willStillBeSuperAdmin && !(await isReauthFresh(caller.id))) {
       return reauthRequiredResult();
     }
   }
@@ -307,7 +336,7 @@ export async function updateUser(
   }
 
   if (data.roleIds) {
-    await db.transaction(async (tx) => {
+    await transactional(async (tx) => {
       await tx.delete(userRoles).where(eq(userRoles.userId, userId));
       if (data.roleIds!.length > 0) {
         await tx.insert(userRoles).values(
@@ -396,7 +425,7 @@ export async function deactivateUser(
 
   // 2. Apply cascade option.
   let affected = 0;
-  await db.transaction(async (tx) => {
+  await transactional(async (tx) => {
     if (parsed.data.cascade === "move-up") {
       // Children move up to the deactivated user's own creator.
       await tx
@@ -567,7 +596,7 @@ export async function resetUserPassword(
     .limit(1);
   if (!u) throw new NotFoundError();
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppUrl();
   try {
     await auth.api.requestPasswordReset({
       body: {
@@ -594,10 +623,21 @@ export async function resetUserPassword(
 // ── Read helpers used by pages (kept here so the action file owns
 //    the logic, and pages stay lean) ──────────────────────────────
 
+// Roles that mark a user as "internal staff" (vs external customer).
+// Anyone holding any of these is considered internal; everyone else
+// (Customer-only or no-roles) is external.
+const INTERNAL_ROLE_NAMES = new Set([
+  "Super Admin",
+  "IT Director",
+  "Coordinator",
+  "Technician",
+]);
+
 export async function listUsersForAdmin(opts: {
   query?: string;
   roleId?: string;
   status?: "active" | "inactive" | "all";
+  audience?: "internal" | "external" | "all";
 }) {
   const caller = await requireSessionUser();
   if (!(await can(caller, "users.view", { type: "global" }, productionContext))) {
@@ -657,6 +697,15 @@ export async function listUsersForAdmin(opts: {
   }
   if (opts.roleId) {
     rows = rows.filter((u) => u.roles.some((r) => r.id === opts.roleId));
+  }
+  if (opts.audience === "internal") {
+    rows = rows.filter((u) =>
+      u.roles.some((r) => INTERNAL_ROLE_NAMES.has(r.name)),
+    );
+  } else if (opts.audience === "external") {
+    rows = rows.filter(
+      (u) => !u.roles.some((r) => INTERNAL_ROLE_NAMES.has(r.name)),
+    );
   }
 
   rows.sort((a, b) => a.name.localeCompare(b.name));

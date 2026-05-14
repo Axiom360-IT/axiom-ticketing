@@ -2,7 +2,6 @@
 
 import {
   and,
-  desc,
   eq,
   gte,
   isNotNull,
@@ -19,13 +18,7 @@ import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { auditLog } from "@/lib/db/schema/audit";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
+import { ForbiddenError } from "@/lib/errors";
 
 const PAGE_SIZE = 50;
 
@@ -354,16 +347,7 @@ export async function listAuditActors(): Promise<
     .from(auditLog)
     .innerJoin(users, eq(users.id, auditLog.actorId))
     .where(isNotNull(auditLog.actorId))
-    .orderBy(desc(auditLog.timestamp))
     .limit(200);
 
-  // Drop duplicates that the order-by + limit pattern can leave behind.
-  const seen = new Set<string>();
-  const out: { id: string; name: string; email: string }[] = [];
-  for (const r of rows) {
-    if (seen.has(r.id)) continue;
-    seen.add(r.id);
-    out.push(r);
-  }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
 }

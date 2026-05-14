@@ -26,6 +26,11 @@ export const messages = pgTable(
     authorName: text("author_name").notNull(),
     authorType: text("author_type").notNull(),
     body: text("body").notNull(),
+    // 'text' for legacy/email/system messages; 'html' for rich-text replies
+    // composed via the dashboard or portal. Renderers branch on this so we
+    // never blindly trust a stored string as HTML. New rows default to
+    // 'text' — composers explicitly opt into 'html' when they sanitize.
+    bodyFormat: text("body_format").notNull().default("text"),
     channel: text("channel").notNull(),
     isInternalNote: boolean("is_internal_note").notNull().default(false),
     isResolutionNote: boolean("is_resolution_note").notNull().default(false),
@@ -43,6 +48,10 @@ export const messages = pgTable(
     check(
       "messages_channel_check",
       sql`${t.channel} IN ('email','portal','dashboard','system')`,
+    ),
+    check(
+      "messages_body_format_check",
+      sql`${t.bodyFormat} IN ('text','html')`,
     ),
   ],
 );

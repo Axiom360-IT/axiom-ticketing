@@ -5,30 +5,26 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { LogOut, User as UserIcon } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth/client";
+import { initials } from "@/lib/format";
 
 type ProfileMenuProps = {
   user: {
     name: string;
     email: string;
     roles: string[];
+    /** Server-resolved signed URL for the avatar object, or null. */
+    avatarUrl?: string | null;
   };
 };
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 export function ProfileMenu({ user }: ProfileMenuProps) {
   const router = useRouter();
@@ -50,6 +46,9 @@ export function ProfileMenu({ user }: ProfileMenuProps) {
         aria-label={t("profileMenuLabel")}
       >
         <Avatar className="w-7 h-7">
+          {user.avatarUrl ? (
+            <AvatarImage src={user.avatarUrl} alt={user.name} />
+          ) : null}
           <AvatarFallback className="text-xs">
             {initials(user.name)}
           </AvatarFallback>
@@ -59,19 +58,15 @@ export function ProfileMenu({ user }: ProfileMenuProps) {
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium">{user.name}</span>
-            <span className="text-xs text-zinc-500 truncate">
-              {user.email}
-            </span>
-            <span className="text-[10px] text-zinc-400 mt-1">
-              {user.roles.length > 0
-                ? user.roles.join(", ")
-                : t("profileMenuNoRoles")}
-            </span>
-          </div>
-        </DropdownMenuLabel>
+        <div className="flex flex-col gap-0.5 px-1.5 py-1">
+          <span className="text-sm font-medium">{user.name}</span>
+          <span className="text-xs text-zinc-500 truncate">{user.email}</span>
+          <span className="text-[10px] text-zinc-400 mt-1">
+            {user.roles.length > 0
+              ? user.roles.join(", ")
+              : t("profileMenuNoRoles")}
+          </span>
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/admin/profile" />}>
           <UserIcon className="w-4 h-4" aria-hidden="true" />

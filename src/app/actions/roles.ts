@@ -12,26 +12,14 @@ import {
   type Permission,
 } from "@/lib/auth/permissions";
 import { requireSessionUser } from "@/lib/auth/session";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
 import {
   rolePermissions,
   roles,
   userRoles,
 } from "@/lib/db/schema/rbac";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
-
-class ForbiddenError extends Error {
-  constructor() {
-    super("Forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-class NotFoundError extends Error {
-  constructor() {
-    super("Not found");
-    this.name = "NotFoundError";
-  }
-}
 
 const PERMISSION_SET = new Set(PERMISSIONS);
 
@@ -187,7 +175,7 @@ export async function updateRole(
         error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
       };
     }
-    await db.transaction(async (tx) => {
+    await transactional(async (tx) => {
       await tx
         .delete(rolePermissions)
         .where(eq(rolePermissions.roleId, roleId));
@@ -256,7 +244,7 @@ export async function deleteRole(
     };
   }
 
-  await db.transaction(async (tx) => {
+  await transactional(async (tx) => {
     await tx
       .delete(rolePermissions)
       .where(eq(rolePermissions.roleId, roleId));

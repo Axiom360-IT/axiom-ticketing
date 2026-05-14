@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import type { SmsTemplate } from "../notifications/sms-types";
+import { getAppUrl } from "../request";
 import { twilioClient, twilioFromNumber } from "./client";
 
 // Outbound SMS. Templates are i18n keys (per ARCHITECTURE §10) so messages
@@ -48,7 +49,14 @@ export async function sendSms(options: SendSmsOptions): Promise<{
   const resolvedLocale = pickLocale(locale) ?? DEFAULT_LOCALE;
   const body = await renderBody(template, resolvedLocale);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  // SMS bodies must render even if NEXT_PUBLIC_APP_URL is unset (e.g. in
+  // dev/test) — fall back to omitting the callback rather than throwing.
+  let appUrl = "";
+  try {
+    appUrl = getAppUrl();
+  } catch {
+    appUrl = "";
+  }
   const callback =
     statusCallbackUrl ?? (appUrl ? `${appUrl}/api/twilio/status` : undefined);
 

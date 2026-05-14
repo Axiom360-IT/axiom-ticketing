@@ -21,6 +21,7 @@ import {
   MAX_FILE_BYTES,
   sanitizeFilename,
 } from "@/lib/storage/mime";
+import { getAppUrl } from "@/lib/request";
 import {
   attachmentStorageKey,
   uploadObject,
@@ -68,7 +69,7 @@ export const processInboundEmail = inngest.createFunction(
       return { status: "dropped", reason: decision.reason };
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = getAppUrl();
     const newTicketUrl = `${appUrl}/portal/submit`;
 
     // 2. Find ticket

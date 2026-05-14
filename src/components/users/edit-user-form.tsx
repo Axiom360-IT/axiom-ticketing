@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateUser } from "@/app/actions/users";
-import { cn } from "@/lib/utils";
-
-type Role = { id: string; name: string };
+import {
+  RoleMultiSelect,
+  type RoleOption,
+} from "@/components/users/role-multi-select";
 
 type Props = {
   userId: string;
@@ -20,7 +21,7 @@ type Props = {
     language: string;
     roleIds: string[];
   };
-  roles: Role[];
+  roles: RoleOption[];
   isActive: boolean;
 };
 
@@ -33,20 +34,9 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
 
   const [name, setName] = useState(initial.name);
   const [language, setLanguage] = useState(initial.language);
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(initial.roleIds),
-  );
+  const [selected, setSelected] = useState<string[]>(initial.roleIds);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  function toggleRole(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -57,7 +47,7 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
         updateUser(userId, {
           name,
           language,
-          roleIds: [...selected],
+          roleIds: selected,
         }),
       "superAdmin",
     );
@@ -108,29 +98,12 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{tEdit("rolesTitle")}</legend>
-        <div className="flex flex-wrap gap-2">
-          {roles.map((r) => {
-            const on = selected.has(r.id);
-            return (
-              <button
-                type="button"
-                key={r.id}
-                onClick={() => toggleRole(r.id)}
-                disabled={!isActive}
-                className={cn(
-                  "px-3 py-1.5 rounded-full border text-sm transition-colors",
-                  on
-                    ? "bg-blue-600 text-white border-blue-700"
-                    : "bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900",
-                  !isActive && "opacity-50 cursor-not-allowed",
-                )}
-                aria-pressed={on}
-              >
-                {r.name}
-              </button>
-            );
-          })}
-        </div>
+        <RoleMultiSelect
+          roles={roles}
+          value={selected}
+          onChange={setSelected}
+          disabled={!isActive}
+        />
       </fieldset>
 
       {error ? (

@@ -90,25 +90,3 @@ export async function requireSessionUser(): Promise<SessionUser> {
   return u;
 }
 
-/**
- * Resolve the audit actor pair for the current request:
- *   - actorId        = impersonated user id when impersonating, else real
- *   - impersonatorId = real admin id when impersonating, else null
- *
- * Used by `audit()` to attribute writes correctly so reports always show
- * "X did this while impersonating Y" — never just one or the other.
- */
-export async function getAuditActorIds(): Promise<{
-  actorId: string | null;
-  impersonatorId: string | null;
-}> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-  if (!session?.user) return { actorId: null, impersonatorId: null };
-  const imp = await getActiveImpersonation();
-  if (imp) {
-    return { actorId: imp.targetId, impersonatorId: imp.impersonatorId };
-  }
-  return { actorId: session.user.id, impersonatorId: null };
-}

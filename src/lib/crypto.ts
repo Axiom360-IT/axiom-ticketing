@@ -7,9 +7,9 @@ import type { CipherGCM, DecipherGCM } from "node:crypto";
 // Algorithm: AES-256-GCM
 // Key: 32 random bytes from process.env.DATA_ENCRYPTION_KEY (base64-encoded)
 //
-// Encrypted columns (MVP): two_factor.secret_encrypted, two_factor.backup_codes_encrypted
-// Any future column holding a third-party API key, OAuth token, or other secret
-// MUST use this helper. Code review enforces.
+// No callers yet — kept as the reusable AES-256-GCM envelope helper for any
+// future encrypted-at-rest column (third-party API keys, OAuth tokens, other
+// secrets). Code review will require this helper before any such column lands.
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32; // 256 bits
