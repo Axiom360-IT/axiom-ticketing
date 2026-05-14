@@ -13,6 +13,8 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
+import { Wordmark } from "@/components/branding/wordmark";
+import { ACCENT_CLASSES, type BrandingConfig } from "@/lib/branding/presets";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -40,9 +42,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/audit", labelKey: "navAudit", icon: History },
 ];
 
-export function Sidebar() {
+export function Sidebar({ branding }: { branding: BrandingConfig }) {
   const pathname = usePathname();
   const t = useTranslations("admin.shell");
+  const badge = ACCENT_CLASSES[branding.accentColor].darkBadge;
+  // Use the first character of the brand name for the badge initial —
+  // keeps the visual tile when admins rebrand to something other than
+  // "Axiom". Falls back to the accent character if brandName is empty.
+  const initial = (branding.brandName || branding.brandAccent || "").charAt(0).toUpperCase();
 
   return (
     <aside className="w-60 shrink-0 bg-slate-900 text-slate-100 flex flex-col h-screen sticky top-0">
@@ -51,10 +58,22 @@ export function Sidebar() {
           href="/admin"
           className="flex items-center gap-2 text-base font-semibold tracking-tight"
         >
-          <span className="inline-block w-7 h-7 rounded-md bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
-            <span className="text-blue-300 text-xs font-bold">A</span>
+          <span
+            className={cn(
+              "inline-flex w-7 h-7 rounded-md border items-center justify-center text-xs font-bold",
+              badge,
+            )}
+          >
+            {initial}
           </span>
-          {t("brand")}
+          <Wordmark
+            brandName={branding.brandName}
+            brandAccent={branding.brandAccent}
+            accentColor={branding.accentColor}
+            size="md"
+            onDark
+            className="!text-base"
+          />
         </Link>
         <p className="text-[11px] text-slate-500 mt-1 ml-9">{t("tagline")}</p>
       </div>
