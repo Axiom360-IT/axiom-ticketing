@@ -341,7 +341,16 @@
       "reopenPending": "Reopening…",
       "reopenError": "Failed to reopen.",
       "createTicket": "Create ticket",
-      "createPending": "Creating…"
+      "createPending": "Creating…",
+      "merge": "Merge into another ticket",
+      "mergePending": "Merging…",
+      "mergeTitle": "Merge {source} into another ticket",
+      "mergeDescription": "Enter the target ticket number (e.g. AX-0042). All messages and attachments from {source} will move to the target, and {source} will be closed as a duplicate.",
+      "mergeTargetLabel": "Target ticket number",
+      "mergeConfirm": "Merge tickets",
+      "mergeError": "Failed to merge.",
+      "mergedBannerLabel": "This ticket was merged into",
+      "mergedBannerHint": "All conversation has moved to the linked ticket."
     },
     "escalatedBadge": "Escalated",
     "submit": {

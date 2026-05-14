@@ -150,6 +150,14 @@ type SendEmailOptions = {
    * eventually pass their `users.language`).
    */
   locale?: string;
+  /**
+   * Prepend an actor's name to the configured From: display name. Used for
+   * agent-to-customer messages so the customer's inbox shows
+   * `"Maria — Axiom360 Support" <team@…>` instead of just the brand. The
+   * underlying email address never changes (always the configured sender),
+   * only the display label.
+   */
+  fromActorName?: string;
 };
 
 async function renderTemplate(
@@ -266,8 +274,15 @@ async function defaultSubject(
  * Inngest functions for retry resilience (per ARCHITECTURE §9.5).
  */
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
-  const { to, template, ticketNumber, replyToTicket, subject, locale } =
-    options;
+  const {
+    to,
+    template,
+    ticketNumber,
+    replyToTicket,
+    subject,
+    locale,
+    fromActorName,
+  } = options;
 
   const resolvedLocale = pickLocale(locale) ?? DEFAULT_LOCALE;
   const html = await renderTemplate(template, resolvedLocale);
@@ -277,7 +292,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   // Env vars take precedence over DB settings so dev can point sends at
   // Resend's sandbox (`onboarding@resend.dev`) before the production domain
   // is verified in M19, without polluting the seeded settings table.
-  const fromName =
+  const baseFromName =
     process.env.RESEND_FROM_NAME ??
     (await getSetting<string>("default_sender_name")) ??
     "Axiom360 Support";
@@ -288,13 +303,27 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const inboundDomain =
     (await getSetting<string>("inbound_email_domain")) ?? "axiom360.it";
 
+  // When an agent is the author of the message (e.g. replying to a
+  // ticket), surface their name in the display label so the customer's
+  // inbox shows "Maria — Axiom360 Support" instead of just "Axiom360
+  // Support". The underlying sender address is unchanged. Strip any
+  // characters that would break the address quoting (newlines, `<>"`).
+  const sanitizedActor = fromActorName
+    ?.replace(/[\r\n<>"]/g, " ")
+    .trim()
+    .slice(0, 60);
+  const displayName =
+    sanitizedActor && sanitizedActor.length > 0
+      ? `${sanitizedActor} — ${baseFromName}`
+      : baseFromName;
+
   const replyTo =
     replyToTicket && ticketNumber
       ? `ticket+${ticketNumber}@${inboundDomain}`
       : undefined;
 
   await resend.emails.send({
-    from: `${fromName} <${fromEmail}>`,
+    from: `${displayName} <${fromEmail}>`,
     to,
     subject: finalSubject,
     html,

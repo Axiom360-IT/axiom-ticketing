@@ -2,7 +2,8 @@ import { and, eq, gt } from "drizzle-orm";
 import { eventType } from "inngest";
 import { simpleParser } from "mailparser";
 import { audit } from "@/lib/audit";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
@@ -21,11 +22,15 @@ import {
   MAX_FILE_BYTES,
   sanitizeFilename,
 } from "@/lib/storage/mime";
+import { guestTicketUrl } from "@/lib/tokens";
 import { getAppUrl } from "@/lib/request";
+import { getSetting } from "@/lib/settings";
+import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import {
   attachmentStorageKey,
   uploadObject,
 } from "@/lib/storage/upload";
+import { generateTicketNumber } from "@/lib/ticket-number";
 import { inngest } from "../client";
 
 // Inbound email processor. Runs on every `email/inbound.received` event
@@ -72,26 +77,15 @@ export const processInboundEmail = inngest.createFunction(
     const appUrl = getAppUrl();
     const newTicketUrl = `${appUrl}/portal/submit`;
 
-    // 2. Find ticket
+    // 2. Find ticket — if no ticket number, this is a fresh email and
+    //    we open a new ticket from it (the standard "email to support"
+    //    flow that every mature ticketing system supports).
     const ticketNumber = extractTicketNumber(payload);
     if (!ticketNumber) {
-      await step.run("send-bounce-no-ticket", async () => {
-        try {
-          await sendEmail({
-            to: payload.fromEmail,
-            template: {
-              template: "inbound_bounce",
-              data: {
-                customerName: payload.fromName ?? payload.fromEmail,
-                newTicketUrl,
-              },
-            },
-          });
-        } catch (err) {
-          console.error("[process-inbound-email] bounce email failed:", err);
-        }
-      });
-      return { status: "no-ticket-number" };
+      const result = await step.run("create-ticket-from-email", async () =>
+        createTicketFromInbound(payload, appUrl),
+      );
+      return result;
     }
 
     // 3. Look up
@@ -341,3 +335,175 @@ export const processInboundEmail = inngest.createFunction(
     return { status: "ok", ticketNumber };
   },
 );
+
+// ── New-ticket-from-inbound-email ──────────────────────────────────────
+//
+// Mirrors the public-portal `createTicket` shape: generate ticket number,
+// compute SLA, insert with the initial message in a transaction, then
+// send a confirmation email back to the sender. Differences from portal
+// submissions: no Turnstile (the mail server already authenticated the
+// sender), no rate-limit-per-IP (the inbound-route handler did that),
+// fixed defaults for category/priority (we can't ask the customer to
+// pick), and we honor the optional sender-allowlist setting.
+
+const DEFAULT_INBOUND_PRIORITY: Priority = "medium";
+const DEFAULT_INBOUND_CATEGORY = "other";
+const SUBJECT_MAX = 150;
+
+async function createTicketFromInbound(
+  payload: NormalizedInboundEmail,
+  appUrl: string,
+): Promise<
+  | { status: "created"; ticketNumber: string }
+  | { status: "blocked-allowlist" }
+  | { status: "no-body" }
+> {
+  const fromEmail = payload.fromEmail.toLowerCase();
+  const fromName = (payload.fromName ?? "").trim() || fromEmail;
+
+  // Body must be non-trivial after stripping quoted history / signatures.
+  // Without this, every "thanks!" reply with no Reply-To header would
+  // open a new ticket — which would be noise, not signal.
+  const stripped = stripQuotesAndSignatures(payload.text ?? "");
+  const body = stripped.length > 0 ? stripped : (payload.text ?? "").trim();
+  if (body.length === 0) {
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[process-inbound-email] empty body from ${fromEmail}, dropped`);
+    }
+    return { status: "no-body" };
+  }
+
+  // Look up sender. If they have a Customer account, link the ticket;
+  // otherwise leave customer_id null — `claimTicketsForCustomer` will
+  // bind it when they later sign up via the portal.
+  const [knownUser] = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.email, fromEmail))
+    .limit(1);
+
+  // Sender-allowlist gate. When enabled, only known active users can
+  // submit via email. Unknown senders get a polite bounce instead of a
+  // silent drop so a legit but un-onboarded user knows what happened.
+  const allowlistOnly =
+    (await getSetting<boolean>("inbound_sender_allowlist_only")) ?? false;
+  if (allowlistOnly && !knownUser) {
+    try {
+      await sendEmail({
+        to: payload.fromEmail,
+        template: {
+          template: "inbound_bounce",
+          data: {
+            customerName: fromName,
+            newTicketUrl: `${appUrl}/portal/sign-up`,
+          },
+        },
+      });
+    } catch (err) {
+      console.error(
+        "[process-inbound-email] allowlist bounce email failed:",
+        err,
+      );
+    }
+    return { status: "blocked-allowlist" };
+  }
+
+  // Subject defaults — strip leading "Re:"/"Fwd:" since this is meant
+  // to be a fresh ticket; trim to schema length cap.
+  const rawSubject = (payload.subject ?? "").replace(/^(re|fwd?):\s*/i, "").trim();
+  const subject =
+    rawSubject.length > 0
+      ? rawSubject.slice(0, SUBJECT_MAX)
+      : "(no subject)";
+
+  // Stream classification mirrors the public createTicket path.
+  const internalDomains =
+    (await getSetting<string[]>("internal_email_domains")) ?? [];
+  const emailDomain = fromEmail.split("@")[1] ?? "";
+  const stream = internalDomains
+    .map((d) => d.toLowerCase())
+    .includes(emailDomain)
+    ? "internal"
+    : "external";
+
+  const ticketNumber = await generateTicketNumber();
+  const createdAt = new Date();
+  const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket(
+    { createdAt, priority: DEFAULT_INBOUND_PRIORITY },
+  );
+
+  await transactional(async (tx) => {
+    const [t] = await tx
+      .insert(tickets)
+      .values({
+        ticketNumber,
+        subject,
+        description: body,
+        category: DEFAULT_INBOUND_CATEGORY,
+        priority: DEFAULT_INBOUND_PRIORITY,
+        status: "open",
+        stream,
+        origin: "email",
+        customerEmail: fromEmail,
+        customerName: knownUser?.name ?? fromName,
+        customerId: knownUser?.id ?? null,
+        createdAt,
+        responseDueAt,
+        resolutionDueAt,
+      })
+      .returning({ id: tickets.id });
+
+    await tx.insert(messages).values({
+      ticketId: t.id,
+      authorEmail: fromEmail,
+      authorName: knownUser?.name ?? fromName,
+      authorType: "customer",
+      body,
+      channel: "email",
+    });
+  });
+
+  await audit({
+    actorId: null,
+    action: "ticket.create",
+    targetType: "ticket",
+    targetId: ticketNumber,
+    after: {
+      ticketNumber,
+      subject,
+      stream,
+      origin: "email",
+      knownCustomer: knownUser !== undefined,
+    },
+  });
+
+  // Confirmation email — reuse the portal-style `ticket_created`
+  // template so the customer sees a consistent "your ticket is AX-XYZ"
+  // message regardless of which channel they came in through. Setting
+  // `replyToTicket: true` makes the Reply-To header carry the per-
+  // ticket address, so a customer reply continues the same ticket.
+  try {
+    const trackingUrl = guestTicketUrl(appUrl, ticketNumber, fromEmail);
+    await sendEmail({
+      to: payload.fromEmail,
+      template: {
+        template: "ticket_created",
+        data: {
+          ticketNumber,
+          customerName: knownUser?.name ?? fromName,
+          subject,
+          trackingUrl,
+        },
+      },
+      ticketNumber,
+      replyToTicket: true,
+    });
+  } catch (err) {
+    console.error(
+      "[process-inbound-email] confirmation email failed:",
+      err,
+    );
+  }
+
+  return { status: "created", ticketNumber };
+}

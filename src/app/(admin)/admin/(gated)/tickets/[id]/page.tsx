@@ -18,6 +18,7 @@ import {
   MessageThread,
   type ThreadMessage,
 } from "@/components/tickets/message-thread";
+import { MergeModal } from "@/components/tickets/merge-modal";
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
@@ -83,6 +84,7 @@ export default async function TicketDetailPage({
     canEscalate,
     canDeescalate,
     canReopen,
+    canDelete,
     canProcurementView,
     canProcurementCreate,
   ] = await Promise.all([
@@ -94,6 +96,7 @@ export default async function TicketDetailPage({
     can(user, "tickets.escalate", ticketScope, productionContext),
     can(user, "tickets.deescalate", ticketScope, productionContext),
     can(user, "tickets.reopen", ticketScope, productionContext),
+    can(user, "tickets.delete", ticketScope, productionContext),
     can(user, "procurement.view", { type: "global" }, productionContext),
     can(user, "procurement.create", { type: "global" }, productionContext),
   ]);
@@ -101,6 +104,18 @@ export default async function TicketDetailPage({
   const procurementRows = canProcurementView
     ? await listProcurementForTicket(ticket.id)
     : [];
+
+  // If this ticket was merged into another, fetch the target's number
+  // + id so the banner can deep-link there. Skipped when not merged.
+  let mergedTarget: { id: string; ticketNumber: string } | null = null;
+  if (ticket.duplicateOfId) {
+    const [target] = await db
+      .select({ id: tickets.id, ticketNumber: tickets.ticketNumber })
+      .from(tickets)
+      .where(eq(tickets.id, ticket.duplicateOfId))
+      .limit(1);
+    if (target) mergedTarget = target;
+  }
 
   const messageRows = await db
     .select({
@@ -227,8 +242,29 @@ export default async function TicketDetailPage({
       : t("csatLabel", { response: responseLabel });
   }
 
+  const tActions = await getTranslations("tickets.actions");
+
   return (
     <div className="space-y-6 max-w-5xl">
+      {mergedTarget ? (
+        <div
+          role="status"
+          className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm"
+        >
+          <span className="font-medium text-amber-900 dark:text-amber-100">
+            {tActions("mergedBannerLabel")}{" "}
+          </span>
+          <a
+            href={`/admin/tickets/${mergedTarget.id}`}
+            className="font-mono text-blue-700 dark:text-blue-400 hover:underline"
+          >
+            {mergedTarget.ticketNumber}
+          </a>
+          <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+            {tActions("mergedBannerHint")}
+          </p>
+        </div>
+      ) : null}
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-semibold">{ticket.subject}</h1>
         {ticket.isEscalated ? <EscalatedBadge /> : null}
@@ -309,6 +345,16 @@ export default async function TicketDetailPage({
                       ticketId={ticket.id}
                       isEscalated={ticket.isEscalated}
                       canDeescalate={canDeescalate}
+                    />
+                  ) : null}
+                  {/* Merge gate: caller must hold tickets.delete AND
+                      this ticket isn't already a duplicate. Once merged
+                      a ticket is closed-as-duplicate; merging again
+                      doesn't make sense. */}
+                  {canDelete && !ticket.duplicateOfId ? (
+                    <MergeModal
+                      ticketId={ticket.id}
+                      sourceTicketNumber={ticket.ticketNumber}
                     />
                   ) : null}
                 </div>

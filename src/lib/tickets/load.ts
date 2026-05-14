@@ -24,6 +24,7 @@ export async function loadTicketScope(ticketId: string) {
       isEscalated: tickets.isEscalated,
       priority: tickets.priority,
       deletedAt: tickets.deletedAt,
+      duplicateOfId: tickets.duplicateOfId,
     })
     .from(tickets)
     .where(eq(tickets.id, ticketId))

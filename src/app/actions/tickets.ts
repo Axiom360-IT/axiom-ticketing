@@ -536,6 +536,169 @@ export async function deleteTicket(
   return { ok: true };
 }
 
+// ── Merge two tickets ───────────────────────────────────────────────
+// When the same customer files the same issue twice (common — email
+// then portal, or follow-up email instead of a reply), an admin can
+// merge ticket B into ticket A. All of B's messages and attachments
+// move to A; B is closed and marked `duplicate_of_id = A.id`; viewing
+// B in the future shows a banner linking to A.
+//
+// Authorization: gated on `tickets.delete` since merging is similarly
+// destructive (B effectively stops being a standalone ticket). Future
+// refinement could introduce a dedicated `tickets.merge` permission,
+// but for now we piggyback on delete.
+
+type MergeTicketsResult =
+  | { ok: true; targetTicketNumber: string }
+  | { ok: false; error: string };
+
+export async function mergeTickets(
+  sourceId: string,
+  targetTicketNumberOrId: string,
+): Promise<MergeTicketsResult> {
+  const user = await requireSessionUser();
+  const source = await loadTicketScope(sourceId);
+  if (!source) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.delete",
+      { type: "ticket", ticket: source },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (source.deletedAt) {
+    return { ok: false, error: "Source ticket has been deleted." };
+  }
+
+  // Resolve the target — caller can pass either a ticket UUID or a
+  // ticket number (the AX-XXXX a human types). Accepting both makes
+  // the UI simpler: an admin types "AX-0042" and we match.
+  const normalized = targetTicketNumberOrId.trim();
+  if (!normalized) {
+    return { ok: false, error: "Pick a target ticket to merge into." };
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    normalized,
+  );
+  const [target] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      status: tickets.status,
+      duplicateOfId: tickets.duplicateOfId,
+      deletedAt: tickets.deletedAt,
+    })
+    .from(tickets)
+    .where(
+      isUuid
+        ? eq(tickets.id, normalized)
+        : eq(tickets.ticketNumber, normalized.toUpperCase()),
+    )
+    .limit(1);
+
+  if (!target) {
+    return { ok: false, error: "Target ticket not found." };
+  }
+  if (target.id === source.id) {
+    return { ok: false, error: "Can't merge a ticket into itself." };
+  }
+  if (target.deletedAt) {
+    return { ok: false, error: "Target ticket has been deleted." };
+  }
+  if (target.duplicateOfId) {
+    return {
+      ok: false,
+      error: `Target ${target.ticketNumber} is already a duplicate of another ticket. Merge into the canonical ticket instead.`,
+    };
+  }
+  if (source.duplicateOfId) {
+    return { ok: false, error: "Source is already merged." };
+  }
+  if (target.status === "closed") {
+    return {
+      ok: false,
+      error: `Target ${target.ticketNumber} is closed — merging would lose visibility of the source's history. Reopen the target first.`,
+    };
+  }
+
+  // Look up the actor's display name + email for the merge-announcement
+  // system message. Fall back gracefully if the row is unexpectedly
+  // missing so the merge transaction itself can't fail on display data.
+  const [actor] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  const actorName = actor?.name ?? "Admin";
+  const actorEmail = actor?.email ?? "system@local";
+
+  const now = new Date();
+  await transactional(async (tx) => {
+    // Move every message + attachment from source to target. The
+    // history shows as one chronological thread on the target after.
+    await tx
+      .update(messages)
+      .set({ ticketId: target.id })
+      .where(eq(messages.ticketId, source.id));
+    await tx
+      .update(attachments)
+      .set({ ticketId: target.id })
+      .where(eq(attachments.ticketId, source.id));
+
+    // System message on the target announcing the merge so the
+    // thread reads naturally.
+    await tx.insert(messages).values({
+      ticketId: target.id,
+      authorId: user.id,
+      authorEmail: actorEmail,
+      authorName: actorName,
+      authorType: "system",
+      body: `Merged from ${source.ticketNumber} by ${actorName}.`,
+      bodyFormat: "text",
+      channel: "system",
+    });
+
+    // Close + mark the source as a duplicate of the target. closedAt
+    // stamps the merge time so it shows up in audit + filtering.
+    await tx
+      .update(tickets)
+      .set({
+        status: "closed",
+        duplicateOfId: target.id,
+        closedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(tickets.id, source.id));
+
+    // Touch the target so it sorts to the top of the queue (someone
+    // probably needs to read the just-added messages).
+    await tx
+      .update(tickets)
+      .set({ updatedAt: now })
+      .where(eq(tickets.id, target.id));
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.merge",
+    targetType: "ticket",
+    targetId: source.ticketNumber,
+    after: {
+      mergedInto: target.ticketNumber,
+      mergedAt: now.toISOString(),
+    },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${sourceId}`);
+  revalidatePath(`/admin/tickets/${target.id}`);
+  return { ok: true, targetTicketNumber: target.ticketNumber };
+}
+
 // ── Reply (visible to customer) ──────────────────────────────────────
 
 const replySchema = z.object({
@@ -658,6 +821,10 @@ export async function replyToTicket(
       },
       ticketNumber: ticket.ticketNumber,
       replyToTicket: true,
+      // Surface the replying agent's name in the From: display so the
+      // customer's inbox shows "Maria — Axiom360 Support" rather than
+      // an anonymous brand-only sender.
+      fromActorName: agent.name,
     });
   } catch (err) {
     console.error("[replyToTicket] email failed:", err);
