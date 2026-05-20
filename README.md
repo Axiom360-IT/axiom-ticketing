@@ -89,7 +89,7 @@ Defined in `.env.example`. All are read at runtime; missing values are logged lo
 | Group | Variable | Purpose |
 |---|---|---|
 | DB | `DATABASE_URL` | Neon Postgres connection string |
-| Auth | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Better Auth signing + canonical URL |
+| Auth | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Better Auth signing + canonical URL. `BETTER_AUTH_URL` is the **base URL Better Auth uses to construct every email link** (magic-link verification, password-reset return). When unset, `lib/auth/index.ts:resolveBaseURL()` falls back to `NEXT_PUBLIC_APP_URL`; if both are missing in production, auth init throws. Without this configured properly, magic-link emails go out pointing at `http://localhost:3000`. |
 | Crypto | `DATA_ENCRYPTION_KEY` | base64 32 bytes; AES-256-GCM envelope key for `lib/crypto.ts` |
 | Tokens | `GUEST_TOKEN_SECRET`, `CSAT_TOKEN_SECRET`, `IMPERSONATION_TOKEN_SECRET` | HMAC keys for guest-ticket URLs, one-click CSAT, signed impersonation cookie |
 | Object storage | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2 attachments + avatars |

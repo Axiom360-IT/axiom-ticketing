@@ -34,7 +34,34 @@ const trustedOrigins = [
     : []),
 ].filter((u): u is string => Boolean(u));
 
+// `baseURL` is what Better Auth uses to construct every link it emits —
+// magic-link verification URLs, password-reset return URLs, OAuth callbacks.
+// Without this set explicitly, Better Auth falls back to `localhost:3000` in
+// any code path that runs outside a live request context (e.g. an Inngest
+// step or the magic-link send hook), and customers receive emails with
+// `http://localhost:3000/api/auth/magic-link/verify?...` links — broken in
+// production.
+//
+// Resolution order:
+//   1. BETTER_AUTH_URL  (explicit override; useful when the auth surface
+//      lives on a different host than the public app)
+//   2. NEXT_PUBLIC_APP_URL  (the canonical app origin, set in every Vercel
+//      project — same value used by `getAppUrl()` for email links)
+//   3. `http://localhost:3000` in dev / throw in prod
+function resolveBaseURL(): string {
+  const fromEnv =
+    process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "BETTER_AUTH_URL or NEXT_PUBLIC_APP_URL must be set in production",
+    );
+  }
+  return "http://localhost:3000";
+}
+
 export const auth = betterAuth({
+  baseURL: resolveBaseURL(),
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
