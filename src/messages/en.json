@@ -392,7 +392,7 @@
       "metaTitle": "Ticket received — Axiom360",
       "title": "We've received your ticket",
       "fallbackTicket": "your ticket",
-      "ticketNumberLine": "Your ticket number is {ticket}. A confirmation email is on its way — keep an eye on your inbox.",
+      "ticketNumberLine": "Your ticket number is <code>{ticket}</code>. A confirmation email is on its way — keep an eye on your inbox.",
       "trackingHelp": "A coordinator will assign your ticket to a technician shortly. To add details or a screenshot, just reply to the confirmation email.",
       "submitAnother": "Submit another ticket"
     },

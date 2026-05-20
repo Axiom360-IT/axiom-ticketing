@@ -34,11 +34,18 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
 
         <p className="text-zinc-600 dark:text-zinc-400 mb-6">
           {t.rich("ticketNumberLine", {
-            ticket: () => (
+            // `code` is a rich-tag wrapper around its `chunks` content;
+            // `ticket` is a simple-value placeholder. next-intl 4 rejects
+            // a function value passed against a `{simple}` placeholder
+            // (it throws "Expected …" during server render), which was
+            // the cause of the previous "Server Components render"
+            // error after a successful ticket submission.
+            code: (chunks) => (
               <code className="font-mono font-medium text-zinc-900 dark:text-zinc-50 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
-                {ticketNumber}
+                {chunks}
               </code>
             ),
+            ticket: ticketNumber,
           })}
         </p>
 

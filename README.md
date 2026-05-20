@@ -66,7 +66,7 @@ axiom-ticketing/
 ```bash
 pnpm install
 cp .env.example .env.local        # then fill in every required value
-pnpm db:push                      # create the schema in Postgres (or `db:migrate` for SQL migrations)
+pnpm db:migrate                   # apply every migration in src/lib/db/migrations/ (REQUIRED — see below)
 pnpm db:seed                      # 5 roles, role_permissions, ~30 default settings (idempotent)
 pnpm db:seed-super-admin          # first Super Admin user via Better Auth API
 pnpm dev                          # http://localhost:3000
@@ -77,6 +77,8 @@ Useful follow-ups:
 - `pnpm db:seed-demo` — seeds realistic demo data on top of the base seed
 - `pnpm db:backfill-customers` — one-shot, idempotent linker that binds `tickets.customer_id IS NULL` rows to any existing Customer account whose email matches `tickets.customer_email`
 - `pnpm db:studio` — drizzle-kit web UI for inspecting the DB
+
+> **Don't use `pnpm db:push` for production.** It syncs table shapes from the Drizzle schema but does NOT run the custom SQL at the bottom of `0000_sleepy_shockwave.sql` — the `ax_ticket_seq` sequence, the `generate_ticket_number()` function, and the `audit_log` permission lockdown. Ticket creation fails immediately ("function generate_ticket_number does not exist") without those. Always use `pnpm db:migrate` against production (and ideally dev too).
 
 ---
 
