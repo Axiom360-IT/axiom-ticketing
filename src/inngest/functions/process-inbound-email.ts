@@ -26,6 +26,7 @@ import { guestTicketUrl } from "@/lib/tokens";
 import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
+import { classifyStream } from "@/lib/tickets/stream";
 import {
   attachmentStorageKey,
   uploadObject,
@@ -416,15 +417,10 @@ async function createTicketFromInbound(
       ? rawSubject.slice(0, SUBJECT_MAX)
       : "(no subject)";
 
-  // Stream classification mirrors the public createTicket path.
-  const internalDomains =
-    (await getSetting<string[]>("internal_email_domains")) ?? [];
-  const emailDomain = fromEmail.split("@")[1] ?? "";
-  const stream = internalDomains
-    .map((d) => d.toLowerCase())
-    .includes(emailDomain)
-    ? "internal"
-    : "external";
+  // Stream classification mirrors the public createTicket path —
+  // role beats domain via `classifyStream` (a staff member emailing
+  // in from a gmail address still counts as internal).
+  const stream = await classifyStream(fromEmail);
 
   const ticketNumber = await generateTicketNumber();
   const createdAt = new Date();

@@ -18,12 +18,12 @@ import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { checkRateLimit, enforceUserRateLimit } from "@/lib/ratelimit";
 import { clientIp, getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
+import { classifyStream } from "@/lib/tickets/stream";
 import {
   htmlToPlainText,
   sanitizeMessageHtml,
 } from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
-import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { guestTicketUrl, signCsatToken } from "@/lib/tokens";
@@ -118,15 +118,10 @@ export async function createTicket(
     };
   }
 
-  // 6. Determine stream (internal vs external) by email domain
-  const internalDomains =
-    (await getSetting<string[]>("internal_email_domains")) ?? [];
-  const emailDomain = data.customerEmail.split("@")[1]?.toLowerCase() ?? "";
-  const stream = internalDomains
-    .map((d) => d.toLowerCase())
-    .includes(emailDomain)
-    ? "internal"
-    : "external";
+  // 6. Determine stream (internal vs external). `classifyStream` returns
+  // "internal" if the submitter's email maps to an active staff user;
+  // otherwise it falls back to the `internal_email_domains` allowlist.
+  const stream = await classifyStream(data.customerEmail);
 
   // 7. Generate ticket number + compute SLA deadlines
   const ticketNumber = await generateTicketNumber();
@@ -259,14 +254,7 @@ export async function createTicketOnBehalf(
   }
   const data = parsed.data;
 
-  const internalDomains =
-    (await getSetting<string[]>("internal_email_domains")) ?? [];
-  const emailDomain = data.customerEmail.split("@")[1]?.toLowerCase() ?? "";
-  const stream = internalDomains
-    .map((d) => d.toLowerCase())
-    .includes(emailDomain)
-    ? "internal"
-    : "external";
+  const stream = await classifyStream(data.customerEmail);
 
   const ticketNumber = await generateTicketNumber();
   const createdAt = new Date();

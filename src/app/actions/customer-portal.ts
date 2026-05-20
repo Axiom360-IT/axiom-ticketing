@@ -15,7 +15,6 @@ import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import { getSetting } from "@/lib/settings";
 import {
   checkRateLimit,
   enforceUserRateLimit,
@@ -24,6 +23,7 @@ import { clientIp } from "@/lib/request";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { loadTicketScope } from "@/lib/tickets/load";
+import { classifyStream } from "@/lib/tickets/stream";
 import {
   htmlToPlainText,
   sanitizeMessageHtml,
@@ -468,14 +468,7 @@ export async function customerCreateTicket(
     .limit(1);
   if (!profile) throw new NotFoundError();
 
-  const internalDomains =
-    (await getSetting<string[]>("internal_email_domains")) ?? [];
-  const emailDomain = profile.email.split("@")[1]?.toLowerCase() ?? "";
-  const stream = internalDomains
-    .map((d) => d.toLowerCase())
-    .includes(emailDomain)
-    ? "internal"
-    : "external";
+  const stream = await classifyStream(profile.email);
 
   const ticketNumber = await generateTicketNumber();
   const createdAt = new Date();

@@ -40,9 +40,15 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // `/admin/login` and `/admin/setup` are the two surfaces reachable
+  // WITHOUT an existing session — login is the front door, setup is
+  // where the setup-invite email lands so a freshly-created user can
+  // pick a password BEFORE they have any way to authenticate. Gating
+  // setup here would create a chicken-and-egg redirect loop.
   if (
     pathname.startsWith("/admin") &&
-    !pathname.startsWith("/admin/login")
+    !pathname.startsWith("/admin/login") &&
+    !pathname.startsWith("/admin/setup")
   ) {
     const sessionToken = req.cookies.get("better-auth.session_token");
     if (!sessionToken) {
