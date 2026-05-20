@@ -1,8 +1,7 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -12,7 +11,7 @@ import { productionContext } from "@/lib/auth/can-context";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
-import { sessions, users } from "@/lib/db/schema/auth";
+import { accounts, users } from "@/lib/db/schema/auth";
 import {
   rolePermissions,
   roles as rolesTable,
@@ -170,79 +169,58 @@ export async function createUser(
     return { ok: false, error: "A user with that email already exists." };
   }
 
-  // Welcome-email flow: admin doesn't set a password. We create the
-  // account with a strong random one (Better Auth requires a password
-  // at signUpEmail time), then immediately trigger the password-reset
-  // flow which emails the user a setup link via the Better Auth
-  // `sendResetPassword` callback configured in lib/auth/index.ts. The
-  // random password is never returned and never logged.
+  // Direct user + credential-account insert. We deliberately do NOT route
+  // through `auth.api.signUpEmail` because that endpoint always issues a
+  // session for the freshly-created user and the `nextCookies()` plugin
+  // stamps that session token into the response cookie jar — which would
+  // silently sign the calling admin OUT of their own session and IN as
+  // the new user. The previous workaround (capture + restore the admin's
+  // cookie value) was fragile: Better Auth promotes the cookie name to
+  // `__Secure-better-auth.session_token` over HTTPS, so a hardcoded name
+  // misses the actual cookie in production. Bypassing signUpEmail entirely
+  // removes the whole class of session-handoff bugs — no session is ever
+  // issued, so there's nothing to undo.
   //
-  // Session safety: `auth.api.signUpEmail` always issues a session for
-  // the freshly-created user and the `nextCookies()` plugin stamps it
-  // into the response cookie jar — which would silently sign the
-  // calling admin OUT of their own session and IN as the new user.
-  // We capture the admin's session cookie value BEFORE the call and
-  // restore it immediately after, plus delete the orphaned session
-  // row so the new user's auto-issued session can't be revived.
-  const cookieStore = await cookies();
-  const adminSessionCookie = cookieStore.get("better-auth.session_token");
-  let createdId: string;
+  // The accounts row is created with `password = null`. Better Auth's
+  // `auth.api.resetPassword` (invoked from /admin/setup) updates this
+  // column with a real hash when the user clicks the setup-invite link.
+  // Until then the user has no way to sign in via credential — exactly
+  // the intended welcome-email flow.
+  const createdId = randomUUID();
   try {
-    const tempPassword = `${randomBytes(24).toString("base64url")}A1!`;
-    const result = await auth.api.signUpEmail({
-      body: {
+    await transactional(async (tx) => {
+      await tx.insert(users).values({
+        id: createdId,
         email: data.email,
-        password: tempPassword,
+        emailVerified: false,
         name: data.name,
-      },
+        language: data.language,
+        createdById: caller.id,
+        isActive: true,
+      });
+      // Better Auth's credential provider expects:
+      //   providerId = "credential", accountId = <user id>, password = hash.
+      await tx.insert(accounts).values({
+        userId: createdId,
+        accountId: createdId,
+        providerId: "credential",
+        password: null,
+      });
+      if (data.roleIds.length > 0) {
+        await tx.insert(userRoles).values(
+          data.roleIds.map((roleId) => ({
+            userId: createdId,
+            roleId,
+            assignedById: caller.id,
+          })),
+        );
+      }
     });
-    createdId = result.user.id;
   } catch (err) {
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Could not create user",
     };
-  }
-
-  // Clear the auto-issued session for the new user and put the admin's
-  // cookie back. Order matters: delete the DB row first so a leaked
-  // cookie value can't validate, then overwrite the browser cookie.
-  await db.delete(sessions).where(eq(sessions.userId, createdId));
-  if (adminSessionCookie) {
-    cookieStore.set({
-      name: "better-auth.session_token",
-      value: adminSessionCookie.value,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-  } else {
-    // No prior admin cookie (shouldn't happen — requireSessionUser
-    // succeeded above), but defensively clear the new user's cookie
-    // so we don't leave the admin authenticated as someone else.
-    cookieStore.delete("better-auth.session_token");
-  }
-
-  // Apply application-specific fields and role assignments.
-  await db
-    .update(users)
-    .set({
-      createdById: caller.id,
-      language: data.language,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, createdId));
-
-  if (data.roleIds.length > 0) {
-    await db.insert(userRoles).values(
-      data.roleIds.map((roleId) => ({
-        userId: createdId,
-        roleId,
-        assignedById: caller.id,
-      })),
-    );
   }
 
   await audit({

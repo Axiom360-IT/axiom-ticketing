@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Wordmark } from "@/components/branding/wordmark";
 import { ACCENT_CLASSES, type BrandingConfig } from "@/lib/branding/presets";
+import type { Permission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -29,20 +30,35 @@ type NavItem = {
     | "navSettings"
     | "navAudit";
   icon: typeof Ticket;
+  /** Permission required to see this link. Matches the gate enforced
+   *  by the underlying page's `redirect("/admin")` on failure — keeping
+   *  these in sync means the sidebar never advertises a destination
+   *  the user can't actually reach. */
+  requires: Permission;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket },
-  { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart },
-  { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList },
-  { href: "/admin/users", labelKey: "navUsers", icon: Users },
-  { href: "/admin/roles", labelKey: "navRoles", icon: Shield },
-  { href: "/admin/hierarchy", labelKey: "navHierarchy", icon: GitBranch },
-  { href: "/admin/settings", labelKey: "navSettings", icon: Settings },
-  { href: "/admin/audit", labelKey: "navAudit", icon: History },
+  { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket, requires: "tickets.view" },
+  { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart, requires: "procurement.view" },
+  { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList, requires: "reports.view" },
+  { href: "/admin/users", labelKey: "navUsers", icon: Users, requires: "users.view" },
+  { href: "/admin/roles", labelKey: "navRoles", icon: Shield, requires: "roles.view" },
+  { href: "/admin/hierarchy", labelKey: "navHierarchy", icon: GitBranch, requires: "users.view" },
+  { href: "/admin/settings", labelKey: "navSettings", icon: Settings, requires: "settings.view" },
+  { href: "/admin/audit", labelKey: "navAudit", icon: History, requires: "audit.view" },
 ];
 
-export function Sidebar({ branding }: { branding: BrandingConfig }) {
+export function Sidebar({
+  branding,
+  permissions,
+}: {
+  branding: BrandingConfig;
+  /** Caller's permission strings. Passed from the server layout so
+   *  the sidebar can hide links the user can't reach. */
+  permissions: Permission[];
+}) {
+  const permSet = new Set(permissions);
+  const visibleItems = NAV_ITEMS.filter((item) => permSet.has(item.requires));
   const pathname = usePathname();
   const t = useTranslations("admin.shell");
   const badge = ACCENT_CLASSES[branding.accentColor].darkBadge;
@@ -80,7 +96,7 @@ export function Sidebar({ branding }: { branding: BrandingConfig }) {
 
       <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label={t("mainNavLabel")}>
         <ul className="space-y-0.5">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
             return (

@@ -18,14 +18,14 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-type SearchParams = Promise<{ token?: string }>;
+type SearchParams = Promise<{ token?: string; email?: string }>;
 
 export default async function SetupPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const { token } = await searchParams;
+  const { token, email } = await searchParams;
   const t = await getTranslations("admin.setup");
 
   if (!token) {
@@ -58,7 +58,7 @@ export default async function SetupPage({
         <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-6">
           {t("subtitle")}
         </p>
-        <SetupForm token={token} />
+        <SetupForm token={token} email={email} />
       </div>
     </div>
   );

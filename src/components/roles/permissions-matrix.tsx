@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronDown, Lock } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 
@@ -73,11 +73,6 @@ export function PermissionsMatrix({
   );
   const valueSet = useMemo(() => new Set(value), [value]);
 
-  const [open, setOpen] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    for (const m of MODULE_ORDER) init[m] = true;
-    return init;
-  });
   const [showLockedFor, setShowLockedFor] = useState<Set<Module>>(new Set());
 
   function isLocked(p: Permission): boolean {
@@ -127,36 +122,36 @@ export function PermissionsMatrix({
         const allOn =
           grantable.length > 0 && grantable.every((p) => valueSet.has(p));
         const someOn = grantable.some((p) => valueSet.has(p));
-        const expanded = open[m];
         const showingLocked = showLockedFor.has(m);
         const visiblePerms = showingLocked ? perms : grantable;
         const selectedCount = perms.filter((p) => valueSet.has(p)).length;
 
         return (
-          <div
+          // Native <details> instead of a `useState`-backed accordion.
+          // Removes the whole class of state-stuck bugs (React Compiler
+          // memoization, stale closures, hydration mismatches) — the
+          // browser owns the open/closed bit and the chevron rotation
+          // is driven by the `[open]` attribute via Tailwind's
+          // open: variants. Starts expanded via the `open` prop.
+          <details
             key={m}
-            className="border border-zinc-200 dark:border-zinc-800 rounded-md overflow-hidden"
+            open
+            className="group/details border border-zinc-200 dark:border-zinc-800 rounded-md overflow-hidden"
           >
-            {/* ── Module header ─────────────────────────────────── */}
-            <div className="px-3 py-3 bg-zinc-50 dark:bg-zinc-900">
+            <summary
+              className={cn(
+                "list-none cursor-pointer px-3 py-3 bg-zinc-50 dark:bg-zinc-900",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+              )}
+            >
               <div className="flex items-start gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpen((prev) => ({ ...prev, [m]: !prev[m] }))
-                  }
-                  className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100 -ml-1 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  aria-expanded={expanded}
-                >
-                  <ChevronDown
-                    className={cn(
-                      "size-4 transition-transform",
-                      !expanded && "-rotate-90",
-                    )}
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  <ChevronRight
+                    className="size-4 transition-transform group-open/details:rotate-90"
                     aria-hidden="true"
                   />
                   <span>{tModule(m)}</span>
-                </button>
+                </span>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-auto whitespace-nowrap">
                   {t("selectedCount", {
                     selected: selectedCount,
@@ -167,8 +162,19 @@ export function PermissionsMatrix({
               <p className="mt-1 ml-5 text-xs text-zinc-500 dark:text-zinc-400">
                 {tModuleDesc(m)}
               </p>
-              {!readOnly && grantable.length > 0 ? (
-                <label className="mt-2 ml-5 inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+            </summary>
+
+            {/* ── Module body (per-action checkboxes) ──────────────── */}
+            {/* "Select all" toggle sits in the body, NOT the <summary>.
+                Browsers route any click inside <summary> through the
+                open/close machinery, which fights any interactive
+                control we put there. Moving the toggle here means a
+                click never bubbles to <details>, no jsx-a11y stop-
+                propagation hack required. Tradeoff: the toggle is
+                hidden while the section is collapsed — that's fine. */}
+            {!readOnly && grantable.length > 0 ? (
+              <div className="px-3 py-2 bg-zinc-50/60 dark:bg-zinc-900/60 border-b border-zinc-100 dark:border-zinc-800">
+                <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={allOn}
@@ -180,12 +186,9 @@ export function PermissionsMatrix({
                   />
                   <span className="font-medium">{t("selectAll")}</span>
                 </label>
-              ) : null}
-            </div>
-
-            {/* ── Module body (per-action checkboxes) ──────────────── */}
-            {expanded ? (
-              <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              </div>
+            ) : null}
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {visiblePerms.map((p) => {
                   const lockedNow = isLocked(p);
                   return (
@@ -259,8 +262,7 @@ export function PermissionsMatrix({
                   </li>
                 ) : null}
               </ul>
-            ) : null}
-          </div>
+          </details>
         );
       })}
     </div>

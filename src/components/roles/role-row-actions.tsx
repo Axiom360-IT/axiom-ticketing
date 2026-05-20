@@ -38,6 +38,14 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
   const t = useTranslations("common");
   const tDialog = useTranslations("roles.rowActions");
   const tList = useTranslations("roles.list");
+  // Permission strings (`tickets.view`) are not user copy. The same i18n
+  // bundle that powers the matrix labels (`roles.matrix.label.<key>`)
+  // is reused here so the View dialog shows "View tickets" instead of
+  // the raw dotted constant. Dotted prefix is escaped to `__` because
+  // i18n keys can't contain dots.
+  const tPermLabel = useTranslations("roles.matrix.label") as unknown as (
+    key: string,
+  ) => string;
   const router = useRouter();
 
   const [viewOpen, setViewOpen] = useState(false);
@@ -137,14 +145,14 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
                   {tDialog("noPermissions")}
                 </span>
               ) : (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {detail.permissions.map((p) => (
-                    <code
+                    <span
                       key={p}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800"
+                      className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
                     >
-                      {p}
-                    </code>
+                      {tPermLabel(p.replace(/\./g, "__"))}
+                    </span>
                   ))}
                 </div>
               )}

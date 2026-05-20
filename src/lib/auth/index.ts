@@ -55,7 +55,10 @@ export const auth = betterAuth({
     // welcome). The `flow` discriminator drives copy in the template.
     sendResetPassword: async ({ user, token }) => {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-      const setupUrl = `${appUrl}/admin/setup?token=${encodeURIComponent(token)}`;
+      // Carry the recipient's email alongside the token so the setup
+      // server action can sign them in immediately after a successful
+      // password set — saves them a second hop through the login form.
+      const setupUrl = `${appUrl}/admin/setup?token=${encodeURIComponent(token)}&email=${encodeURIComponent(user.email)}`;
       // First-time staff don't yet have a `lastLoginAt`. We treat that
       // as "set" copy ("Welcome to Axiom360"); existing users get the
       // "reset" copy. Falls back to "set" if the field isn't on the

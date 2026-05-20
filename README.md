@@ -159,7 +159,7 @@ The App Router tree is split into two route groups: `(admin)` and `(public)`. Th
   - `procurement/`, `procurement/[id]`
   - `users/`, `users/new`, `users/[id]`
   - `roles/`, `roles/new`, `roles/[id]`
-  - `hierarchy/` — visual creator-tree
+  - `hierarchy/` — visual creator-tree (only includes users whose roles grant `users.create` or `roles.create`; pure Customers/Technicians are filtered out via a correlated `EXISTS` subquery on `role_permissions`)
   - `reports/`
   - `settings/`
   - `audit/`
@@ -277,7 +277,7 @@ Every privileged write lives here. The convention across every file:
 |---|---|
 | `tickets.ts` | `createTicket` (public, Turnstile + IP + email rate-limit + honeypot), `createTicketOnBehalf`, `assignTicket`, `replyToTicket`, `addInternalNote`, `resolveTicket` (note / skip discriminated union), `reopenTicket`, `escalateTicket` (categorical reason + optional note), `deescalateTicket`, `deleteTicket` (soft delete), `mergeTickets` (moves messages + attachments, closes source with `duplicate_of_id`) |
 | `customer-portal.ts` | `requestMagicLink`, `requestSignUpMagicLink`, `customerReply` (always `authorType: 'customer'` + `channel: 'portal'`; never emails the customer back), `guestReply` (token-authenticated, no session, per-ticket + per-IP rate limits), `customerCreateTicket` (5/user/day) |
-| `users.ts` | `createUser` (cannot-grant-what-you-don't-have role check; **captures the calling admin's `better-auth.session_token` cookie before `auth.api.signUpEmail` runs and restores it immediately after, also deleting the auto-issued session row for the new user** — without this the `nextCookies()` plugin would silently sign the admin out and in as the new user), `updateUser`, `deactivateUser` / `reactivateUser`, `resetPassword` (kicks Better Auth `requestPasswordReset`), `unlockUser` (clears Redis + DB lockout), `getDescendants` (BFS over `createdById`, depth-capped at 50). Sensitive actions require re-auth freshness |
+| `users.ts` | `createUser` — bypasses `auth.api.signUpEmail` and **inserts the `users` + `accounts` rows directly via Drizzle in a single `transactional`** (`accounts.password = null` until the user completes the setup-invite email). This avoids the session-issuing side effect of `signUpEmail` entirely, so the calling admin keeps their session no matter the cookie name Better Auth chooses across environments. Plus the standard checks (cannot-grant-what-you-don't-have on role assignment; Super Admin grants require re-auth freshness; duplicate-email pre-check). Also: `updateUser`, `deactivateUser` / `reactivateUser`, `resetPassword` (kicks Better Auth `requestPasswordReset`), `unlockUser` (clears Redis + DB lockout), `getDescendants` (BFS over `createdById`, depth-capped at 50). |
 | `roles.ts` | `createRole`, `updateRole`, `deleteRole` (refuses if any user holds it or if it's a system role). Permission-set diff respects "can't grant what you don't have" |
 | `attachments.ts` | `generateUploadUrl` (validates MIME + size, mints R2 presigned PUT), `confirmUpload` (HEAD → magic-byte verify → emits `attachment/uploaded`), `getDownloadUrl` (5-minute signed GET; **doubly guards** internal-note attachments against strict customers), `deleteAttachment` |
 | `audit.ts` | `listAudit` (paginated cursor), `getAuditDetail`, `iterAuditEntries` (async generator backing the CSV export). Read-only filters via zod |
@@ -287,7 +287,7 @@ Every privileged write lives here. The convention across every file:
 | `impersonation.ts` | `startImpersonation` (no stacking), `endImpersonation`. Cookie max-age 1h; both ends audited |
 | `reauth.ts` | `verifyReauth(password)` → calls Better Auth `verifyPassword` → marks Redis freshness flag for 5 minutes |
 | `sign-in.ts` | `signInWithLockout` — pre-checks lockout, calls `auth.api.signInEmail`, records failures, fires `account_lockout` email exactly once when the threshold trips, clears the counter on success, mirrors `locked_until` into the users table |
-| `setup.ts` | `setupPassword(token, newPassword)` — opaque generic error so token validity can't be probed |
+| `setup.ts` | `setupPassword({ token, newPassword, email? })` — calls Better Auth `resetPassword`; on success, if `email` is supplied (carried in the setup-invite URL), follows up with `auth.api.signInEmail` so the user lands on `/admin` directly on first submit rather than bouncing through the login form. Returns `{ ok, signedIn }`. Opaque generic error message preserves token-privacy. |
 | `profile.ts` | `updateProfile`, `changePassword`, `updateNotificationPreference`, avatar upload (presign → confirm → magic-byte verify → write to `users.image` → cleanup of any previous avatar key), `revokeSession`, `revokeAllOtherSessions`, `requestAccountDeletion` |
 | `search.ts` | Backs the ⌘K palette: scoped tickets + users + procurement with per-entity limits and visibility filters |
 
@@ -298,7 +298,7 @@ Every privileged write lives here. The convention across every file:
 Organized by feature; shadcn primitives sit under `ui/` and are vendored (so consumers can restyle to the SynapseScope tokens without churning Tailwind classes).
 
 - `ui/` — `button`, `input`, `card`, `dropdown-menu`, `badge`, `skeleton`, `avatar`, `separator`, `label`, `tooltip`, `textarea`, `dialog`, `table`, `row-actions`, `rich-text-editor` (TipTap), `pagination`, `page-size-select`, `select`, `spinner`, `url-filter-select`, `url-search-input`
-- `shared/` — `topbar`, `sidebar`, `profile-menu`, `notification-bell`, `global-search` (⌘K palette), `skip-link`, `impersonation-banner`, `reauth-modal` + `use-reauth-gate`
+- `shared/` — `topbar`, `sidebar` (each `NAV_ITEM` declares the `Permission` it requires; the gated layout passes the caller's permission array and the sidebar filters before rendering so a user never sees a link they can't reach), `profile-menu`, `notification-bell`, `global-search` (⌘K palette), `skip-link`, `impersonation-banner`, `reauth-modal` + `use-reauth-gate`
 - `tickets/` — `badges` (priority + status pills using the §13 token map), `assign-control`, `reopen-button`, `create-on-behalf-form`, `escalate-modal`, `resolve-modal` (note + skip), `reply-composer`, `message-thread`, `message-body`, `ticket-filters`, `ticket-row-actions`, `merge-modal`
 - `users/` — `create-user-form`, `edit-user-form`, `account-actions`, `deactivate-modal`, `impersonate-button`, `role-multi-select`, `user-row-actions`
 - `roles/` — `create-role-form`, `edit-role-form`, `permissions-matrix`, `role-row-actions`
@@ -474,7 +474,7 @@ Storage keys: `<env>/<ticketId>/<attachmentId>/<sanitizedFilename>` for attachme
 
 - **Form path:** `signInWithLockout(email, password)` Server Action wraps `auth.api.signInEmail` with the per-account lockout described in §12.2. On success Better Auth's `nextCookies()` plugin (registered in `lib/auth/index.ts`) sets the session cookie via Next.js `cookies()`.
 - **Session lifetime:** absolute 7 days (`session.expiresIn`), `updateAge` 5 minutes (cookie is refreshed on each window of activity). The admin gated layout independently enforces a 12-hour idle timeout by reading `session.session.updatedAt`.
-- **First-time staff setup:** when an admin creates a user, the system fires Better Auth's `requestPasswordReset` flow, which sends `staff_setup_invite` (copy varies based on whether `users.lastLoginAt` is null) pointing at `/admin/setup?token=…`.
+- **First-time staff setup:** when an admin creates a user, the system fires Better Auth's `requestPasswordReset` flow, which sends `staff_setup_invite` (copy varies based on whether `users.lastLoginAt` is null) pointing at `/admin/setup?token=…&email=…`. The setup form sets the password via `auth.api.resetPassword` and then immediately signs the user in via `auth.api.signInEmail` with that same email + password — so the user lands on `/admin` on the first submit click. If the auto-sign-in fails (e.g. account locked), the form falls back to `/admin/login?reset=ok` and the user signs in manually.
 
 ### 19.2 Customer auth
 
@@ -545,7 +545,7 @@ Per `DECISIONS.md` 2026-05-08, target is **WCAG 2.1 AA**, enforced in three laye
 
 1. **Lint:** `eslint-plugin-jsx-a11y` strict rules (alt-text, label-has-associated-control, role-has-required-aria-props, etc.). Exceptions: `components/ui/` (shadcn primitives) has `label-has-associated-control` off; consumers wire labels at call sites.
 2. **E2E:** `@axe-core/playwright` runs against key routes in `e2e/a11y.spec.ts`. `color-contrast` is temporarily disabled in CI (flickers under dark-mode media-query handling); manual audit is on the carryover list.
-3. **Markup:** the gated admin layout AND the public layout both render a `<SkipLink>` targeting `<main id="main-content">`. The shared `Table` primitive defaults to `<th scope="col">`. The permissions matrix is native `<input type="checkbox">` + `<label>`; the hierarchy tree is recursive `<ul><li>` so screen readers announce them as standard controls.
+3. **Markup:** the gated admin layout AND the public layout both render a `<SkipLink>` targeting `<main id="main-content">`. The shared `Table` primitive defaults to `<th scope="col">`. The permissions matrix uses native `<details>`/`<summary>` for module accordions (browser owns the open/closed state — no React state to go stale) and native `<input type="checkbox">` + `<label>` for grants; the hierarchy tree is recursive `<ul><li>` so screen readers announce them as standard controls.
 4. **Body classes:** `accessibility-high-contrast` (`filter: contrast(1.4)`), `accessibility-large-text` (`zoom: 1.15`), `accessibility-reduce-motion` (kills animations/transitions/smooth-scroll).
 
 ---
@@ -614,7 +614,8 @@ Other notable posture:
 
 Architectural decisions that aren't obvious from reading the code live in [`DECISIONS.md`](./DECISIONS.md), newest first. Examples currently captured:
 
-- **2026-05-21 — Stream / session / setup fixes:** `classifyStream` makes "internal vs external" role-driven (staff role wins over email domain); `createUser` captures and restores the admin's session cookie so admin-creating-a-user can't silently sign the admin out and in as the new user; `/admin/setup` is exempted from the edge proxy's auth gate so the setup-invite link doesn't redirect into a circular dead end.
+- **2026-05-22 — Production-pass corrections:** `createUser` now inserts `users` + `accounts` rows directly via Drizzle (with `accounts.password = null`), bypassing `auth.api.signUpEmail` entirely so no session is ever issued for the new user — supersedes yesterday's cookie-restore approach which failed under HTTPS due to Better Auth's `__Secure-` prefix. Setup-invite URL carries `&email=…`, allowing the setup form to auto-sign-in after reset → user lands on `/admin` on first click. Sidebar links filter by per-item `requires: Permission`. Hierarchy filters to users whose roles grant `users.create` or `roles.create`. Permissions matrix uses native `<details>`/`<summary>`. Role View modal renders human-friendly labels via the existing matrix i18n namespace.
+- **2026-05-21 — Stream / session / setup fixes:** `classifyStream` makes "internal vs external" role-driven (staff role wins over email domain); first attempt at admin user-create session safety (superseded — see 2026-05-22); `/admin/setup` exempted from the edge proxy's auth gate so the setup-invite link doesn't redirect into a circular dead end.
 - **2026-05-10 — Customer portal:** magic-link primary + password fallback; identity reconciliation inside `databaseHooks.user.create.after`; single route group; server-side role gate in the portal layout; customer-channel writes never email the customer back; internal-note attachments doubly guarded against strict customers; stricter rate limits for portal auth than admin; customer notification preferences ship with `ticket.assigned` and `ticket.customer_replied` only (resolved is held back).
 - **2026-05-08 — Accessibility (M14.5):** WCAG 2.1 AA enforced in three layers; `color-contrast` temporarily off in CI; skip-link in both gated and public layouts; matrix + tree use native form/list markup.
 
