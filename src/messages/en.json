@@ -75,6 +75,8 @@
       "submittingPassword": "Signing in…",
       "noAccount": "Don't have an account?",
       "signUpLink": "Create one",
+      "guestSubmitPrefix": "Just need to file a ticket?",
+      "guestSubmitLink": "Submit as guest",
       "errors": {
         "invalidEmail": "Enter a valid email address.",
         "tooManyByEmail": "Too many sign-in requests for this email. Try again later.",
@@ -376,7 +378,7 @@
         "descriptionAgentPlaceholder": "What did the customer report? Include any context they gave."
       },
       "honeypotLabel": "Website",
-      "captchaSkipped": "Cloudflare Turnstile is not configured — captcha is skipped in dev.",
+      "captchaSkipped": "Cloudflare Turnstile is not configured. In dev this is fine; in production it means NEXT_PUBLIC_TURNSTILE_SITE_KEY isn't reaching the browser — submissions will fail captcha verification until it is set.",
       "submitButton": "Submit ticket",
       "submitting": "Submitting…",
       "chooseCategoryPriority": "Please choose a category and priority.",

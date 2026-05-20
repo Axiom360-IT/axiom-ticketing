@@ -46,12 +46,25 @@ export default async function PortalSignInPage() {
       formTitle={t("title")}
       formSubtitle={t("subtitle")}
       footerSlot={
-        <p>
-          <span>{t("noAccount")} </span>
-          <Link href="/portal/submit" className={`font-medium ${link}`}>
-            {t("signUpLink")}
-          </Link>
-        </p>
+        // Two distinct affordances for two distinct intents:
+        //   - Account creation → /portal/sign-up (was previously
+        //     mislinked to /portal/submit, which confused users who
+        //     expected a sign-up form and got the guest ticket form).
+        //   - File a ticket without an account → /portal/submit.
+        <div className="space-y-1.5 text-center">
+          <p>
+            <span>{t("noAccount")} </span>
+            <Link href="/portal/sign-up" className={`font-medium ${link}`}>
+              {t("signUpLink")}
+            </Link>
+          </p>
+          <p>
+            <span>{t("guestSubmitPrefix")} </span>
+            <Link href="/portal/submit" className={`font-medium ${link}`}>
+              {t("guestSubmitLink")}
+            </Link>
+          </p>
+        </div>
       }
     >
       <Suspense>
