@@ -159,7 +159,7 @@ The App Router tree is split into two route groups: `(admin)` and `(public)`. Th
   - `procurement/`, `procurement/[id]`
   - `users/`, `users/new`, `users/[id]`
   - `roles/`, `roles/new`, `roles/[id]`
-  - `hierarchy/` — visual creator-tree (only includes users whose roles grant `users.create` or `roles.create`; pure Customers/Technicians are filtered out via a correlated `EXISTS` subquery on `role_permissions`)
+  - `hierarchy/` — visual creator-tree (includes any user with at least one non-Customer role via a correlated `EXISTS` subquery on `user_roles`; pure-Customer accounts are filtered out, but all staff roles — including Technicians who can't themselves create users — remain so Super Admin's descendants are visible)
   - `reports/`
   - `settings/`
   - `audit/`

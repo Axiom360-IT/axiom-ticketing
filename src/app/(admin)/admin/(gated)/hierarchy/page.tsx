@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, eq, exists, inArray } from "drizzle-orm";
+import { and, eq, exists, ne } from "drizzle-orm";
 import { getTranslations } from "next-intl/server";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
+import { roles, userRoles } from "@/lib/db/schema/rbac";
 
 type HierarchyNode = {
   id: string;
@@ -28,16 +28,20 @@ export default async function HierarchyPage() {
     redirect("/admin");
   }
 
-  // Filter the tree to users who can themselves participate in the
-  // management hierarchy — i.e. they hold at least one of `users.create`
-  // or `roles.create`. Excludes Customers, Technicians, and anyone else
-  // whose roles don't grant either permission. The hierarchy is meant to
-  // visualize the *creator* chain; users who can't create anyone don't
-  // belong in the chart.
+  // The hierarchy is the staff org chart — it should include everyone
+  // the Super Admin created and everyone THEY created, recursively,
+  // regardless of whether each leaf can itself create more users. The
+  // previous (`users.create` OR `roles.create`) filter was too strict:
+  // in the seeded defaults only Super Admin holds either permission, so
+  // every IT Director / Coordinator / Technician was filtered out and
+  // the tree collapsed to a single node.
   //
-  // EXISTS subquery: a user qualifies if any of their roles grants
-  // either creation permission. Drizzle's `exists` produces the
-  // correlated subquery we want.
+  // New rule: include any user with at least one role OTHER than
+  // "Customer". Pure-Customer accounts (self-registered portal users)
+  // are excluded because they're not part of the staff org chart, but
+  // every staff role — including custom ones — stays. A user with
+  // both Customer + a staff role still qualifies (the EXISTS just needs
+  // one matching non-Customer row).
   const allUsers = await db
     .select({
       id: users.id,
@@ -52,17 +56,11 @@ export default async function HierarchyPage() {
         db
           .select({ one: userRoles.userId })
           .from(userRoles)
-          .innerJoin(
-            rolePermissions,
-            eq(rolePermissions.roleId, userRoles.roleId),
-          )
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
           .where(
             and(
               eq(userRoles.userId, users.id),
-              inArray(rolePermissions.permission, [
-                "users.create",
-                "roles.create",
-              ]),
+              ne(roles.name, "Customer"),
             ),
           ),
       ),

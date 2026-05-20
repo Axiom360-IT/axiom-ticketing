@@ -123,7 +123,16 @@ export function PermissionsMatrix({
           grantable.length > 0 && grantable.every((p) => valueSet.has(p));
         const someOn = grantable.some((p) => valueSet.has(p));
         const showingLocked = showLockedFor.has(m);
-        const visiblePerms = showingLocked ? perms : grantable;
+        // Read-only mode (system roles, or non-editor viewers) needs to
+        // SHOW every permission so the body isn't empty — `isLocked()`
+        // returns true for every permission when readOnly, which would
+        // otherwise leave `grantable` empty and the accordion looking
+        // blank. We render the full list as disabled inputs instead.
+        const visiblePerms = readOnly
+          ? perms
+          : showingLocked
+            ? perms
+            : grantable;
         const selectedCount = perms.filter((p) => valueSet.has(p)).length;
 
         return (
