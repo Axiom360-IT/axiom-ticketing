@@ -36,17 +36,31 @@ const nameSchema = z.string().trim().min(1).max(120);
 
 export type RequestMagicLinkResult =
   | { ok: true }
-  | { ok: false; error: "invalid_email" | "rate_limited_email" | "rate_limited_ip" };
+  | {
+      ok: false;
+      error:
+        | "invalid_email"
+        | "rate_limited_email"
+        | "rate_limited_ip"
+        | "account_not_found";
+    };
 
 export type RequestSignUpResult =
   | { ok: true }
   | { ok: false; error: "invalid_email" | "invalid_name" | "rate_limited_email" | "rate_limited_ip" };
 
 /**
- * Request a magic-link sign-in email. Always returns the same generic shape on
- * success regardless of whether the email maps to an existing user, to prevent
- * enumeration. Rate-limit failures are explicit so the UI can show an
- * actionable message — these gates fire before any DB lookup.
+ * Request a magic-link sign-in email. Sign-in is for **existing accounts
+ * only** — if the email doesn't map to a user row, we return
+ * `account_not_found` so the UI can route the visitor to `/portal/sign-up`
+ * where the name field is collected. Sign-up explicitly creates new users
+ * via `requestSignUpMagicLink`.
+ *
+ * Trade-off: this leaks which emails are registered (an attacker can probe
+ * for known users). Acceptable for an internal IT ticketing tool where
+ * email enumeration isn't a material risk, and worth the win of every
+ * account having a real name attached (cleaner agent dashboards, better
+ * email greetings). Rate limits keep probing slow.
  */
 export async function requestMagicLink(
   email: string,
@@ -58,6 +72,8 @@ export async function requestMagicLink(
   const h = await headers();
   const ip = clientIp(h);
 
+  // Rate-limit FIRST so an attacker can't run an unbounded enumeration
+  // query against the users table.
   const ipLimit = await checkRateLimit("magicLinkByIp", `magic:ip:${ip}`);
   if (!ipLimit.allowed) return { ok: false, error: "rate_limited_ip" };
 
@@ -67,21 +83,34 @@ export async function requestMagicLink(
   );
   if (!emailLimit.allowed) return { ok: false, error: "rate_limited_email" };
 
+  // Existence check: reject sign-in for unknown emails so the flow forces
+  // new users through `/portal/sign-up` (where name is captured).
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, normalized))
+    .limit(1);
+  if (!existing) {
+    return { ok: false, error: "account_not_found" };
+  }
+
   try {
     await auth.api.signInMagicLink({
       body: {
         email: normalized,
         callbackURL: "/portal/tickets",
-        newUserCallbackURL: "/portal/tickets",
+        // No newUserCallbackURL — sign-in is existing-users-only now.
+        // Better Auth still wouldn't create a new user because we already
+        // verified the email exists above, but dropping the URL keeps the
+        // intent obvious from the call site.
         errorCallbackURL: "/portal/sign-in?error=expired",
       },
       headers: h,
     });
   } catch (err) {
-    // Swallowed to preserve the generic-success contract (no email
-    // enumeration). In dev we still surface it so silent Resend failures
-    // (unverified domain, free-tier sandbox, bad key) don't masquerade as
-    // "we sent the email."
+    // Swallowed for delivery failures (e.g. Resend outage). In dev we
+    // still surface it so silent send failures (unverified domain, free
+    // -tier sandbox, bad key) don't masquerade as "we sent the email."
     if (process.env.NODE_ENV !== "production") {
       console.error("[magicLink] send failed:", err);
     }

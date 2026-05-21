@@ -83,7 +83,8 @@
         "tooManyByIp": "Too many sign-in requests from your network. Try again later.",
         "expired": "That sign-in link expired. Request a new one.",
         "missing": "That sign-in link is invalid.",
-        "invalidCredentials": "Invalid email or password."
+        "invalidCredentials": "Invalid email or password.",
+        "accountNotFound": "We don't have an account for that email. Use 'Create one' below to register first."
       }
     },
     "signInSent": {

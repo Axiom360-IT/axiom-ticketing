@@ -37,6 +37,9 @@ export function SignInForm() {
         invalid_email: t("errors.invalidEmail"),
         rate_limited_email: t("errors.tooManyByEmail"),
         rate_limited_ip: t("errors.tooManyByIp"),
+        // Sign-in is existing-accounts-only — point the visitor at the
+        // sign-up surface so their name gets captured.
+        account_not_found: t("errors.accountNotFound"),
       } as const;
       setError(map[result.error]);
       return;
