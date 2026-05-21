@@ -112,6 +112,18 @@ const createUserSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().toLowerCase().email().max(255),
   language: z.string().trim().min(2).max(10).default("en"),
+  // Optional E.164 phone for SMS notifications. Empty string is allowed
+  // (means "no phone") and stored as null. The dispatch SMS leg won't
+  // fire for users without a phone.
+  phone: z
+    .string()
+    .trim()
+    .max(20)
+    .regex(
+      /^(\+?[1-9]\d{1,14})?$/,
+      "Phone must be in E.164 format (e.g. +14165550123)",
+    )
+    .optional(),
   roleIds: z.array(z.string().uuid()).default([]),
 });
 
@@ -189,12 +201,17 @@ export async function createUser(
   const createdId = randomUUID();
   try {
     await transactional(async (tx) => {
+      // Empty-string phone → null (no SMS for this user). Anything
+      // non-empty has already been validated as E.164 by zod.
+      const phoneValue =
+        data.phone && data.phone.length > 0 ? data.phone : null;
       await tx.insert(users).values({
         id: createdId,
         email: data.email,
         emailVerified: false,
         name: data.name,
         language: data.language,
+        phone: phoneValue,
         createdById: caller.id,
         isActive: true,
       });

@@ -24,6 +24,7 @@ export default async function PortalProfilePage() {
       name: users.name,
       email: users.email,
       language: users.language,
+      phone: users.phone,
       image: users.image,
     })
     .from(users)
@@ -59,6 +60,7 @@ export default async function PortalProfilePage() {
           name: profile?.name ?? "",
           email: profile?.email ?? "",
           language: profile?.language ?? "en",
+          phone: profile?.phone ?? "",
         }}
       />
 

@@ -6,17 +6,27 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NotificationBell } from "@/components/shared/notification-bell";
 import { authClient } from "@/lib/auth/client";
 import { initials } from "@/lib/format";
+import type { RecentNotificationsResult } from "@/app/actions/notifications";
 
 type Props = {
   email: string;
   name: string;
   /** Server-resolved signed URL for the user's avatar, or null. */
   avatarUrl?: string | null;
+  /** Server-fetched initial notifications payload so the bell renders
+   *  with real data on the first paint instead of flashing empty. */
+  initialNotifications: RecentNotificationsResult;
 };
 
-export function CustomerTopbar({ email, name, avatarUrl }: Props) {
+export function CustomerTopbar({
+  email,
+  name,
+  avatarUrl,
+  initialNotifications,
+}: Props) {
   const t = useTranslations("portal.shell");
   const tCommon = useTranslations("common");
   const router = useRouter();
@@ -34,30 +44,18 @@ export function CustomerTopbar({ email, name, avatarUrl }: Props) {
 
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-      {/* Row 1 — brand + identity + sign-out. Always visible. */}
-      <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      {/* Row 1 — identity + notifications bell + sign-out. The sidebar
+          carries the main navigation on lg+; below that, row 2 below
+          carries the mobile-only nav strip. */}
+      <div className="px-4 py-3 flex items-center justify-between gap-4">
         <Link
-          href="/portal/tickets"
-          className="font-semibold text-zinc-900 dark:text-zinc-50"
+          href="/portal"
+          className="font-semibold text-zinc-900 dark:text-zinc-50 lg:invisible"
         >
           {tCommon("appName")}
         </Link>
         <div className="flex items-center gap-3 sm:gap-4">
-          {/* Inline nav on sm+ — mobile gets the second-row strip below. */}
-          <nav className="hidden sm:flex items-center gap-4 text-sm">
-            <Link
-              href="/portal/tickets"
-              className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50"
-            >
-              {t("myTickets")}
-            </Link>
-            <Link
-              href="/portal/profile"
-              className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50"
-            >
-              {t("profile")}
-            </Link>
-          </nav>
+          <NotificationBell initial={initialNotifications} />
           <Avatar className="size-7 hidden sm:flex">
             {avatarUrl ? (
               <AvatarImage src={avatarUrl} alt={name || email} />
@@ -91,16 +89,22 @@ export function CustomerTopbar({ email, name, avatarUrl }: Props) {
         </div>
       </div>
 
-      {/* Row 2 — nav links on mobile only. Sits below row 1 with its
-          own border so it reads as a distinct strip. Hidden on sm+
-          because the inline nav above already covers it. */}
+      {/* Row 2 — nav links on mobile + tablet only. The sidebar above
+          `lg` covers desktop. Below `lg` we hide the sidebar entirely
+          and use this strip to keep navigation reachable. */}
       <nav
         aria-label={t("myTickets")}
-        className="sm:hidden flex border-t border-zinc-200 dark:border-zinc-800 text-sm"
+        className="lg:hidden flex border-t border-zinc-200 dark:border-zinc-800 text-sm"
       >
         <Link
-          href="/portal/tickets"
+          href="/portal"
           className="flex-1 text-center px-4 py-3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-900 min-h-[44px]"
+        >
+          {t("home")}
+        </Link>
+        <Link
+          href="/portal/tickets"
+          className="flex-1 text-center px-4 py-3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 hover:bg-zinc-50 dark:hover:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 min-h-[44px]"
         >
           {t("myTickets")}
         </Link>

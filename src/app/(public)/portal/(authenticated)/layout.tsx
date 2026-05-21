@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { CustomerSidebar } from "@/components/customer/customer-sidebar";
 import { CustomerTopbar } from "@/components/customer/customer-topbar";
+import { getRecentNotifications } from "@/app/actions/notifications";
+import { loadBranding } from "@/lib/branding/load";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 export default async function PortalAuthedLayout({
@@ -25,15 +28,21 @@ export default async function PortalAuthedLayout({
   const avatarUrl = profile?.image
     ? await getAvatarSignedUrl(profile.image)
     : null;
+  const branding = await loadBranding();
+  const initialNotifs = await getRecentNotifications();
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
-      <CustomerTopbar
-        email={profile?.email ?? ""}
-        name={profile?.name ?? ""}
-        avatarUrl={avatarUrl}
-      />
-      <div className="flex-1">{children}</div>
+    <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <CustomerSidebar branding={branding} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <CustomerTopbar
+          email={profile?.email ?? ""}
+          name={profile?.name ?? ""}
+          avatarUrl={avatarUrl}
+          initialNotifications={initialNotifs}
+        />
+        <main className="flex-1">{children}</main>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,34 @@ entries go at the top; date them.
 
 ---
 
+## 2026-05-21 · Phone field uses `react-phone-number-input` (country picker)
+
+Plain `<input type="tel">` accepted E.164 but didn't help users enter it — anyone typing `416-555-0123` got a validation error with no guidance. Swapped for `react-phone-number-input` across all four phone surfaces (customer sign-up, customer profile, admin user-create, admin profile).
+
+- **What the library gives us:** country dropdown with flag + name, search-by-country, auto-prepends the calling code, formats the digits visually as you type (`(416) 555-0123`), stores E.164 internally (`+14165550123`), validates per-country length/format via libphonenumber-js. About 30 KB gzipped including libphonenumber's metadata (tree-shakable down if we ever lock to specific regions).
+- **Default country is `PK`.** Matches the current deployment. Customers in other regions change the dropdown; the library remembers within the session.
+- **CSS lives in `src/app/globals.css`.** Imported the library's base styles once at the app level, then layered overrides on the `.PhoneInput*` classes so the field matches our other form inputs (rounded-md, ≥42px height for tap targets, focus ring in `blue-500`, dark-mode background). Avoided per-component imports so the CSS bundle isn't duplicated.
+- **Server-side validation unchanged.** The action-layer zod regex (`^(\+?[1-9]\d{1,14})?$`) still runs as defense-in-depth — the library produces E.164 strings, which match. If someone bypasses the client and submits a malformed string, the server still rejects.
+- **`value || undefined` on the way in, `v ?? ""` on the way out.** The library expects `undefined` for empty (it's how it knows to show the placeholder), but our state holds an empty string for consistency with the rest of the form. Two-line conversion in each onChange handler.
+
+---
+
+## 2026-05-21 · Phone collection wired end-to-end; customer portal shell elevated (sidebar + dashboard + bell + ticket-list filters)
+
+The product surface for customers was sparse — a topbar with two links, a flat ticket list, decorative SMS toggles that did nothing. This change closes that gap.
+
+- **Phone is now a real field, not a phantom column.** `users.phone` has existed since M1 but no UI ever collected it, so every SMS toggle was dead. Phone is now an optional input on (1) the customer sign-up form, (2) the customer profile, (3) the admin user-create form, (4) the admin profile. All four validate as E.164 (`+<digits>`) or empty (cleared → null in DB). Sign-up routes phone through Better Auth's `additionalFields` config (added `phone: { type: "string", required: false }` to `lib/auth/index.ts`) so the magic-link verification stores it on the freshly-created `users` row. Existing dispatch logic — `if (data.sms && smsOn && r.phone)` in `dispatch-notification.ts` — was already correct; we just needed real phone values to flow into it.
+
+- **Customer portal sidebar + dashboard.** `/portal/(authenticated)/layout.tsx` now mirrors the admin shell: a `<CustomerSidebar>` slate-900 panel on `lg+` with Home / My Tickets / Profile + a prominent "+ New ticket" CTA, plus the existing topbar with a notifications bell. Below `lg` the sidebar hides and the topbar's mobile-only second-row nav takes over — same responsive pattern as admin. A new `/portal/page.tsx` is the default landing: three stat cards (Open / In progress / Resolved, each linking into a pre-filtered ticket list) and a "Recent tickets" list (5 most-recently-updated).
+
+- **Notifications bell on the customer side.** The existing `<NotificationBell>` (admin) is portable by design — accepts initial server-fetched payload, polls every 30s, marks-read/all-read actions, dropdown UI. Dropped it into the customer topbar with `getRecentNotifications()` for the initial state. The dispatcher already inserts in-app rows for `ticket.assigned` and `ticket.customer_replied` against customers (per the existing notification preferences), so customers immediately see relevant activity in the bell.
+
+- **Ticket list filters + search.** `/portal/tickets` got four status chips (`All / Open / In progress / Resolved` — where Resolved combines `resolved` + `closed`) and a search input that matches against subject + ticket number. Both are URL-driven (`?status=…&q=…`) — no client state, bookmarkable, the dashboard's stat cards link directly into pre-filtered views (e.g. `/portal/tickets?status=resolved,closed`).
+
+- **What we deliberately didn't do:** no help/knowledge-base section (no content yet — would be empty), no per-ticket notification settings (the existing per-event-type prefs cover it), no mobile drawer for the sidebar (the existing mobile second-row nav strip already covers nav reachability; building a drawer is extra surface without proportional value).
+
+---
+
 ## 2026-05-21 · Sanitizer swap (isomorphic-dompurify → sanitize-html); sign-in cookie-prefix fix; sign-in is existing-accounts-only
 
 Three changes ship together. Common thread: every fix here was forced by production runtime behavior that doesn't show up in dev or in tests.

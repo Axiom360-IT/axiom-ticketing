@@ -48,7 +48,26 @@
       "signOut": "Sign out",
       "signingOut": "Signing out…",
       "myTickets": "My tickets",
-      "profile": "Profile"
+      "profile": "Profile",
+      "home": "Home",
+      "newTicket": "+ New ticket",
+      "appName": "Axiom360",
+      "mainNavLabel": "Main navigation",
+      "tagline": "Support portal"
+    },
+    "home": {
+      "metaTitle": "Home — Axiom360 Support",
+      "title": "Welcome back",
+      "subtitle": "Track your support tickets and start new ones from here.",
+      "newTicket": "+ New ticket",
+      "statsLabel": "Ticket counts",
+      "statOpen": "Open",
+      "statInProgress": "In progress",
+      "statResolved": "Resolved",
+      "recentTitle": "Recent tickets",
+      "viewAll": "View all →",
+      "empty": "You haven't filed any tickets yet.",
+      "createFirst": "File your first ticket"
     },
     "signIn": {
       "metaTitle": "Sign in — Axiom support",
@@ -103,10 +122,17 @@
       "namePlaceholder": "Jane Doe",
       "emailLabel": "Email",
       "emailPlaceholder": "you@example.com",
+      "phoneLabel": "Phone",
+      "phoneOptional": "(optional)",
+      "phonePlaceholder": "+14165550123",
+      "phoneHint": "We'll text you about ticket updates if you provide a number.",
       "submit": "Create account",
       "submitting": "Creating…",
       "alreadyHave": "Already have an account?",
       "signInLink": "Sign in",
+      "errors": {
+        "invalidPhone": "Phone must be in E.164 format (e.g. +14165550123)."
+      },
       "panel": {
         "title": "Your support, in one place.",
         "subtitle": "Create an account in seconds — no password, no hassle.",
@@ -124,9 +150,14 @@
         "subtitle": "Tickets you've submitted to our team.",
         "newTicket": "New ticket",
         "empty": "You haven't submitted any tickets yet.",
+        "emptyFiltered": "No tickets match the current filters.",
+        "clearFilters": "Clear filters",
         "createFirst": "Submit your first ticket",
         "lastUpdated": "Updated {when}",
-        "openedAt": "Opened {when}"
+        "openedAt": "Opened {when}",
+        "filterStatusLabel": "Filter by status",
+        "filterAll": "All",
+        "searchPlaceholder": "Search by subject or number"
       },
       "detail": {
         "metaTitle": "{ticketNumber} — Axiom support",
@@ -184,8 +215,10 @@
       },
       "nameLabel": "Name",
       "emailLabel": "Email",
-      "phoneLabel": "Phone (for SMS)",
+      "phoneLabel": "Phone",
+      "phoneOptional": "(optional)",
       "phonePlaceholder": "+14165550123",
+      "phoneHint": "Used for SMS notifications about your tickets. Leave empty to disable SMS.",
       "languageLabel": "Language",
       "languageOptions": {
         "en": "English"
@@ -607,6 +640,10 @@
       "password": "Password",
       "passwordHint": "Minimum 12 characters.",
       "language": "Language",
+      "phone": "Phone",
+      "phoneOptional": "(optional)",
+      "phonePlaceholder": "+14165550123",
+      "phoneHint": "E.164 format. Receives SMS alerts (assignment, SLA breach, escalation).",
       "roles": "Roles"
     },
     "impersonate": {
@@ -1151,6 +1188,10 @@
       "name": "Name",
       "email": "Email",
       "language": "Language",
+      "phone": "Phone",
+      "phoneOptional": "(optional)",
+      "phonePlaceholder": "+14165550123",
+      "phoneHint": "E.164 format. Receives SMS alerts (assignment, SLA breach, escalation).",
       "save": "Save changes",
       "saving": "Saving…",
       "saved": "Saved.",

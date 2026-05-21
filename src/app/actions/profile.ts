@@ -42,6 +42,19 @@ const MIME_TO_EXT: Record<(typeof AVATAR_ALLOWED_MIMES)[number], string> = {
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(120),
   language: z.string().trim().min(2).max(10),
+  // Optional E.164 phone — accepts empty string (cleared) or a valid
+  // number. Stored as null when empty. The dispatch SMS leg gates on
+  // `users.phone` being truthy, so clearing it disables SMS for the
+  // user without touching their notification preferences.
+  phone: z
+    .string()
+    .trim()
+    .max(20)
+    .regex(
+      /^(\+?[1-9]\d{1,14})?$/,
+      "Phone must be in E.164 format (e.g. +14165550123)",
+    )
+    .optional(),
 });
 
 export type UpdateProfileInput = z.infer<typeof profileSchema>;
@@ -61,11 +74,20 @@ export async function updateProfile(
   }
   const user = await requireSessionUser();
 
+  // Empty-string phone → null in DB (no phone configured).
+  const phoneValue =
+    parsed.data.phone !== undefined
+      ? parsed.data.phone.length > 0
+        ? parsed.data.phone
+        : null
+      : undefined;
+
   await db
     .update(users)
     .set({
       name: parsed.data.name,
       language: parsed.data.language,
+      ...(phoneValue !== undefined ? { phone: phoneValue } : {}),
       updatedAt: new Date(),
     })
     .where(eq(users.id, user.id));
@@ -75,7 +97,11 @@ export async function updateProfile(
     action: "user.update_profile",
     targetType: "user",
     targetId: user.id,
-    after: { name: parsed.data.name, language: parsed.data.language },
+    after: {
+      name: parsed.data.name,
+      language: parsed.data.language,
+      ...(phoneValue !== undefined ? { phone: phoneValue } : {}),
+    },
   });
 
   revalidatePath("/admin/profile");

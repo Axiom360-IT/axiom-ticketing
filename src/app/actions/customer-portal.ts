@@ -33,6 +33,17 @@ import { inngest } from "@/inngest/client";
 
 const emailSchema = z.string().trim().toLowerCase().email();
 const nameSchema = z.string().trim().min(1).max(120);
+// Optional E.164 phone — accepts "" (cleared) or a real number. Stored
+// as null in the DB when empty. Used by the SMS dispatch leg downstream.
+const phoneSchema = z
+  .string()
+  .trim()
+  .max(20)
+  .regex(
+    /^(\+?[1-9]\d{1,14})?$/,
+    "Phone must be in E.164 format (e.g. +14165550123)",
+  )
+  .optional();
 
 export type RequestMagicLinkResult =
   | { ok: true }
@@ -47,7 +58,15 @@ export type RequestMagicLinkResult =
 
 export type RequestSignUpResult =
   | { ok: true }
-  | { ok: false; error: "invalid_email" | "invalid_name" | "rate_limited_email" | "rate_limited_ip" };
+  | {
+      ok: false;
+      error:
+        | "invalid_email"
+        | "invalid_name"
+        | "invalid_phone"
+        | "rate_limited_email"
+        | "rate_limited_ip";
+    };
 
 /**
  * Request a magic-link sign-in email. Sign-in is for **existing accounts
@@ -127,11 +146,17 @@ export async function requestMagicLink(
 export async function requestSignUpMagicLink(
   name: string,
   email: string,
+  phone?: string,
 ): Promise<RequestSignUpResult> {
   const parsedName = nameSchema.safeParse(name);
   if (!parsedName.success) return { ok: false, error: "invalid_name" };
   const parsedEmail = emailSchema.safeParse(email);
   if (!parsedEmail.success) return { ok: false, error: "invalid_email" };
+  const parsedPhone = phoneSchema.safeParse(phone ?? "");
+  if (!parsedPhone.success) return { ok: false, error: "invalid_phone" };
+  // Empty string → null in the DB (no phone configured → no SMS).
+  const normalizedPhone =
+    parsedPhone.data && parsedPhone.data.length > 0 ? parsedPhone.data : null;
   const normalized = parsedEmail.data;
 
   const h = await headers();
@@ -151,6 +176,11 @@ export async function requestSignUpMagicLink(
       body: {
         email: normalized,
         name: parsedName.data,
+        // `phone` lives in Better Auth's `additionalFields` config so it's
+        // persisted on the users row when the magic link is verified for
+        // a brand-new account. Null/empty is fine — the dispatch SMS leg
+        // gates on `r.phone` being truthy and silently skips otherwise.
+        ...(normalizedPhone ? { phone: normalizedPhone } : {}),
         callbackURL: "/portal/tickets",
         newUserCallbackURL: "/portal/tickets",
         errorCallbackURL: "/portal/sign-in?error=expired",

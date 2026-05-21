@@ -3,13 +3,14 @@
 import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import PhoneInput from "react-phone-number-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateProfile } from "@/app/actions/profile";
 
 type Props = {
-  initial: { name: string; email: string; language: string };
+  initial: { name: string; email: string; language: string; phone: string };
 };
 
 export function AccountForm({ initial }: Props) {
@@ -18,6 +19,7 @@ export function AccountForm({ initial }: Props) {
 
   const [name, setName] = useState(initial.name);
   const [language, setLanguage] = useState(initial.language);
+  const [phone, setPhone] = useState(initial.phone);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -27,7 +29,7 @@ export function AccountForm({ initial }: Props) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const res = await updateProfile({ name, language });
+      const res = await updateProfile({ name, language, phone: phone.trim() });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -60,14 +62,36 @@ export function AccountForm({ initial }: Props) {
           />
         </div>
       </div>
-      <div className="space-y-1.5 max-w-xs">
-        <Label htmlFor="profile-language">{t("language")}</Label>
-        <Input
-          id="profile-language"
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          maxLength={10}
-        />
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="profile-phone">
+            {t("phone")}
+            <span className="ml-1 text-xs font-normal text-zinc-500">
+              {t("phoneOptional")}
+            </span>
+          </Label>
+          <PhoneInput
+            id="profile-phone"
+            defaultCountry="PK"
+            international
+            autoComplete="tel"
+            value={phone || undefined}
+            onChange={(v) => setPhone(v ?? "")}
+            placeholder={t("phonePlaceholder")}
+          />
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {t("phoneHint")}
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="profile-language">{t("language")}</Label>
+          <Input
+            id="profile-language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            maxLength={10}
+          />
+        </div>
       </div>
       <div className="flex items-center gap-3 flex-wrap">
         <Button type="submit" disabled={isPending}>

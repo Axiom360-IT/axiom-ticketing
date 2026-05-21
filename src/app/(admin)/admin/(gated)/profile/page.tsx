@@ -31,6 +31,7 @@ export default async function ProfilePage() {
       name: users.name,
       email: users.email,
       language: users.language,
+      phone: users.phone,
       image: users.image,
     })
     .from(users)
@@ -68,6 +69,7 @@ export default async function ProfilePage() {
               name: me.name,
               email: me.email,
               language: me.language,
+              phone: me.phone ?? "",
             }}
           />
         </CardContent>

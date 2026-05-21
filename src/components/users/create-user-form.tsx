@@ -3,6 +3,7 @@
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import PhoneInput from "react-phone-number-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
     name: "",
     email: "",
     language: "en",
+    phone: "",
   });
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,26 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
 
       <div className="grid sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
+          <Label htmlFor="phone">
+            {tFields("phone")}
+            <span className="ml-1 text-xs font-normal text-zinc-500">
+              {tFields("phoneOptional")}
+            </span>
+          </Label>
+          <PhoneInput
+            id="phone"
+            defaultCountry="PK"
+            international
+            autoComplete="tel"
+            value={data.phone || undefined}
+            onChange={(v) => update("phone", v ?? "")}
+            placeholder={tFields("phonePlaceholder")}
+          />
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {tFields("phoneHint")}
+          </p>
+        </div>
+        <div className="space-y-1.5">
           <Label htmlFor="language">{tFields("language")}</Label>
           <Input
             id="language"
@@ -89,14 +111,10 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
             maxLength={10}
           />
         </div>
-        <div className="space-y-1.5">
-          {/* No password field — admin doesn't set the password.
-              The user receives a welcome email with a setup link. */}
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-7">
-            {tCreate("welcomeEmailHint")}
-          </p>
-        </div>
       </div>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">
+        {tCreate("welcomeEmailHint")}
+      </p>
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{tFields("roles")}</legend>

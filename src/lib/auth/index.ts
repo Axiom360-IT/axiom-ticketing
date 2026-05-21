@@ -121,6 +121,10 @@ export const auth = betterAuth({
     additionalFields: {
       language: { type: "string", defaultValue: "en" },
       isActive: { type: "boolean", defaultValue: true },
+      // Optional E.164 phone number for SMS notifications. Empty/null
+      // means the user gets no SMS; the dispatcher already gates each
+      // SMS leg on `r.phone` being truthy.
+      phone: { type: "string", required: false },
       // createdById, deactivatedAt, deactivatedById, lastLoginAt are
       // application-managed columns; Better Auth ignores them.
     },

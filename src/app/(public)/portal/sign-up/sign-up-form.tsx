@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
+import PhoneInput from "react-phone-number-input";
 import { requestSignUpMagicLink } from "@/app/actions/customer-portal";
 
 export function SignUpForm() {
@@ -12,6 +13,7 @@ export function SignUpForm() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,19 +21,28 @@ export function SignUpForm() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = await requestSignUpMagicLink(name, email);
-    setSubmitting(false);
-    if (!result.ok) {
-      const map = {
-        invalid_email: tSignIn("errors.invalidEmail"),
-        invalid_name: tSignIn("errors.invalidEmail"),
-        rate_limited_email: tSignIn("errors.tooManyByEmail"),
-        rate_limited_ip: tSignIn("errors.tooManyByIp"),
-      } as const;
-      setError(map[result.error]);
-      return;
+    try {
+      const result = await requestSignUpMagicLink(name, email, phone);
+      if (!result.ok) {
+        const map = {
+          invalid_email: tSignIn("errors.invalidEmail"),
+          invalid_name: tSignIn("errors.invalidEmail"),
+          invalid_phone: t("errors.invalidPhone"),
+          rate_limited_email: tSignIn("errors.tooManyByEmail"),
+          rate_limited_ip: tSignIn("errors.tooManyByIp"),
+        } as const;
+        setError(map[result.error]);
+        return;
+      }
+      router.push(`/portal/sign-in/sent?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[sign-up] action threw:", err);
+      }
+      setError(tSignIn("errors.unexpected"));
+    } finally {
+      setSubmitting(false);
     }
-    router.push(`/portal/sign-in/sent?email=${encodeURIComponent(email)}`);
   }
 
   return (
@@ -74,6 +85,33 @@ export function SignUpForm() {
           placeholder={t("emailPlaceholder")}
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="phone"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("phoneLabel")}
+          <span className="ml-1 text-xs font-normal text-zinc-500 dark:text-zinc-400">
+            {t("phoneOptional")}
+          </span>
+        </label>
+        <PhoneInput
+          id="phone"
+          // Default to Pakistan (matches the current deployment). Users
+          // in other countries can change the dropdown — react-phone-
+          // number-input remembers the choice for the session.
+          defaultCountry="PK"
+          international
+          autoComplete="tel"
+          value={phone || undefined}
+          onChange={(v) => setPhone(v ?? "")}
+          placeholder={t("phonePlaceholder")}
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          {t("phoneHint")}
+        </p>
       </div>
 
       {error ? (

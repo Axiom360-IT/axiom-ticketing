@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
+import PhoneInput from "react-phone-number-input";
 import { updateProfile } from "@/app/actions/profile";
 
 type Props = {
-  initial: { name: string; email: string; language: string };
+  initial: { name: string; email: string; language: string; phone: string };
 };
 
 export function CustomerProfileForm({ initial }: Props) {
@@ -15,6 +16,7 @@ export function CustomerProfileForm({ initial }: Props) {
 
   const [name, setName] = useState(initial.name);
   const [language, setLanguage] = useState(initial.language);
+  const [phone, setPhone] = useState(initial.phone);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -24,7 +26,11 @@ export function CustomerProfileForm({ initial }: Props) {
     setError(null);
     setSaved(false);
     setSubmitting(true);
-    const result = await updateProfile({ name: name.trim(), language });
+    const result = await updateProfile({
+      name: name.trim(),
+      language,
+      phone: phone.trim(),
+    });
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
@@ -68,6 +74,29 @@ export function CustomerProfileForm({ initial }: Props) {
           disabled
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 cursor-not-allowed"
         />
+      </div>
+      <div>
+        <label
+          htmlFor="profile-phone"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("phoneLabel")}
+          <span className="ml-1 text-xs font-normal text-zinc-500 dark:text-zinc-400">
+            {t("phoneOptional")}
+          </span>
+        </label>
+        <PhoneInput
+          id="profile-phone"
+          defaultCountry="PK"
+          international
+          autoComplete="tel"
+          value={phone || undefined}
+          onChange={(v) => setPhone(v ?? "")}
+          placeholder={t("phonePlaceholder")}
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          {t("phoneHint")}
+        </p>
       </div>
       <div>
         <label
