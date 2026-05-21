@@ -14,11 +14,10 @@ import {
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_MAX_FILES_PER_MESSAGE,
   isAllowedMimeType,
   MAX_FILE_BYTES,
 } from "@/lib/storage/mime";
-
-const MAX_FILES = 5;
 
 // Naive client-side empty check on HTML strings — server-side
 // `sanitizeMessageHtml` + `htmlToPlainText` is the authoritative gate;
@@ -34,6 +33,11 @@ type ReplyComposerProps = {
   ticketId: string;
   /** Whether the current user holds tickets.internal_note for this ticket. */
   canInternalNote?: boolean;
+  /** Admin-configured upload limits. Optional — fall back to defaults so
+   *  this component can also render on pages that haven't yet been
+   *  updated to fetch the setting. */
+  maxFiles?: number;
+  maxFileBytes?: number;
 };
 
 type Pending = {
@@ -48,6 +52,8 @@ type Pending = {
 export function ReplyComposer({
   ticketId,
   canInternalNote = false,
+  maxFiles = DEFAULT_MAX_FILES_PER_MESSAGE,
+  maxFileBytes = MAX_FILE_BYTES,
 }: ReplyComposerProps) {
   const router = useRouter();
   const tReply = useTranslations("tickets.reply");
@@ -72,9 +78,9 @@ export function ReplyComposer({
     e.target.value = ""; // allow re-picking the same file after removal
     if (files.length === 0) return;
 
-    const room = MAX_FILES - pendingFiles.length;
+    const room = maxFiles - pendingFiles.length;
     if (files.length > room) {
-      setError(tAtt("tooManyFiles", { max: MAX_FILES }));
+      setError(tAtt("tooManyFiles", { max: maxFiles }));
       return;
     }
     setError(null);
@@ -90,14 +96,14 @@ export function ReplyComposer({
         });
         continue;
       }
-      if (f.size > MAX_FILE_BYTES) {
+      if (f.size > maxFileBytes) {
         next.push({
           key: crypto.randomUUID(),
           file: f,
           status: "failed",
           error: tAtt("tooLarge", {
             fileName: f.name,
-            limitMb: Math.floor(MAX_FILE_BYTES / 1024 / 1024),
+            limitMb: Math.floor(maxFileBytes / 1024 / 1024),
           }),
         });
         continue;
@@ -303,14 +309,14 @@ export function ReplyComposer({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={
-              isSubmitting || pendingFiles.length >= MAX_FILES
+              isSubmitting || pendingFiles.length >= maxFiles
             }
             className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50"
           >
             <Paperclip className="size-3.5" aria-hidden="true" />
             <span>{tAtt("uploadButton")}</span>
             <span className="text-zinc-400">
-              {pendingFiles.length}/{MAX_FILES}
+              {pendingFiles.length}/{maxFiles}
             </span>
           </button>
           <input

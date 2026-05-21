@@ -935,7 +935,7 @@ export async function mergeTickets(
 
 const replySchema = z.object({
   body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
-  attachmentIds: z.array(z.string().uuid()).max(5).default([]),
+  attachmentIds: z.array(z.string().uuid()).max(20).default([]),
 });
 
 export async function replyToTicket(
@@ -1114,7 +1114,7 @@ export async function replyToTicket(
 
 const internalNoteSchema = z.object({
   body: z.string().trim().min(1, "Internal note cannot be empty").max(10000),
-  attachmentIds: z.array(z.string().uuid()).max(5).default([]),
+  attachmentIds: z.array(z.string().uuid()).max(20).default([]),
 });
 
 export async function addInternalNote(

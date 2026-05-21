@@ -106,7 +106,10 @@ export const SETTING_SCHEMAS = {
     .number()
     .int()
     .positive()
-    .max(100 * 1024 * 1024),
+    // Capped at the DB CHECK constraint on `attachments.size_bytes`
+    // (10 MiB). Raising this requires a schema migration.
+    .max(10 * 1024 * 1024),
+  "file_upload.max_files_per_message": z.number().int().min(1).max(20),
   "file_upload.allowed_mime_types": z.array(z.string().min(1).max(255)),
 
   // Branding (public sign-in / submit pages). Atomic object so the

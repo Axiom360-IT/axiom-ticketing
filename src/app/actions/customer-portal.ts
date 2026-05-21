@@ -202,7 +202,7 @@ export async function requestSignUpMagicLink(
 
 const replySchema = z.object({
   body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
-  attachmentIds: z.array(z.string().uuid()).max(5).default([]),
+  attachmentIds: z.array(z.string().uuid()).max(20).default([]),
 });
 
 export type CustomerReplyResult =
@@ -341,7 +341,7 @@ const guestReplySchema = z.object({
   ticketNumber: z.string().trim().min(1).max(40),
   token: z.string().trim().min(1).max(2000),
   body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
-  attachmentIds: z.array(z.string().uuid()).max(5).optional(),
+  attachmentIds: z.array(z.string().uuid()).max(20).optional(),
 });
 
 type GuestReplyResult =

@@ -222,6 +222,11 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
       description: "Max attachment size in bytes (10 MB)",
     },
     {
+      key: "file_upload.max_files_per_message",
+      value: 5,
+      description: "Max attachments per ticket message",
+    },
+    {
       key: "file_upload.allowed_mime_types",
       value: [
         "image/png",

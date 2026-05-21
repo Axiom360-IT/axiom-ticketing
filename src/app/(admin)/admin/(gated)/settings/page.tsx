@@ -321,6 +321,13 @@ export default async function SettingsPage({
                 initial={num(v["file_upload.max_size_bytes"], 10_485_760)}
                 min={1}
               />
+              <NumberSettingForm
+                settingKey="file_upload.max_files_per_message"
+                label={tFu("maxFilesLabel")}
+                hint={tFu("maxFilesHint")}
+                initial={num(v["file_upload.max_files_per_message"], 5)}
+                min={1}
+              />
               <div>
                 <p className="text-sm font-medium mb-1.5">
                   {tFu("mimeTypesLabel")}

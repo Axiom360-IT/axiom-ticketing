@@ -11,6 +11,7 @@ import {
   getMyMessageThread,
   getMyTicketByNumber,
 } from "@/lib/customer/queries";
+import { getAttachmentLimits } from "@/lib/storage/limits";
 
 type Params = Promise<{ ticketNumber: string }>;
 
@@ -34,7 +35,10 @@ export default async function PortalTicketDetailPage({
   const ticket = await getMyTicketByNumber(user.id, ticketNumber);
   if (!ticket) notFound();
 
-  const messages = await getMyMessageThread(ticket.id);
+  const [messages, limits] = await Promise.all([
+    getMyMessageThread(ticket.id),
+    getAttachmentLimits(),
+  ]);
   const t = await getTranslations("portal.tickets.detail");
 
   return (
@@ -74,7 +78,11 @@ export default async function PortalTicketDetailPage({
           {t("closedNotice")}
         </p>
       ) : (
-        <CustomerReplyComposer ticketId={ticket.id} />
+        <CustomerReplyComposer
+          ticketId={ticket.id}
+          maxFiles={limits.maxFilesPerMessage}
+          maxFileBytes={limits.maxFileBytes}
+        />
       )}
     </article>
   );

@@ -5,6 +5,7 @@ import { CustomerMessageThread } from "@/components/customer/customer-message-th
 import { CustomerTicketHeader } from "@/components/customer/customer-ticket-header";
 import { GuestReplyComposer } from "@/components/customer/guest-reply-composer";
 import { getGuestTicket, getMyMessageThread } from "@/lib/customer/queries";
+import { getAttachmentLimits } from "@/lib/storage/limits";
 import { verifyGuestToken } from "@/lib/tokens";
 
 type Params = Promise<{ ticketNumber: string }>;
@@ -49,7 +50,10 @@ export default async function GuestTicketViewPage({
   const ticket = await getGuestTicket(ticketNumber, verifiedEmail);
   if (!ticket) notFound();
 
-  const messages = await getMyMessageThread(ticket.id);
+  const [messages, limits] = await Promise.all([
+    getMyMessageThread(ticket.id),
+    getAttachmentLimits(),
+  ]);
   const t = await getTranslations("portal.tickets.detail");
   const tGuest = await getTranslations("portal.guest");
 
@@ -82,6 +86,8 @@ export default async function GuestTicketViewPage({
           ticketNumber={ticketNumber}
           token={token}
           customerEmail={verifiedEmail}
+          maxFiles={limits.maxFilesPerMessage}
+          maxFileBytes={limits.maxFileBytes}
         />
       )}
     </article>

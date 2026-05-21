@@ -19,6 +19,8 @@ type Props = {
    * so the same payload can authorize attachment uploads via
    * `guestGenerateUploadUrl`. */
   customerEmail: string;
+  maxFiles: number;
+  maxFileBytes: number;
 };
 
 function isHtmlEmpty(html: string): boolean {
@@ -30,6 +32,8 @@ export function GuestReplyComposer({
   ticketNumber,
   token,
   customerEmail,
+  maxFiles,
+  maxFileBytes,
 }: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.reply");
@@ -90,6 +94,8 @@ export function GuestReplyComposer({
           }}
           disabled={submitting}
           onReadyIdsChange={setAttachmentIds}
+          maxFiles={maxFiles}
+          maxFileBytes={maxFileBytes}
         />
       </div>
 

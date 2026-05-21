@@ -1069,7 +1069,9 @@
     "fileUpload": {
       "title": "File uploads",
       "maxSizeLabel": "Maximum size",
-      "maxSizeHint": "Bytes. Default 10 MiB = 10485760.",
+      "maxSizeHint": "Bytes. Default 10 MiB = 10485760. Hard-capped at 10485760 by the database constraint.",
+      "maxFilesLabel": "Maximum files per message",
+      "maxFilesHint": "Per reply or new ticket. Default 5, range 1–20.",
       "mimeTypesLabel": "Allowed MIME types",
       "addPlaceholder": "image/png",
       "addButton": "Add",

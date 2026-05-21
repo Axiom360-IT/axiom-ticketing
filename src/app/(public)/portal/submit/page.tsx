@@ -8,6 +8,7 @@ import { SubmissionForm } from "./submission-form";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { getAttachmentLimits } from "@/lib/storage/limits";
 
 // Public ticket-submission entry point. Per spec §7.1 the form must
 // work both anonymously AND for signed-in visitors. We never redirect
@@ -42,6 +43,7 @@ export default async function SubmitPage() {
     initialName = profile?.name ?? "";
     initialEmail = profile?.email ?? "";
   }
+  const limits = await getAttachmentLimits();
 
   return (
     <AuthShell branding={branding} width="wide">
@@ -73,7 +75,12 @@ export default async function SubmitPage() {
         )}
       </header>
 
-      <SubmissionForm initialName={initialName} initialEmail={initialEmail} />
+      <SubmissionForm
+        initialName={initialName}
+        initialEmail={initialEmail}
+        maxFiles={limits.maxFilesPerMessage}
+        maxFileBytes={limits.maxFileBytes}
+      />
     </AuthShell>
   );
 }

@@ -12,11 +12,10 @@ import {
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_MAX_FILES_PER_MESSAGE,
   isAllowedMimeType,
   MAX_FILE_BYTES,
 } from "@/lib/storage/mime";
-
-const MAX_FILES = 5;
 
 // Shared attachment picker for every customer-facing surface:
 //   - mode="authed": uses session-gated `generateUploadUrl` /
@@ -59,12 +58,20 @@ type Props = {
   /** Disable the picker (e.g., while the parent form is submitting). */
   disabled?: boolean;
   onReadyIdsChange?: (ids: string[]) => void;
+  /** Admin-configurable: max files per message. Falls back to the
+   *  default if the parent didn't fetch the setting. */
+  maxFiles?: number;
+  /** Admin-configurable: max bytes per file. Hard-capped at
+   *  MAX_FILE_BYTES regardless. */
+  maxFileBytes?: number;
 };
 
 export function AttachmentPicker({
   mode,
   disabled = false,
   onReadyIdsChange,
+  maxFiles = DEFAULT_MAX_FILES_PER_MESSAGE,
+  maxFileBytes = MAX_FILE_BYTES,
 }: Props) {
   const t = useTranslations("tickets.attachments");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,9 +182,9 @@ export function AttachmentPicker({
     e.target.value = "";
     if (files.length === 0) return;
 
-    const room = MAX_FILES - pendingFiles.length;
+    const room = maxFiles - pendingFiles.length;
     if (files.length > room) {
-      setError(t("tooManyFiles", { max: MAX_FILES }));
+      setError(t("tooManyFiles", { max: maxFiles }));
       return;
     }
     setError(null);
@@ -193,14 +200,14 @@ export function AttachmentPicker({
         });
         continue;
       }
-      if (f.size > MAX_FILE_BYTES) {
+      if (f.size > maxFileBytes) {
         next.push({
           key: crypto.randomUUID(),
           file: f,
           status: "failed",
           error: t("tooLarge", {
             fileName: f.name,
-            limitMb: Math.floor(MAX_FILE_BYTES / 1024 / 1024),
+            limitMb: Math.floor(maxFileBytes / 1024 / 1024),
           }),
         });
         continue;
@@ -276,13 +283,13 @@ export function AttachmentPicker({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || hasUploading || pendingFiles.length >= MAX_FILES}
+          disabled={disabled || hasUploading || pendingFiles.length >= maxFiles}
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Paperclip className="size-3.5" aria-hidden="true" />
           <span>{t("uploadButton")}</span>
           <span className="text-zinc-400">
-            {pendingFiles.length}/{MAX_FILES}
+            {pendingFiles.length}/{maxFiles}
           </span>
         </button>
         <input

@@ -21,7 +21,12 @@ const CATEGORIES = ["hardware", "software", "network", "access", "other"] as con
 // pre-uploaded attachments come along because they already have
 // `ticket_id` set to the draft id.
 
-export function CustomerNewTicketForm() {
+type Props = {
+  maxFiles: number;
+  maxFileBytes: number;
+};
+
+export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.new");
   const tCat = useTranslations("tickets.category");
@@ -152,6 +157,8 @@ export function CustomerNewTicketForm() {
           <AttachmentPicker
             mode={{ kind: "authed", ticketId: draftTicketId }}
             disabled={submitting}
+            maxFiles={maxFiles}
+            maxFileBytes={maxFileBytes}
           />
         ) : (
           <button

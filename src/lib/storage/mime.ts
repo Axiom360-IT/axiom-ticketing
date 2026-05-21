@@ -5,7 +5,13 @@
 // (lib/storage/magic-bytes.ts) is the second line of defense after the
 // browser's declared type, in case a client lies.
 
+// Absolute hard cap, mirroring the CHECK constraint on
+// `attachments.size_bytes` (10 MiB). The runtime per-file cap can be
+// lowered below this via the `file_upload.max_size_bytes` setting —
+// see `lib/storage/limits.ts:getAttachmentLimits`. Raising past this
+// requires a DB migration.
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MiB per ARCHITECTURE §11
+export const DEFAULT_MAX_FILES_PER_MESSAGE = 5;
 
 const ALLOWED_MIME_TYPES = new Set<string>([
   // Images

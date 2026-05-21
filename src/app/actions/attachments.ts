@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { can, isStrictCustomer } from "@/lib/auth/can";
@@ -10,6 +10,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
 import { messages } from "@/lib/db/schema/messages";
+import { getAttachmentLimits } from "@/lib/storage/limits";
 import {
   downloadDispositionFor,
   isAllowedMimeType,
@@ -69,9 +70,39 @@ export async function generateUploadUrl(
     return { ok: false, error: "File type not allowed." };
   }
 
+  // Enforce the admin-configured per-file size cap (clamped to the hard
+  // DB cap by `getAttachmentLimits`).
+  const limits = await getAttachmentLimits();
+  if (sizeBytes > limits.maxFileBytes) {
+    return {
+      ok: false,
+      error: `File is over the ${Math.floor(limits.maxFileBytes / 1024 / 1024)} MB limit.`,
+    };
+  }
+
   const user = await requireSessionUser();
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) return { ok: false, error: "Ticket not found." };
+
+  // Enforce the per-message attachment count cap by counting pending
+  // (unlinked) uploads already attached to this ticket. We don't count
+  // confirmed-to-a-message attachments — those belong to prior messages.
+  const [{ pending }] = await db
+    .select({ pending: sql<number>`count(*)::int` })
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.ticketId, ticketId),
+        isNull(attachments.messageId),
+        ne(attachments.scanStatus, "quarantined"),
+      ),
+    );
+  if (pending >= limits.maxFilesPerMessage) {
+    return {
+      ok: false,
+      error: `You can attach up to ${limits.maxFilesPerMessage} files per message.`,
+    };
+  }
 
   if (
     !(await can(
@@ -273,7 +304,7 @@ export async function confirmUpload(
 
 const linkInputSchema = z.object({
   messageId: z.string().uuid(),
-  attachmentIds: z.array(z.string().uuid()).min(1).max(5),
+  attachmentIds: z.array(z.string().uuid()).min(1).max(20),
 });
 
 export async function linkAttachmentsToMessage(
@@ -485,8 +516,33 @@ export async function guestGenerateUploadUrl(
     return { ok: false, error: "File type not allowed." };
   }
 
+  const limits = await getAttachmentLimits();
+  if (args.sizeBytes > limits.maxFileBytes) {
+    return {
+      ok: false,
+      error: `File is over the ${Math.floor(limits.maxFileBytes / 1024 / 1024)} MB limit.`,
+    };
+  }
+
   const authz = await authorizeGuestForTicket(args);
   if (!authz.ok) return authz;
+
+  const [{ pending }] = await db
+    .select({ pending: sql<number>`count(*)::int` })
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.ticketId, args.ticketId),
+        isNull(attachments.messageId),
+        ne(attachments.scanStatus, "quarantined"),
+      ),
+    );
+  if (pending >= limits.maxFilesPerMessage) {
+    return {
+      ok: false,
+      error: `You can attach up to ${limits.maxFilesPerMessage} files per message.`,
+    };
+  }
 
   const sanitized = sanitizeFilename(args.fileName);
 

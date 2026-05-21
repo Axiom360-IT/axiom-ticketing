@@ -10,6 +10,11 @@ import { AttachmentPicker } from "./attachment-picker";
 
 type Props = {
   ticketId: string;
+  /** Admin-configured upload limits, fetched server-side via
+   *  `getAttachmentLimits()`. Pass through to the picker so the
+   *  client UI reflects the current setting. */
+  maxFiles: number;
+  maxFileBytes: number;
 };
 
 // Naive client-side "is this empty?" — strips tags and checks the
@@ -20,7 +25,11 @@ function isHtmlEmpty(html: string): boolean {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length === 0;
 }
 
-export function CustomerReplyComposer({ ticketId }: Props) {
+export function CustomerReplyComposer({
+  ticketId,
+  maxFiles,
+  maxFileBytes,
+}: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.reply");
   const tAtt = useTranslations("tickets.attachments");
@@ -69,6 +78,8 @@ export function CustomerReplyComposer({ ticketId }: Props) {
           mode={{ kind: "authed", ticketId }}
           disabled={submitting}
           onReadyIdsChange={setAttachmentIds}
+          maxFiles={maxFiles}
+          maxFileBytes={maxFileBytes}
         />
       </div>
 

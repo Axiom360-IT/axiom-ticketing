@@ -24,6 +24,7 @@ import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
 import { TicketProcurementSection } from "@/components/procurement/ticket-section";
 import { listProcurementForTicket } from "@/app/actions/procurement";
+import { getAttachmentLimits } from "@/lib/storage/limits";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -104,6 +105,8 @@ export default async function TicketDetailPage({
   const procurementRows = canProcurementView
     ? await listProcurementForTicket(ticket.id)
     : [];
+
+  const attachmentLimits = await getAttachmentLimits();
 
   // If this ticket was merged into another, fetch the target's number
   // + id so the banner can deep-link there. Skipped when not merged.
@@ -304,6 +307,8 @@ export default async function TicketDetailPage({
                 <ReplyComposer
                   ticketId={ticket.id}
                   canInternalNote={canInternalNote}
+                  maxFiles={attachmentLimits.maxFilesPerMessage}
+                  maxFileBytes={attachmentLimits.maxFileBytes}
                 />
               </CardContent>
             </Card>

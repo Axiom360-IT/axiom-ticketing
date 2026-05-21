@@ -57,12 +57,17 @@ type SubmissionFormProps = {
    * the prefill is purely a UX convenience. */
   initialName?: string;
   initialEmail?: string;
+  /** Admin-configured upload limits. Fetched server-side and passed in. */
+  maxFiles: number;
+  maxFileBytes: number;
 };
 
 export function SubmissionForm({
   initialName = "",
   initialEmail = "",
-}: SubmissionFormProps = {}) {
+  maxFiles,
+  maxFileBytes,
+}: SubmissionFormProps) {
   const router = useRouter();
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
@@ -309,6 +314,8 @@ export function SubmissionForm({
                 draftToken: draftUploadToken,
               }}
               disabled={submitting}
+              maxFiles={maxFiles}
+              maxFileBytes={maxFileBytes}
             />
           ) : (
             <button
