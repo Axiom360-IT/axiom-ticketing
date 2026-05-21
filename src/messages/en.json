@@ -72,7 +72,7 @@
     "signIn": {
       "metaTitle": "Sign in — Axiom support",
       "title": "Sign in to your support portal",
-      "subtitle": "We'll email you a one-time link.",
+      "subtitle": "Use your password, or get a one-time link by email.",
       "panel": {
         "title": "Support, on your terms.",
         "subtitle": "Submit a ticket, track every update, and reply right from your inbox.",
@@ -89,6 +89,7 @@
       "submittingMagic": "Sending…",
       "usePassword": "Use a password instead",
       "useMagic": "Use a sign-in link instead",
+      "forgotPassword": "Forgot password?",
       "passwordLabel": "Password",
       "submitPassword": "Sign in",
       "submittingPassword": "Signing in…",
@@ -114,10 +115,17 @@
       "resend": "Send another link",
       "back": "Back to sign in"
     },
+    "signUpVerify": {
+      "metaTitle": "Confirm your email — Axiom support",
+      "title": "Confirm your email",
+      "body": "We sent a confirmation link to {email}. Click it to finish setting up your account.",
+      "hint": "Check your spam folder if you don't see it within a minute or two.",
+      "backToSignIn": "Back to sign in"
+    },
     "signUp": {
       "metaTitle": "Create your portal — Axiom support",
       "title": "Create your support portal",
-      "subtitle": "Sign up with your email — no password required.",
+      "subtitle": "Set up your account in a minute.",
       "nameLabel": "Your name",
       "namePlaceholder": "Jane Doe",
       "emailLabel": "Email",
@@ -126,12 +134,19 @@
       "phoneOptional": "(optional)",
       "phonePlaceholder": "+14165550123",
       "phoneHint": "We'll text you about ticket updates if you provide a number.",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "At least 12 characters",
+      "passwordHint": "At least {min} characters. You'll use this to sign in (you can also use a magic-link email).",
+      "confirmPasswordLabel": "Confirm password",
+      "confirmPasswordPlaceholder": "Re-enter your password",
       "submit": "Create account",
       "submitting": "Creating…",
       "alreadyHave": "Already have an account?",
       "signInLink": "Sign in",
       "errors": {
-        "invalidPhone": "Phone must be in E.164 format (e.g. +14165550123)."
+        "invalidPhone": "Phone must be in E.164 format (e.g. +14165550123).",
+        "passwordTooShort": "Password must be at least 12 characters.",
+        "passwordMismatch": "Passwords don't match."
       },
       "panel": {
         "title": "Your support, in one place.",
@@ -247,6 +262,24 @@
       "save": "Save changes",
       "saving": "Saving…",
       "saved": "Profile updated.",
+      "password": {
+        "setTitle": "Set a password",
+        "setSubtitle": "Optional — once set, you can sign in with a password instead of waiting for a magic link.",
+        "changeTitle": "Change password",
+        "changeSubtitle": "Re-enter your current password to set a new one.",
+        "currentLabel": "Current password",
+        "newLabel": "New password",
+        "confirmLabel": "Confirm new password",
+        "hint": "At least {min} characters.",
+        "revokeOthers": "Sign me out everywhere else after changing",
+        "setSubmit": "Set password",
+        "changeSubmit": "Change password",
+        "submitting": "Saving…",
+        "setSuccess": "Password set. You can now sign in with it next time.",
+        "changedSuccess": "Password updated.",
+        "tooShort": "Password must be at least {min} characters.",
+        "mismatch": "New password and confirmation don't match."
+      },
       "notifications": {
         "title": "Notification preferences",
         "subtitle": "Choose how you'd like to hear from us about your tickets.",
@@ -1709,6 +1742,15 @@
       "expiry": "This link expires in 10 minutes and can only be used once.",
       "ifNotYou": "If you didn't request this email, you can safely ignore it.",
       "subject": "Your Axiom sign-in link"
+    },
+    "customerEmailVerification": {
+      "preview": "Confirm your email to finish creating your account",
+      "title": "Confirm your email",
+      "greeting": "Hi {recipientName},",
+      "body": "Thanks for signing up. To finish setting up your support portal account, please confirm this is your email address.",
+      "button": "Confirm email",
+      "ifNotYou": "If you didn't sign up for Axiom support, you can safely ignore this email.",
+      "subject": "Confirm your Axiom support email"
     },
     "staffSetupInvite": {
       "previewSet": "Set your Axiom360 password to get started",

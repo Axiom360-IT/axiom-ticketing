@@ -66,11 +66,13 @@ export function SignInForm() {
     try {
       const result = await signInWithLockout(email.trim(), password.trim());
       if (!result.ok) {
-        setError(
-          "locked" in result && result.locked
-            ? result.error
-            : t("errors.invalidCredentials"),
-        );
+        if ("locked" in result && result.locked) {
+          setError(result.error);
+        } else if ("unverified" in result && result.unverified) {
+          setError(result.error);
+        } else {
+          setError(t("errors.invalidCredentials"));
+        }
         return;
       }
       router.push("/portal/tickets");
@@ -157,16 +159,18 @@ export function SignInForm() {
             : t("submitPassword")}
       </button>
 
-      <button
-        type="button"
-        onClick={() => {
-          setMode((m) => (m === "magic" ? "password" : "magic"));
-          setError(null);
-        }}
-        className="block mx-auto text-sm text-blue-600 dark:text-blue-400 hover:underline focus:outline-none focus:underline"
-      >
-        {mode === "magic" ? t("usePassword") : t("useMagic")}
-      </button>
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => {
+            setMode((m) => (m === "magic" ? "password" : "magic"));
+            setError(null);
+          }}
+          className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:ring-offset-2 rounded-sm transition-colors"
+        >
+          {mode === "magic" ? t("usePassword") : t("forgotPassword")}
+        </button>
+      </div>
       {/* The "Don't have an account? Create one" + "Submit as guest"
           links are rendered ONCE by the page's footerSlot below the
           card. Repeating them inside the form produced two copies of

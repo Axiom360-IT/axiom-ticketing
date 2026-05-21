@@ -37,10 +37,12 @@ export function LoginForm() {
     setLoading(false);
 
     if (!result.ok) {
-      // Lockout messages come back from the server already localized to
-      // English; for now we surface the generic error otherwise so we
-      // never leak whether email or password was wrong.
-      if (result.locked) {
+      // Lockout + unverified messages come back from the server already
+      // localized; for the bad-creds case we surface a generic error so
+      // we never leak whether email or password was wrong.
+      if ("locked" in result && result.locked) {
+        setError(result.error);
+      } else if ("unverified" in result && result.unverified) {
         setError(result.error);
       } else {
         setError(t("genericError"));

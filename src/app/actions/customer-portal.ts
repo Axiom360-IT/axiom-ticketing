@@ -64,8 +64,11 @@ export type RequestSignUpResult =
         | "invalid_email"
         | "invalid_name"
         | "invalid_phone"
+        | "invalid_password"
         | "rate_limited_email"
-        | "rate_limited_ip";
+        | "rate_limited_ip"
+        | "account_exists"
+        | "signup_failed";
     };
 
 /**
@@ -143,10 +146,18 @@ export async function requestMagicLink(
  * `databaseHooks.user.create.after` hook receives it when the link is verified.
  * Distinguished from `requestMagicLink` because the UX shows a name field.
  */
+// Password is required at sign-up. Min length matches Better Auth's
+// `emailAndPassword.minPasswordLength` (12).
+const requiredPasswordSchema = z
+  .string()
+  .min(12, "Password must be at least 12 characters")
+  .max(200);
+
 export async function requestSignUpMagicLink(
   name: string,
   email: string,
-  phone?: string,
+  phone: string | undefined,
+  password: string,
 ): Promise<RequestSignUpResult> {
   const parsedName = nameSchema.safeParse(name);
   if (!parsedName.success) return { ok: false, error: "invalid_name" };
@@ -158,6 +169,10 @@ export async function requestSignUpMagicLink(
   const normalizedPhone =
     parsedPhone.data && parsedPhone.data.length > 0 ? parsedPhone.data : null;
   const normalized = parsedEmail.data;
+
+  const parsedPw = requiredPasswordSchema.safeParse(password);
+  if (!parsedPw.success) return { ok: false, error: "invalid_password" };
+  const normalizedPassword = parsedPw.data;
 
   const h = await headers();
   const ip = clientIp(h);
@@ -171,28 +186,63 @@ export async function requestSignUpMagicLink(
   );
   if (!emailLimit.allowed) return { ok: false, error: "rate_limited_email" };
 
+  // Create the account via Better Auth's email/password sign-up. With
+  // `requireEmailVerification: true`, the user is NOT signed in here
+  // — Better Auth fires `sendVerificationEmail` instead, and we
+  // redirect them to a "check your inbox" page.
+  //
+  // If the email already exists, two cases:
+  //   - Existing account is unverified → resend the verification link
+  //     and report success so the user lands on the same "check your
+  //     inbox" page. This is the recovery flow for users who lost or
+  //     missed the first email. We do NOT overwrite the password here
+  //     — that would let an attacker hijack any unverified email.
+  //   - Existing account is verified → return `account_exists` so the
+  //     form points them at sign-in.
   try {
-    await auth.api.signInMagicLink({
+    await auth.api.signUpEmail({
       body: {
         email: normalized,
+        password: normalizedPassword,
         name: parsedName.data,
-        // `phone` lives in Better Auth's `additionalFields` config so it's
-        // persisted on the users row when the magic link is verified for
-        // a brand-new account. Null/empty is fine — the dispatch SMS leg
-        // gates on `r.phone` being truthy and silently skips otherwise.
         ...(normalizedPhone ? { phone: normalizedPhone } : {}),
-        callbackURL: "/portal/tickets",
-        newUserCallbackURL: "/portal/tickets",
-        errorCallbackURL: "/portal/sign-in?error=expired",
       },
       headers: h,
     });
   } catch (err) {
-    // Same rationale as requestMagicLink — preserve generic success in prod,
-    // surface in dev so failed sends aren't silent.
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[magicLink/signUp] send failed:", err);
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("already") || msg.includes("exists")) {
+      // Check if the existing account is verified. If not, re-send the
+      // verification link as a recovery convenience.
+      const [existing] = await db
+        .select({ id: users.id, emailVerified: users.emailVerified })
+        .from(users)
+        .where(eq(users.email, normalized))
+        .limit(1);
+      if (existing && !existing.emailVerified) {
+        try {
+          await auth.api.sendVerificationEmail({
+            body: {
+              email: normalized,
+              callbackURL: "/portal/tickets",
+            },
+            headers: h,
+          });
+        } catch (sendErr) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[signUp] re-send verification failed:", sendErr);
+          }
+        }
+        // Return success so the form lands on the verify-sent page,
+        // matching the happy-path UX.
+        return { ok: true };
+      }
+      return { ok: false, error: "account_exists" };
     }
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[signUp] signUpEmail failed:", err);
+    }
+    return { ok: false, error: "signup_failed" };
   }
 
   return { ok: true };

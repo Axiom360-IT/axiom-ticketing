@@ -12,6 +12,10 @@ import {
   type AttachmentQuarantinedProps,
 } from "./templates/attachment-quarantined";
 import {
+  CustomerEmailVerificationEmail,
+  type CustomerEmailVerificationProps,
+} from "./templates/customer-email-verification";
+import {
   CustomerMagicLinkEmail,
   type CustomerMagicLinkProps,
 } from "./templates/customer-magic-link";
@@ -137,6 +141,10 @@ export type EmailTemplate =
       data: Omit<CustomerMagicLinkProps, "locale">;
     }
   | {
+      template: "customer_email_verification";
+      data: Omit<CustomerEmailVerificationProps, "locale">;
+    }
+  | {
       template: "customer_welcome";
       data: Omit<CustomerWelcomeProps, "locale">;
     }
@@ -229,6 +237,10 @@ async function renderTemplate(
       return await render(
         <CustomerMagicLinkEmail {...t.data} locale={locale} />,
       );
+    case "customer_email_verification":
+      return await render(
+        <CustomerEmailVerificationEmail {...t.data} locale={locale} />,
+      );
     case "customer_welcome":
       return await render(
         <CustomerWelcomeEmail {...t.data} locale={locale} />,
@@ -259,6 +271,7 @@ const TEMPLATE_NAMESPACE = {
   account_lockout: "emails.accountLockout",
   attachment_quarantined: "emails.attachmentQuarantined",
   customer_magic_link: "emails.customerMagicLink",
+  customer_email_verification: "emails.customerEmailVerification",
   customer_welcome: "emails.customerWelcome",
   staff_setup_invite: "emails.staffSetupInvite",
 } as const;

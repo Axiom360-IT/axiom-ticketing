@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "react-phone-number-input/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -314,25 +315,33 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────
- * react-phone-number-input — base + theme overrides
+ * react-phone-number-input — theme overrides
  *
- * The library ships a small default stylesheet (~30 lines) that gives the
- * country dropdown its flag layout. We import it here once at the app
- * level so every consumer of <PhoneInput> doesn't have to. Then we layer
- * tweaks on top so the text input matches our other form fields
- * (rounded-md border, focus ring, dark mode support, ≥44px tap target).
- *
- * Classes provided by the library:
- *   .PhoneInput              — wrapper flexbox
- *   .PhoneInputCountry       — country select / flag area
- *   .PhoneInputCountrySelect — the actual <select>
- *   .PhoneInputCountryIcon   — flag image
- *   .PhoneInputInput         — the digits input
+ * The library's own stylesheet is imported at the top of this file (CSS
+ * spec requires @import before any other rules). The rules below layer
+ * theme/sizing tweaks on top so the text input matches our other form
+ * fields (rounded-md border, focus ring, dark mode, ≥44px tap target),
+ * and pin the flag image to a sane size so it doesn't render at its
+ * intrinsic ~3000px width if the library CSS ever fails to load.
  * ───────────────────────────────────────────────────────────────────── */
-@import "react-phone-number-input/style.css";
-
 .PhoneInput {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+/* Hard cap the country flag image at a normal-icon size. Defense in
+ * depth — the library's CSS does this too via aspect-ratio variables,
+ * but if it ever doesn't load we don't want a full-page flag. */
+.PhoneInputCountryIcon {
+  width: 1.5em !important;
+  height: 1em !important;
+  flex: 0 0 auto;
+}
+.PhoneInputCountryIconImg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
 }
 .PhoneInputCountry {
   border: 1px solid var(--color-border-input, #ced4da);

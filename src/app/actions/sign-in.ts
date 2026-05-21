@@ -35,8 +35,9 @@ const schema = z.object({
 
 export type SignInResult =
   | { ok: true }
-  | { ok: false; error: string; locked?: false }
-  | { ok: false; error: string; locked: true; retryMinutes: number };
+  | { ok: false; error: string; locked?: false; unverified?: false }
+  | { ok: false; error: string; locked: true; retryMinutes: number }
+  | { ok: false; error: string; unverified: true };
 
 function lockedResult(retryAt: number): SignInResult {
   const minutes = Math.max(1, Math.ceil((retryAt - Date.now()) / 60_000));
@@ -64,17 +65,39 @@ export async function signInWithLockout(
     return lockedResult(state.retryAt);
   }
 
-  // 2. Attempt sign-in. Better Auth throws on bad credentials.
+  // 2. Attempt sign-in. Better Auth throws on bad credentials AND on
+  // unverified email (which throws with `EMAIL_NOT_VERIFIED`). The
+  // two cases need different UX:
+  //   - bad creds → generic message (no info leak)
+  //   - unverified → tell the user to check their inbox; Better Auth
+  //     has already re-sent the verification email automatically via
+  //     `emailVerification.sendOnSignIn`.
   let signInOk = false;
+  let unverified = false;
   try {
     await auth.api.signInEmail({
       body: { email, password },
       headers: await headers(),
     });
     signInOk = true;
-  } catch {
-    // Generic — never leak whether email or password was wrong.
-    signInOk = false;
+  } catch (err) {
+    const code = (err as { body?: { code?: string } } | undefined)?.body
+      ?.code;
+    const msg = err instanceof Error ? err.message : "";
+    if (
+      code === "EMAIL_NOT_VERIFIED" ||
+      msg.toLowerCase().includes("not verified")
+    ) {
+      unverified = true;
+    }
+  }
+
+  if (unverified) {
+    return {
+      ok: false,
+      unverified: true,
+      error: "Please confirm your email before signing in. We've re-sent the confirmation link.",
+    };
   }
 
   if (signInOk) {

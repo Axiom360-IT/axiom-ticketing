@@ -109,7 +109,49 @@ export async function updateProfile(
   return { ok: true };
 }
 
-// ── Password change ─────────────────────────────────────────────
+// ── Password set / change ───────────────────────────────────────
+//
+// Two distinct flows here:
+//   - `setPassword`: for users who signed up via magic link only and
+//     have NO credential row yet (or one with `password = null`). No
+//     current password is required since they don't have one.
+//   - `changePassword`: for users who already have a password. Current
+//     password is required (Better Auth re-verifies it).
+
+const setPasswordSchema = z.object({
+  newPassword: z.string().min(12, "Password must be at least 12 characters").max(200),
+});
+
+export async function setPassword(input: {
+  newPassword: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = setPasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const user = await requireSessionUser();
+  try {
+    await auth.api.setPassword({
+      body: { newPassword: parsed.data.newPassword },
+      headers: await headers(),
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not set password",
+    };
+  }
+  await audit({
+    actorId: user.id,
+    action: "user.set_password",
+    targetType: "user",
+    targetId: user.id,
+  });
+  return { ok: true };
+}
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1).max(200),

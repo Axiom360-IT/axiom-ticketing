@@ -74,8 +74,13 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 12,
-    // Email verification turns on once Resend is wired up in M3.
-    requireEmailVerification: false,
+    // Customer sign-up MUST verify the email — without verification,
+    // anyone could register under someone else's email and lock them
+    // out of self-signup later. Staff sign-in is unaffected because
+    // admin-created staff rows are inserted with `emailVerified: true`
+    // (the admin's out-of-band verification of the email is what we
+    // trust), and they reach a real session via the setup-invite flow.
+    requireEmailVerification: true,
     // Better Auth invokes this whenever `auth.api.requestPasswordReset`
     // is called — used by both the admin "Reset password" action AND
     // by the staff-creation flow (the new user is sent here as their
@@ -105,6 +110,35 @@ export const auth = betterAuth({
         // Auth expects); surface in dev so failed sends aren't invisible.
         if (process.env.NODE_ENV !== "production") {
           console.error("[sendResetPassword] failed:", err);
+        }
+      }
+    },
+  },
+  emailVerification: {
+    // After clicking the verify link, automatically issue a session
+    // cookie so the user lands signed-in on the callbackURL. Without
+    // this they'd have to sign in again after verifying.
+    autoSignInAfterVerification: true,
+    // If an unverified user tries to sign in, Better Auth re-sends the
+    // verification email automatically. Saves them from being stuck
+    // when the first email never arrives or expired.
+    sendOnSignIn: true,
+    // Better Auth invokes this whenever a new credential sign-up
+    // requests verification (the default flow under
+    // `requireEmailVerification: true`). The verify URL is built by
+    // Better Auth — we just deliver it via Resend.
+    sendVerificationEmail: async ({ user, url }) => {
+      try {
+        await sendEmail({
+          to: user.email,
+          template: {
+            template: "customer_email_verification",
+            data: { recipientName: user.name, verifyUrl: url },
+          },
+        });
+      } catch (err) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[sendVerificationEmail] failed:", err);
         }
       }
     },

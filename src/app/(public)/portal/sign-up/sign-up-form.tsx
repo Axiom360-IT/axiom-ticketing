@@ -6,6 +6,8 @@ import { useTranslations } from "next-intl";
 import PhoneInput from "react-phone-number-input";
 import { requestSignUpMagicLink } from "@/app/actions/customer-portal";
 
+const MIN_PASSWORD = 12;
+
 export function SignUpForm() {
   const router = useRouter();
   const t = useTranslations("portal.signUp");
@@ -14,27 +16,44 @@ export function SignUpForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    if (password.length < MIN_PASSWORD) {
+      setError(t("errors.passwordTooShort"));
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError(t("errors.passwordMismatch"));
+      return;
+    }
     setSubmitting(true);
     try {
-      const result = await requestSignUpMagicLink(name, email, phone);
+      const result = await requestSignUpMagicLink(name, email, phone, password);
       if (!result.ok) {
         const map = {
           invalid_email: tSignIn("errors.invalidEmail"),
           invalid_name: tSignIn("errors.invalidEmail"),
           invalid_phone: t("errors.invalidPhone"),
+          invalid_password: t("errors.passwordTooShort"),
           rate_limited_email: tSignIn("errors.tooManyByEmail"),
           rate_limited_ip: tSignIn("errors.tooManyByIp"),
+          account_exists: t("errors.accountExists"),
+          signup_failed: tSignIn("errors.unexpected"),
         } as const;
         setError(map[result.error]);
         return;
       }
-      router.push(`/portal/sign-in/sent?email=${encodeURIComponent(email)}`);
+      // Account is created but `emailVerified=false`. Better Auth blocks
+      // sign-in until the user clicks the verification link in the
+      // email we just sent — so send them to a "check your inbox" page
+      // instead of the portal.
+      router.push(`/portal/sign-up/verify?email=${encodeURIComponent(email)}`);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.error("[sign-up] action threw:", err);
@@ -112,6 +131,53 @@ export function SignUpForm() {
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           {t("phoneHint")}
         </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="password"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("passwordLabel")}
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={MIN_PASSWORD}
+          maxLength={200}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder={t("passwordPlaceholder")}
+          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          {t("passwordHint", { min: MIN_PASSWORD })}
+        </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="confirmPassword"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("confirmPasswordLabel")}
+        </label>
+        <input
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={MIN_PASSWORD}
+          maxLength={200}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder={t("confirmPasswordPlaceholder")}
+          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
       </div>
 
       {error ? (

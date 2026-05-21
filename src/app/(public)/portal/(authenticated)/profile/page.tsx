@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { getTranslations } from "next-intl/server";
 import { AvatarUpload } from "@/components/customer/avatar-upload";
 import { CustomerNotificationPrefs } from "@/components/customer/customer-notification-prefs";
+import { CustomerPasswordSection } from "@/components/customer/customer-password-section";
 import { CustomerProfileForm } from "@/components/customer/customer-profile-form";
 import {
   listMyNotificationPreferences,
 } from "@/app/actions/profile";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/auth";
+import { accounts, users } from "@/lib/db/schema/auth";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -36,6 +37,22 @@ export default async function PortalProfilePage() {
   const avatarUrl = profile?.image
     ? await getAvatarSignedUrl(profile.image)
     : null;
+
+  // Does this user have a password set on the credential account?
+  // Magic-link-only users will have no row (or one with password=null);
+  // password-using users will have a non-null hash here.
+  const [cred] = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, user.id),
+        eq(accounts.providerId, "credential"),
+        isNotNull(accounts.password),
+      ),
+    )
+    .limit(1);
+  const hasPassword = !!cred;
   const t = await getTranslations("portal.profile");
   const tNotifs = await getTranslations("portal.profile.notifications");
 
@@ -63,6 +80,8 @@ export default async function PortalProfilePage() {
           phone: profile?.phone ?? "",
         }}
       />
+
+      <CustomerPasswordSection hasPassword={hasPassword} />
 
       <div>
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">

@@ -208,7 +208,14 @@ export async function createUser(
       await tx.insert(users).values({
         id: createdId,
         email: data.email,
-        emailVerified: false,
+        // Admin trust: the admin creating this user vouches for the
+        // email (out-of-band verification). Combined with the
+        // setup-invite flow — which itself requires clicking a link
+        // sent to that email — this is functionally equivalent to a
+        // verification round-trip without making the admin go through
+        // it twice. Required because `requireEmailVerification: true`
+        // is now on globally and would otherwise block staff sign-in.
+        emailVerified: true,
         name: data.name,
         language: data.language,
         phone: phoneValue,
