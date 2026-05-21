@@ -29,7 +29,9 @@ import { generateTicketNumber } from "@/lib/ticket-number";
 import {
   guestTicketUrl,
   signCsatToken,
+  signDraftUploadToken,
   ticketTrackingUrl,
+  verifyDraftUploadToken,
 } from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
 
@@ -74,6 +76,13 @@ const createTicketSchema = z.object({
   // Anti-abuse — invisible to humans
   turnstileToken: z.string().optional(),
   honeypot: z.string().optional(),
+  // Optional pre-created draft ticket id + signed upload token. When
+  // present, the action UPDATES the draft to `open` instead of inserting
+  // a new ticket — so pre-uploaded attachments stay linked. The token
+  // verifies the draft was actually created by this flow (so a caller
+  // can't promote an arbitrary draft they don't own).
+  draftTicketId: z.string().uuid().optional(),
+  draftUploadToken: z.string().min(1).max(2000).optional(),
 });
 
 // `z.input` rather than `z.infer` so callers can OMIT `priority` —
@@ -86,6 +95,102 @@ type CreateTicketInput = z.input<typeof createTicketSchema>;
 type CreateTicketResult =
   | { ok: true; ticketNumber: string }
   | { ok: false; error: string };
+
+// ── Pre-submission draft ticket (guest) ──────────────────────────────
+//
+// Anonymous customers want to attach a screenshot before they've typed
+// out their description. Same problem as the authed path
+// (`prepareCustomerTicketDraft`), different security model: no session.
+// We require name + email + a successful captcha, rate-limit by IP and
+// email exactly like the real submission, then create a `status='draft'`
+// ticket. Returns the draft id + a signed `uploadToken` that the client
+// uses to authorize subsequent uploads to that specific draft.
+
+const prepareGuestDraftSchema = z.object({
+  customerName: z.string().trim().min(1).max(120),
+  customerEmail: z.string().trim().toLowerCase().email(),
+  turnstileToken: z.string().optional(),
+});
+
+export type PrepareGuestDraftResult =
+  | {
+      ok: true;
+      draftTicketId: string;
+      uploadToken: string;
+    }
+  | { ok: false; error: string };
+
+export async function prepareGuestTicketDraft(
+  input: z.input<typeof prepareGuestDraftSchema>,
+): Promise<PrepareGuestDraftResult> {
+  const parsed = prepareGuestDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const data = parsed.data;
+
+  const h = await headers();
+  const ip = clientIp(h);
+
+  const ipLimit = await checkRateLimit("publicSubmitByIp", `submit:ip:${ip}`);
+  if (!ipLimit.allowed) {
+    return {
+      ok: false,
+      error: "Too many submissions from your network. Try again in an hour.",
+    };
+  }
+  const emailLimit = await checkRateLimit(
+    "publicSubmitByEmail",
+    `submit:email:${data.customerEmail}`,
+  );
+  if (!emailLimit.allowed) {
+    return {
+      ok: false,
+      error: "Too many submissions from this email today. Try again tomorrow.",
+    };
+  }
+
+  const turnstile = await verifyTurnstile(data.turnstileToken, ip);
+  if (!turnstile.success) {
+    return {
+      ok: false,
+      error: "Captcha verification failed. Please refresh the page and try again.",
+    };
+  }
+
+  const ticketNumber = await generateTicketNumber();
+  const stream = await classifyStream(data.customerEmail);
+  const createdAt = new Date();
+  const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
+    createdAt,
+    priority: "medium",
+  });
+
+  const [draft] = await db
+    .insert(tickets)
+    .values({
+      ticketNumber,
+      subject: "(draft)",
+      description: "",
+      category: "other",
+      priority: "medium",
+      status: "draft",
+      stream,
+      origin: "web_form",
+      customerEmail: data.customerEmail,
+      customerName: data.customerName,
+      createdAt,
+      responseDueAt,
+      resolutionDueAt,
+    })
+    .returning({ id: tickets.id });
+
+  const uploadToken = signDraftUploadToken(draft.id);
+  return { ok: true, draftTicketId: draft.id, uploadToken };
+}
 
 export async function createTicket(
   input: CreateTicketInput,
@@ -142,44 +247,114 @@ export async function createTicket(
   const stream = await classifyStream(data.customerEmail);
 
   // 7. Generate ticket number + compute SLA deadlines
-  const ticketNumber = await generateTicketNumber();
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
     createdAt,
     priority: data.priority as Priority,
   });
 
-  // 8. Insert ticket + initial message in a transaction
-  await transactional(async (tx) => {
-    const [ticket] = await tx
-      .insert(tickets)
-      .values({
-        ticketNumber,
-        subject: data.subject,
-        description: data.description,
-        category: data.category,
-        priority: data.priority,
-        status: "open",
-        stream,
-        origin: "web_form",
-        customerEmail: data.customerEmail,
-        customerName: data.customerName,
-        createdAt,
-        responseDueAt,
-        resolutionDueAt,
-      })
-      .returning({ id: tickets.id });
+  let ticketNumber: string;
 
-    // Initial message capturing the description (so it shows up in the thread)
-    await tx.insert(messages).values({
-      ticketId: ticket.id,
-      authorEmail: data.customerEmail,
-      authorName: data.customerName,
-      authorType: "customer",
-      body: data.description,
-      channel: "portal",
+  // 8. Either promote a draft (if the client uploaded attachments before
+  // submitting) or insert a fresh ticket.
+  if (data.draftTicketId && data.draftUploadToken) {
+    if (!verifyDraftUploadToken(data.draftUploadToken, data.draftTicketId)) {
+      return { ok: false, error: "Draft ticket session is invalid or expired." };
+    }
+    const [draft] = await db
+      .select({
+        id: tickets.id,
+        ticketNumber: tickets.ticketNumber,
+        customerEmail: tickets.customerEmail,
+        status: tickets.status,
+      })
+      .from(tickets)
+      .where(eq(tickets.id, data.draftTicketId))
+      .limit(1);
+    if (
+      !draft ||
+      draft.status !== "draft" ||
+      draft.customerEmail !== data.customerEmail
+    ) {
+      return { ok: false, error: "Draft ticket session is invalid or expired." };
+    }
+    ticketNumber = draft.ticketNumber;
+
+    await transactional(async (tx) => {
+      await tx
+        .update(tickets)
+        .set({
+          subject: data.subject,
+          description: data.description,
+          category: data.category,
+          priority: data.priority,
+          status: "open",
+          stream,
+          createdAt,
+          responseDueAt,
+          resolutionDueAt,
+          customerName: data.customerName,
+          updatedAt: createdAt,
+        })
+        .where(eq(tickets.id, draft.id));
+
+      const [inserted] = await tx
+        .insert(messages)
+        .values({
+          ticketId: draft.id,
+          authorEmail: data.customerEmail,
+          authorName: data.customerName,
+          authorType: "customer",
+          body: data.description,
+          channel: "portal",
+        })
+        .returning({ id: messages.id });
+
+      // Link pre-uploaded attachments (uploaded via the guest draft
+      // flow) to the initial message so they render in the thread.
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(
+          and(
+            eq(attachments.ticketId, draft.id),
+            isNull(attachments.messageId),
+            ne(attachments.scanStatus, "quarantined"),
+          ),
+        );
     });
-  });
+  } else {
+    ticketNumber = await generateTicketNumber();
+    await transactional(async (tx) => {
+      const [ticket] = await tx
+        .insert(tickets)
+        .values({
+          ticketNumber,
+          subject: data.subject,
+          description: data.description,
+          category: data.category,
+          priority: data.priority,
+          status: "open",
+          stream,
+          origin: "web_form",
+          customerEmail: data.customerEmail,
+          customerName: data.customerName,
+          createdAt,
+          responseDueAt,
+          resolutionDueAt,
+        })
+        .returning({ id: tickets.id });
+
+      await tx.insert(messages).values({
+        ticketId: ticket.id,
+        authorEmail: data.customerEmail,
+        authorName: data.customerName,
+        authorType: "customer",
+        body: data.description,
+        channel: "portal",
+      });
+    });
+  }
 
   // 9. Audit log
   await audit({
@@ -194,6 +369,7 @@ export async function createTicket(
       priority: data.priority,
       stream,
       origin: "web_form",
+      promotedFromDraft: !!data.draftTicketId,
     },
     ipAddress: ip,
     userAgent,

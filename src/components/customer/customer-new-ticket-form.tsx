@@ -3,24 +3,53 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
-import { customerCreateTicket } from "@/app/actions/customer-portal";
+import {
+  customerCreateTicket,
+  prepareCustomerTicketDraft,
+} from "@/app/actions/customer-portal";
+import { AttachmentPicker } from "./attachment-picker";
 
 const CATEGORIES = ["hardware", "software", "network", "access", "other"] as const;
 
 // Priority is intentionally not collected from customers — Coordinator
 // triages on review. Server defaults to `medium`. See the
 // `customerCreateSchema` comment in `src/app/actions/customer-portal.ts`.
+//
+// A draft ticket is created the first time the user picks a file (lazy
+// — we don't burn a ticket number for users who never attach anything).
+// Submission then promotes the draft instead of inserting fresh; the
+// pre-uploaded attachments come along because they already have
+// `ticket_id` set to the draft id.
 
 export function CustomerNewTicketForm() {
   const router = useRouter();
   const t = useTranslations("portal.tickets.new");
   const tCat = useTranslations("tickets.category");
+  const tAtt = useTranslations("tickets.attachments");
 
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number] | "">("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [draftTicketId, setDraftTicketId] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftPending, setDraftPending] = useState(false);
+
+  async function ensureDraft(): Promise<string | null> {
+    if (draftTicketId) return draftTicketId;
+    setDraftError(null);
+    setDraftPending(true);
+    const res = await prepareCustomerTicketDraft();
+    setDraftPending(false);
+    if (!res.ok) {
+      setDraftError(res.error);
+      return null;
+    }
+    setDraftTicketId(res.draftTicketId);
+    return res.draftTicketId;
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,8 +62,8 @@ export function CustomerNewTicketForm() {
     const result = await customerCreateTicket({
       subject: subject.trim(),
       category,
-      // Priority omitted — server defaults to `medium`.
       description: description.trim(),
+      draftTicketId: draftTicketId ?? undefined,
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -113,6 +142,32 @@ export function CustomerNewTicketForm() {
           placeholder={t("descriptionPlaceholder")}
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+      </div>
+
+      <div>
+        <p className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+          {tAtt("label")}
+        </p>
+        {draftTicketId ? (
+          <AttachmentPicker
+            mode={{ kind: "authed", ticketId: draftTicketId }}
+            disabled={submitting}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => void ensureDraft()}
+            disabled={draftPending || submitting}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50"
+          >
+            {draftPending ? tAtt("uploadingShort") : tAtt("uploadButton")}
+          </button>
+        )}
+        {draftError ? (
+          <p role="alert" className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+            {draftError}
+          </p>
+        ) : null}
       </div>
 
       {error ? (

@@ -29,6 +29,8 @@ import {
 import { inngest } from "@/inngest/client";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { loadTicketScope } from "@/lib/tickets/load";
+import { tickets } from "@/lib/db/schema/tickets";
+import { verifyDraftUploadToken, verifyGuestToken } from "@/lib/tokens";
 
 // ── generateUploadUrl ───────────────────────────────────────────────
 
@@ -366,4 +368,268 @@ export async function getDownloadUrl(
     filename: att.fileName,
   });
   return { ok: true, url };
+}
+
+// ── Guest-variant upload actions ─────────────────────────────────────
+//
+// Both `generateUploadUrl` and `confirmUpload` above require an
+// authenticated session. The anonymous submit form + guest-link reply
+// composer need to upload attachments too, so we expose token-gated
+// twins. Each verifies a signed token instead of a session:
+//   - `draft_upload`: returned by `prepareGuestTicketDraft` — binds to
+//     a single draft ticket id (used for pre-submission attachments on
+//     the public new-ticket form).
+//   - `guest`: the existing HMAC guest token used for the guest portal
+//     (used when an unauthenticated customer replies via the signed
+//     link from a confirmation email).
+
+const guestUploadInputSchema = z.object({
+  ticketId: z.string().uuid(),
+  // One of these two MUST be present. `draftToken` for pre-submission
+  // attachments (ticket is in `status='draft'`); `guestToken` +
+  // `ticketNumber` + `customerEmail` for replies via the signed link.
+  draftToken: z.string().min(1).max(2000).optional(),
+  guestToken: z.string().min(1).max(2000).optional(),
+  ticketNumber: z.string().min(1).max(40).optional(),
+  customerEmail: z.string().trim().toLowerCase().email().optional(),
+  fileName: z.string().min(1).max(500),
+  mimeType: z.string().min(1).max(255),
+  sizeBytes: z.number().int().positive().max(MAX_FILE_BYTES),
+});
+
+export type GuestGenerateUploadUrlInput = z.input<
+  typeof guestUploadInputSchema
+>;
+
+export type GuestGenerateUploadUrlResult =
+  | {
+      ok: true;
+      attachmentId: string;
+      uploadUrl: string;
+      storageKey: string;
+      sanitizedFilename: string;
+    }
+  | { ok: false; error: string };
+
+async function authorizeGuestForTicket(
+  args: z.infer<typeof guestUploadInputSchema>,
+): Promise<{ ok: true; uploaderEmail: string } | { ok: false; error: string }> {
+  // Draft path — verify the upload token matches the ticket and the
+  // ticket is in `draft` status.
+  if (args.draftToken) {
+    if (!verifyDraftUploadToken(args.draftToken, args.ticketId)) {
+      return { ok: false, error: "Draft session is invalid or expired." };
+    }
+    const [t] = await db
+      .select({
+        id: tickets.id,
+        status: tickets.status,
+        customerEmail: tickets.customerEmail,
+      })
+      .from(tickets)
+      .where(eq(tickets.id, args.ticketId))
+      .limit(1);
+    if (!t || t.status !== "draft") {
+      return { ok: false, error: "Draft ticket no longer accepts uploads." };
+    }
+    return { ok: true, uploaderEmail: t.customerEmail };
+  }
+
+  // Guest-link path — verify the signed guest token matches the
+  // ticket number and the email on the ticket matches the token's
+  // verified email.
+  if (args.guestToken && args.ticketNumber && args.customerEmail) {
+    const verifiedEmail = verifyGuestToken(args.guestToken, args.ticketNumber);
+    if (!verifiedEmail || verifiedEmail !== args.customerEmail) {
+      return { ok: false, error: "Guest link is invalid or expired." };
+    }
+    const [t] = await db
+      .select({
+        id: tickets.id,
+        status: tickets.status,
+        ticketNumber: tickets.ticketNumber,
+        customerEmail: tickets.customerEmail,
+      })
+      .from(tickets)
+      .where(eq(tickets.id, args.ticketId))
+      .limit(1);
+    if (
+      !t ||
+      t.ticketNumber !== args.ticketNumber ||
+      t.customerEmail !== verifiedEmail
+    ) {
+      return { ok: false, error: "Guest link does not match this ticket." };
+    }
+    if (t.status === "closed") {
+      return { ok: false, error: "This ticket is closed." };
+    }
+    return { ok: true, uploaderEmail: verifiedEmail };
+  }
+
+  return { ok: false, error: "Missing upload authorization." };
+}
+
+export async function guestGenerateUploadUrl(
+  input: GuestGenerateUploadUrlInput,
+): Promise<GuestGenerateUploadUrlResult> {
+  const parsed = guestUploadInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid upload request",
+    };
+  }
+  const args = parsed.data;
+
+  if (!isAllowedMimeType(args.mimeType)) {
+    return { ok: false, error: "File type not allowed." };
+  }
+
+  const authz = await authorizeGuestForTicket(args);
+  if (!authz.ok) return authz;
+
+  const sanitized = sanitizeFilename(args.fileName);
+
+  const [row] = await db
+    .insert(attachments)
+    .values({
+      ticketId: args.ticketId,
+      uploadedById: null,
+      uploadedByEmail: authz.uploaderEmail,
+      fileName: sanitized,
+      originalFileName: args.fileName,
+      storageKey: "",
+      mimeType: args.mimeType.toLowerCase(),
+      sizeBytes: args.sizeBytes,
+      scanStatus: "pending",
+    })
+    .returning({ id: attachments.id });
+
+  const storageKey = attachmentStorageKey(args.ticketId, row.id, sanitized);
+
+  await db
+    .update(attachments)
+    .set({ storageKey })
+    .where(eq(attachments.id, row.id));
+
+  let uploadUrl: string;
+  try {
+    uploadUrl = await presignUploadUrl(
+      storageKey,
+      args.mimeType,
+      args.sizeBytes,
+    );
+  } catch (err) {
+    await db.delete(attachments).where(eq(attachments.id, row.id));
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not prepare upload",
+    };
+  }
+
+  return {
+    ok: true,
+    attachmentId: row.id,
+    uploadUrl,
+    storageKey,
+    sanitizedFilename: sanitized,
+  };
+}
+
+const guestConfirmInputSchema = z.object({
+  attachmentId: z.string().uuid(),
+  // Same authorization shape as guestGenerateUploadUrl — one of these
+  // must be present.
+  draftToken: z.string().min(1).max(2000).optional(),
+  guestToken: z.string().min(1).max(2000).optional(),
+  ticketNumber: z.string().min(1).max(40).optional(),
+  customerEmail: z.string().trim().toLowerCase().email().optional(),
+});
+
+export type GuestConfirmUploadInput = z.input<typeof guestConfirmInputSchema>;
+export type GuestConfirmUploadResult =
+  | { ok: true; status: "clean" | "pending" }
+  | { ok: false; error: string; status?: "quarantined" };
+
+export async function guestConfirmUpload(
+  input: GuestConfirmUploadInput,
+): Promise<GuestConfirmUploadResult> {
+  const parsed = guestConfirmInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid confirm request",
+    };
+  }
+  const args = parsed.data;
+
+  const [att] = await db
+    .select({
+      id: attachments.id,
+      ticketId: attachments.ticketId,
+      storageKey: attachments.storageKey,
+      mimeType: attachments.mimeType,
+      uploadConfirmedAt: attachments.uploadConfirmedAt,
+      scanStatus: attachments.scanStatus,
+    })
+    .from(attachments)
+    .where(eq(attachments.id, args.attachmentId))
+    .limit(1);
+  if (!att) return { ok: false, error: "Attachment not found." };
+
+  const authz = await authorizeGuestForTicket({
+    ticketId: att.ticketId,
+    draftToken: args.draftToken,
+    guestToken: args.guestToken,
+    ticketNumber: args.ticketNumber,
+    customerEmail: args.customerEmail,
+    fileName: "x",
+    mimeType: "image/png",
+    sizeBytes: 1,
+  });
+  if (!authz.ok) return authz;
+
+  if (att.uploadConfirmedAt && att.scanStatus !== "pending") {
+    return { ok: true, status: att.scanStatus as "clean" };
+  }
+
+  let prefix: Uint8Array;
+  try {
+    prefix = await fetchObjectPrefix(att.storageKey);
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "Could not read upload from R2",
+    };
+  }
+
+  if (!matchesMagicBytes(att.mimeType, prefix)) {
+    try {
+      await deleteObject(att.storageKey);
+    } catch (err) {
+      console.error("[guestConfirmUpload] R2 delete failed:", err);
+    }
+    await db
+      .update(attachments)
+      .set({ scanStatus: "quarantined", scanCompletedAt: new Date() })
+      .where(eq(attachments.id, args.attachmentId));
+    return {
+      ok: false,
+      error: "File contents don't match the declared type.",
+      status: "quarantined",
+    };
+  }
+
+  await db
+    .update(attachments)
+    .set({ uploadConfirmedAt: new Date() })
+    .where(eq(attachments.id, args.attachmentId));
+
+  await inngest.send({
+    name: "attachment/uploaded",
+    data: { attachmentId: args.attachmentId },
+  });
+
+  return { ok: true, status: "pending" };
 }

@@ -77,7 +77,12 @@ export default async function GuestTicketViewPage({
           {t("closedNotice")}
         </p>
       ) : (
-        <GuestReplyComposer ticketNumber={ticketNumber} token={token} />
+        <GuestReplyComposer
+          ticketId={ticket.id}
+          ticketNumber={ticketNumber}
+          token={token}
+          customerEmail={verifiedEmail}
+        />
       )}
     </article>
   );

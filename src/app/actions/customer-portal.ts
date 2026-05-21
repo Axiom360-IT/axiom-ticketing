@@ -341,6 +341,7 @@ const guestReplySchema = z.object({
   ticketNumber: z.string().trim().min(1).max(40),
   token: z.string().trim().min(1).max(2000),
   body: z.string().trim().min(1, "Reply cannot be empty").max(10000),
+  attachmentIds: z.array(z.string().uuid()).max(5).optional(),
 });
 
 type GuestReplyResult =
@@ -356,13 +357,17 @@ type GuestReplyResult =
  * token, NEVER from client-supplied input. Rate-limited per-ticket and
  * per-IP independently.
  *
- * No attachments in V1 — guests upload nothing. If they need to attach
- * files they can sign up (the reconciliation hook adopts their tickets).
+ * Attachments uploaded via `guestGenerateUploadUrl` (same signed token)
+ * are linked to the inserted message in the same transaction. Each
+ * attachment row already has `ticket_id = ticket.id` set from the
+ * upload step, so a malicious caller can't slip in foreign attachment
+ * ids by guessing — the FK + ticket_id filter constrain it.
  */
 export async function guestReply(input: {
   ticketNumber: string;
   token: string;
   body: string;
+  attachmentIds?: string[];
 }): Promise<GuestReplyResult> {
   const parsed = guestReplySchema.safeParse(input);
   if (!parsed.success) {
@@ -371,7 +376,7 @@ export async function guestReply(input: {
       error: parsed.error.issues[0]?.message ?? "Invalid reply",
     };
   }
-  const { ticketNumber, token, body } = parsed.data;
+  const { ticketNumber, token, body, attachmentIds = [] } = parsed.data;
 
   const verifiedEmail = verifyGuestToken(token, ticketNumber);
   if (!verifiedEmail) {
@@ -423,16 +428,37 @@ export async function guestReply(input: {
   }
 
   await transactional(async (tx) => {
-    await tx.insert(messages).values({
-      ticketId: ticket.id,
-      authorId: null, // guest — not yet a registered user
-      authorEmail: verifiedEmail,
-      authorName: ticket.customerName,
-      authorType: "customer",
-      body: cleanBody,
-      bodyFormat: "html",
-      channel: "portal",
-    });
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        ticketId: ticket.id,
+        authorId: null, // guest — not yet a registered user
+        authorEmail: verifiedEmail,
+        authorName: ticket.customerName,
+        authorType: "customer",
+        body: cleanBody,
+        bodyFormat: "html",
+        channel: "portal",
+      })
+      .returning({ id: messages.id });
+
+    if (attachmentIds.length > 0) {
+      // Link only attachments that belong to this ticket (FK + filter)
+      // and have no message yet. A leaked token can't pull in someone
+      // else's attachments because they're scoped by ticket_id.
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(
+          and(
+            inArray(attachments.id, attachmentIds),
+            eq(attachments.ticketId, ticket.id),
+            isNull(attachments.messageId),
+            ne(attachments.scanStatus, "quarantined"),
+          ),
+        );
+    }
+
     await tx
       .update(tickets)
       .set({ updatedAt: new Date() })
@@ -492,7 +518,78 @@ const customerCreateSchema = z.object({
   category: z.enum(TICKET_CATEGORIES),
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   description: z.string().trim().min(20).max(5000),
+  // Optional ID of a draft ticket created via `prepareCustomerTicketDraft`.
+  // When present, the action UPDATES the draft to `open` instead of
+  // inserting a new ticket — so pre-uploaded attachments already linked
+  // to the draft come along into the live ticket.
+  draftTicketId: z.string().uuid().optional(),
 });
+
+// ── Pre-submission draft ticket ──────────────────────────────────
+//
+// Customers want to attach a screenshot before the ticket exists. Solved
+// by creating a `status='draft'` ticket row up-front so its `id` exists
+// for the attachment FK, then promoting it to `open` when the form is
+// submitted. Drafts are filtered out of every customer/admin query
+// (see `ticketsVisibilityCondition` + `listMyTickets`), and a cron
+// sweeps stale drafts every 24h.
+
+export type PrepareCustomerDraftResult =
+  | { ok: true; draftTicketId: string }
+  | { ok: false; error: string };
+
+export async function prepareCustomerTicketDraft(): Promise<PrepareCustomerDraftResult> {
+  const user = await requireSessionUser();
+  if (!user.roleNames.has("Customer")) {
+    throw new ForbiddenError();
+  }
+
+  // Same rate limit as createTicket so a malicious client can't churn
+  // through drafts to upload junk.
+  const limit = await checkRateLimit("customerCreateTicket", user.id);
+  if (!limit.allowed) {
+    return {
+      ok: false,
+      error: "Daily ticket limit reached. Try again tomorrow.",
+    };
+  }
+
+  const [profile] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!profile) throw new NotFoundError();
+
+  const ticketNumber = await generateTicketNumber();
+  const stream = await classifyStream(profile.email);
+  const createdAt = new Date();
+  const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket(
+    { createdAt, priority: "medium" },
+  );
+
+  const [draft] = await db
+    .insert(tickets)
+    .values({
+      ticketNumber,
+      subject: "(draft)",
+      description: "",
+      category: "other",
+      priority: "medium",
+      status: "draft",
+      stream,
+      origin: "portal",
+      customerId: user.id,
+      customerEmail: profile.email,
+      customerName: profile.name,
+      createdAt,
+      responseDueAt,
+      resolutionDueAt,
+    })
+    .returning({ id: tickets.id });
+
+  return { ok: true, draftTicketId: draft.id };
+}
 
 // `z.input<>` so callers can omit `priority` — see the matching note
 // on `CreateTicketInput` in `src/app/actions/tickets.ts`.
@@ -536,8 +633,6 @@ export async function customerCreateTicket(
   if (!profile) throw new NotFoundError();
 
   const stream = await classifyStream(profile.email);
-
-  const ticketNumber = await generateTicketNumber();
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket(
     {
@@ -546,35 +641,105 @@ export async function customerCreateTicket(
     },
   );
 
-  const [ticket] = await db
-    .insert(tickets)
-    .values({
-      ticketNumber,
-      subject: data.subject,
-      description: data.description,
-      category: data.category,
-      priority: data.priority,
-      status: "open",
-      stream,
-      origin: "portal",
-      customerId: user.id,
-      customerEmail: profile.email,
-      customerName: profile.name,
-      createdAt,
-      responseDueAt,
-      resolutionDueAt,
-    })
-    .returning({ id: tickets.id });
+  let ticketId: string;
+  let ticketNumber: string;
 
-  await db.insert(messages).values({
-    ticketId: ticket.id,
-    authorId: user.id,
-    authorEmail: profile.email,
-    authorName: profile.name,
-    authorType: "customer",
-    body: data.description,
-    channel: "portal",
-  });
+  if (data.draftTicketId) {
+    // Promote the draft. Verify ownership first so a leaked draft id
+    // can't be used by someone else.
+    const [draft] = await db
+      .select({
+        id: tickets.id,
+        ticketNumber: tickets.ticketNumber,
+        customerId: tickets.customerId,
+        status: tickets.status,
+      })
+      .from(tickets)
+      .where(eq(tickets.id, data.draftTicketId))
+      .limit(1);
+    if (!draft || draft.customerId !== user.id || draft.status !== "draft") {
+      return { ok: false, error: "Draft ticket is invalid or expired." };
+    }
+
+    ticketId = draft.id;
+    ticketNumber = draft.ticketNumber;
+
+    await transactional(async (tx) => {
+      await tx
+        .update(tickets)
+        .set({
+          subject: data.subject,
+          description: data.description,
+          category: data.category,
+          priority: data.priority,
+          status: "open",
+          createdAt,
+          responseDueAt,
+          resolutionDueAt,
+          updatedAt: createdAt,
+        })
+        .where(eq(tickets.id, draft.id));
+
+      const [inserted] = await tx
+        .insert(messages)
+        .values({
+          ticketId,
+          authorId: user.id,
+          authorEmail: profile.email,
+          authorName: profile.name,
+          authorType: "customer",
+          body: data.description,
+          channel: "portal",
+        })
+        .returning({ id: messages.id });
+
+      // Pre-uploaded attachments live on this draft ticket with
+      // messageId=NULL; bind them to the freshly-inserted initial
+      // message so they render inline in the thread.
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(
+          and(
+            eq(attachments.ticketId, ticketId),
+            isNull(attachments.messageId),
+            ne(attachments.scanStatus, "quarantined"),
+          ),
+        );
+    });
+  } else {
+    ticketNumber = await generateTicketNumber();
+    const [ticket] = await db
+      .insert(tickets)
+      .values({
+        ticketNumber,
+        subject: data.subject,
+        description: data.description,
+        category: data.category,
+        priority: data.priority,
+        status: "open",
+        stream,
+        origin: "portal",
+        customerId: user.id,
+        customerEmail: profile.email,
+        customerName: profile.name,
+        createdAt,
+        responseDueAt,
+        resolutionDueAt,
+      })
+      .returning({ id: tickets.id });
+    ticketId = ticket.id;
+
+    await db.insert(messages).values({
+      ticketId,
+      authorId: user.id,
+      authorEmail: profile.email,
+      authorName: profile.name,
+      authorType: "customer",
+      body: data.description,
+      channel: "portal",
+    });
+  }
 
   await audit({
     actorId: user.id,
@@ -588,6 +753,7 @@ export async function customerCreateTicket(
       priority: data.priority,
       stream,
       origin: "portal",
+      promotedFromDraft: !!data.draftTicketId,
     },
   });
 

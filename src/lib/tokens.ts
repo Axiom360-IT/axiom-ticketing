@@ -22,6 +22,15 @@ function getCsatSecret(): string {
   return s;
 }
 
+function getUploadSecret(): string {
+  // Reused secret — drafts are scoped to a single ticket id, and the
+  // signed payload includes that id, so a leaked guest token is only
+  // useful for that one draft (which gets cleaned up in 24h anyway).
+  const s = process.env.GUEST_TOKEN_SECRET;
+  if (!s) throw new Error("GUEST_TOKEN_SECRET is not set");
+  return s;
+}
+
 function sign(secret: string, payload: string): string {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
@@ -126,6 +135,44 @@ export function signCsatToken(
   const payload = `${ticketNumber}|${response}`;
   const sig = sign(secret, payload);
   return Buffer.from(`${payload}:${sig}`).toString("base64url");
+}
+
+// ── Draft-upload tokens ──────────────────────────────────────────────
+//
+// Issued by `prepareGuestTicketDraft` so the anonymous browser can call
+// `guestGenerateUploadUrl` / `guestConfirmUpload` to attach files to a
+// draft ticket it just created. Signed payload binds the token to a
+// specific draft ticket id; using it against any other ticket fails.
+
+export function signDraftUploadToken(draftTicketId: string): string {
+  const secret = getUploadSecret();
+  const sig = sign(secret, draftTicketId);
+  return Buffer.from(`${draftTicketId}:${sig}`).toString("base64url");
+}
+
+/** Returns true iff the token is valid for the given draft ticket id. */
+export function verifyDraftUploadToken(
+  token: string,
+  draftTicketId: string,
+): boolean {
+  let secret: string;
+  try {
+    secret = getUploadSecret();
+  } catch {
+    return false;
+  }
+  try {
+    const decoded = Buffer.from(token, "base64url").toString("utf8");
+    const lastColon = decoded.lastIndexOf(":");
+    if (lastColon < 0) return false;
+    const payload = decoded.slice(0, lastColon);
+    const providedSig = decoded.slice(lastColon + 1);
+    if (payload !== draftTicketId) return false;
+    const expectedSig = sign(secret, payload);
+    return safeEqual(providedSig, expectedSig);
+  } catch {
+    return false;
+  }
 }
 
 /** Verifies a CSAT token. Returns the response on success, null on failure. */

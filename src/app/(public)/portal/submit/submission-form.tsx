@@ -15,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createTicket } from "@/app/actions/tickets";
+import { createTicket, prepareGuestTicketDraft } from "@/app/actions/tickets";
+import { AttachmentPicker } from "@/components/customer/attachment-picker";
 
 const CATEGORY_OPTIONS = [
   "hardware",
@@ -82,6 +83,54 @@ export function SubmissionForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Pre-submission draft, used so the visitor can attach a screenshot
+  // before the ticket exists. Created lazily on first attach.
+  const [draftTicketId, setDraftTicketId] = useState<string | null>(null);
+  const [draftUploadToken, setDraftUploadToken] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftPending, setDraftPending] = useState(false);
+
+  async function ensureDraft(): Promise<
+    { id: string; token: string } | null
+  > {
+    if (draftTicketId && draftUploadToken) {
+      return { id: draftTicketId, token: draftUploadToken };
+    }
+    if (!formData.customerName.trim() || !formData.customerEmail.trim()) {
+      setDraftError(tSubmit("draftNeedsContact"));
+      return null;
+    }
+    if (!turnstileToken) {
+      setDraftError(tSubmit("draftNeedsCaptcha"));
+      return null;
+    }
+    setDraftError(null);
+    setDraftPending(true);
+    const res = await prepareGuestTicketDraft({
+      customerName: formData.customerName,
+      customerEmail: formData.customerEmail,
+      turnstileToken,
+    });
+    setDraftPending(false);
+    if (!res.ok) {
+      setDraftError(res.error);
+      // The captcha token gets consumed by the prepare call, so reset it.
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.reset(widgetIdRef.current);
+        setTurnstileToken("");
+      }
+      return null;
+    }
+    setDraftTicketId(res.draftTicketId);
+    setDraftUploadToken(res.uploadToken);
+    // Captcha token is now spent. Re-issue a fresh one for submit().
+    if (widgetIdRef.current && window.turnstile) {
+      window.turnstile.reset(widgetIdRef.current);
+      setTurnstileToken("");
+    }
+    return { id: res.draftTicketId, token: res.uploadToken };
+  }
+
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY) return;
     let cancelled = false;
@@ -131,6 +180,8 @@ export function SubmissionForm({
       description: formData.description,
       turnstileToken: turnstileToken || undefined,
       honeypot,
+      draftTicketId: draftTicketId ?? undefined,
+      draftUploadToken: draftUploadToken ?? undefined,
     });
     setSubmitting(false);
 
@@ -245,6 +296,39 @@ export function SubmissionForm({
           />
           <p className="text-xs text-zinc-500">
             {formData.description.length}/5000
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>{tSubmit("attachmentsLabel")}</Label>
+          {draftTicketId && draftUploadToken ? (
+            <AttachmentPicker
+              mode={{
+                kind: "draft",
+                ticketId: draftTicketId,
+                draftToken: draftUploadToken,
+              }}
+              disabled={submitting}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => void ensureDraft()}
+              disabled={draftPending || submitting}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50"
+            >
+              {draftPending
+                ? tSubmit("draftPreparing")
+                : tSubmit("attachmentsAddButton")}
+            </button>
+          )}
+          {draftError ? (
+            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+              {draftError}
+            </p>
+          ) : null}
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {tSubmit("attachmentsHint")}
           </p>
         </div>
 

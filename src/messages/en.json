@@ -437,6 +437,12 @@
       "captchaSkipped": "Cloudflare Turnstile is not configured. In dev this is fine; in production it means NEXT_PUBLIC_TURNSTILE_SITE_KEY isn't reaching the browser — submissions will fail captcha verification until it is set.",
       "submitButton": "Submit ticket",
       "submitting": "Submitting…",
+      "attachmentsLabel": "Attachments (optional)",
+      "attachmentsAddButton": "Attach files",
+      "attachmentsHint": "Screenshots and logs help us diagnose faster.",
+      "draftNeedsContact": "Enter your name and email before attaching files.",
+      "draftNeedsCaptcha": "Complete the captcha before attaching files.",
+      "draftPreparing": "Preparing…",
       "chooseCategoryPriority": "Please choose a category and priority.",
       "chooseCategory": "Please choose a category.",
       "errors": {
@@ -572,6 +578,7 @@
       "internalNoteBadge": "Internal note"
     },
     "attachments": {
+      "label": "Attachments",
       "openImage": "Open {fileName}",
       "download": "Download attachment",
       "uploadButton": "Attach files",

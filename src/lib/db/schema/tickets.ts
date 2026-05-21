@@ -102,7 +102,7 @@ export const tickets = pgTable(
     ),
     check(
       "tickets_status_check",
-      sql`${t.status} IN ('open','in_progress','resolved','closed')`,
+      sql`${t.status} IN ('draft','open','in_progress','resolved','closed')`,
     ),
     check("tickets_stream_check", sql`${t.stream} IN ('internal','external')`),
     check(

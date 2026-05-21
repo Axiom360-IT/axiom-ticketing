@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { customerReply } from "@/app/actions/customer-portal";
+import { AttachmentPicker } from "./attachment-picker";
 
 type Props = {
   ticketId: string;
@@ -22,22 +23,25 @@ function isHtmlEmpty(html: string): boolean {
 export function CustomerReplyComposer({ ticketId }: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.reply");
+  const tAtt = useTranslations("tickets.attachments");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (isHtmlEmpty(body)) return;
     setError(null);
     setSubmitting(true);
-    const result = await customerReply(ticketId, body);
+    const result = await customerReply(ticketId, body, attachmentIds);
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     setBody("");
+    setAttachmentIds([]);
     router.refresh();
   }
 
@@ -56,6 +60,18 @@ export function CustomerReplyComposer({ ticketId }: Props) {
         disabled={submitting}
         ariaLabel={t("label")}
       />
+
+      <div>
+        <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+          {tAtt("label")}
+        </p>
+        <AttachmentPicker
+          mode={{ kind: "authed", ticketId }}
+          disabled={submitting}
+          onReadyIdsChange={setAttachmentIds}
+        />
+      </div>
+
       {error ? (
         <div
           role="alert"

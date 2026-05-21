@@ -10,6 +10,7 @@
 
 import { autoCloseResolvedTickets } from "./auto-close-resolved";
 import { cleanupOldNotifications } from "./cleanup-old-notifications";
+import { cleanupStaleDrafts } from "./cleanup-stale-drafts";
 import { cleanupStaleLockouts } from "./cleanup-stale-lockouts";
 import { dispatchNotification } from "./dispatch-notification";
 import { processInboundEmail } from "./process-inbound-email";
@@ -29,5 +30,6 @@ export const functions = [
   sendSmsNotification,
   sendInAppNotification,
   cleanupOldNotifications,
+  cleanupStaleDrafts,
   cleanupStaleLockouts,
 ];

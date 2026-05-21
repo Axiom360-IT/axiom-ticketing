@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { messages } from "@/lib/db/schema/messages";
@@ -66,7 +66,7 @@ export async function listMyTickets(
       resolvedAt: tickets.resolvedAt,
     })
     .from(tickets)
-    .where(eq(tickets.customerId, userId))
+    .where(and(eq(tickets.customerId, userId), ne(tickets.status, "draft")))
     .orderBy(desc(tickets.updatedAt));
 }
 
@@ -99,6 +99,7 @@ export async function getMyTicketByNumber(
       and(
         eq(tickets.ticketNumber, ticketNumber),
         eq(tickets.customerId, userId),
+        ne(tickets.status, "draft"),
       ),
     )
     .limit(1);
@@ -136,6 +137,7 @@ export async function getGuestTicket(
       and(
         eq(tickets.ticketNumber, ticketNumber),
         eq(tickets.customerEmail, customerEmail.toLowerCase()),
+        ne(tickets.status, "draft"),
       ),
     )
     .limit(1);
