@@ -84,7 +84,8 @@
         "expired": "That sign-in link expired. Request a new one.",
         "missing": "That sign-in link is invalid.",
         "invalidCredentials": "Invalid email or password.",
-        "accountNotFound": "We don't have an account for that email. Use 'Create one' below to register first."
+        "accountNotFound": "We don't have an account for that email. Use 'Create one' below to register first.",
+        "unexpected": "Something went wrong on our side. Try again in a moment."
       }
     },
     "signInSent": {

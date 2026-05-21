@@ -99,10 +99,13 @@ export async function requestMagicLink(
       body: {
         email: normalized,
         callbackURL: "/portal/tickets",
-        // No newUserCallbackURL — sign-in is existing-users-only now.
-        // Better Auth still wouldn't create a new user because we already
-        // verified the email exists above, but dropping the URL keeps the
-        // intent obvious from the call site.
+        // `newUserCallbackURL` is kept here even though the user-existence
+        // check above already rules out new accounts on this path. Better
+        // Auth's request validation may require the field to be present;
+        // setting it is harmless (the new-user branch is unreachable
+        // because we filter unknown emails out earlier) and avoids a
+        // runtime "invalid input" throw on certain plugin builds.
+        newUserCallbackURL: "/portal/tickets",
         errorCallbackURL: "/portal/sign-in?error=expired",
       },
       headers: h,

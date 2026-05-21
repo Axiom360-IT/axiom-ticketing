@@ -30,39 +30,59 @@ export function SignInForm() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = await requestMagicLink(email);
-    setSubmitting(false);
-    if (!result.ok) {
-      const map = {
-        invalid_email: t("errors.invalidEmail"),
-        rate_limited_email: t("errors.tooManyByEmail"),
-        rate_limited_ip: t("errors.tooManyByIp"),
-        // Sign-in is existing-accounts-only — point the visitor at the
-        // sign-up surface so their name gets captured.
-        account_not_found: t("errors.accountNotFound"),
-      } as const;
-      setError(map[result.error]);
-      return;
+    // Try/catch around the server action so the button never wedges in
+    // "Sending…" if the action throws (e.g., transient 500, network blip,
+    // page re-render failure during the action response). The `finally`
+    // guarantees `submitting` flips back regardless of outcome.
+    try {
+      const result = await requestMagicLink(email);
+      if (!result.ok) {
+        const map = {
+          invalid_email: t("errors.invalidEmail"),
+          rate_limited_email: t("errors.tooManyByEmail"),
+          rate_limited_ip: t("errors.tooManyByIp"),
+          // Sign-in is existing-accounts-only — point the visitor at the
+          // sign-up surface so their name gets captured.
+          account_not_found: t("errors.accountNotFound"),
+        } as const;
+        setError(map[result.error]);
+        return;
+      }
+      router.push(`/portal/sign-in/sent?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[sign-in/magic] action threw:", err);
+      }
+      setError(t("errors.unexpected"));
+    } finally {
+      setSubmitting(false);
     }
-    router.push(`/portal/sign-in/sent?email=${encodeURIComponent(email)}`);
   }
 
   async function handlePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = await signInWithLockout(email.trim(), password.trim());
-    setSubmitting(false);
-    if (!result.ok) {
-      setError(
-        "locked" in result && result.locked
-          ? result.error
-          : t("errors.invalidCredentials"),
-      );
-      return;
+    try {
+      const result = await signInWithLockout(email.trim(), password.trim());
+      if (!result.ok) {
+        setError(
+          "locked" in result && result.locked
+            ? result.error
+            : t("errors.invalidCredentials"),
+        );
+        return;
+      }
+      router.push("/portal/tickets");
+      router.refresh();
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[sign-in/password] action threw:", err);
+      }
+      setError(t("errors.unexpected"));
+    } finally {
+      setSubmitting(false);
     }
-    router.push("/portal/tickets");
-    router.refresh();
   }
 
   return (
