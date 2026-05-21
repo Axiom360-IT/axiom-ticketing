@@ -552,15 +552,13 @@ export async function prepareCustomerTicketDraft(): Promise<PrepareCustomerDraft
     throw new ForbiddenError();
   }
 
-  // Same rate limit as createTicket so a malicious client can't churn
-  // through drafts to upload junk.
-  const limit = await checkRateLimit("customerCreateTicket", user.id);
-  if (!limit.allowed) {
-    return {
-      ok: false,
-      error: "Daily ticket limit reached. Try again tomorrow.",
-    };
-  }
+  // Note: no rate-limit check here. Drafts only exist so the customer
+  // can upload attachments BEFORE submitting. They get a real ticket
+  // number but never become visible until promoted by
+  // `customerCreateTicket`, which IS rate-limited. Abandoned drafts are
+  // swept by the `cleanup-stale-drafts` cron after 24h. Counting drafts
+  // against the daily ticket cap would lock out users who re-pick files
+  // a few times before submitting.
 
   const [profile] = await db
     .select({ name: users.name, email: users.email })
