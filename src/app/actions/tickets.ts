@@ -411,27 +411,72 @@ export async function assignTicket(
     after: { assignedToId: techId, status: newStatus },
   });
 
-  // Notify customer (best-effort)
+  // Notify customer — through the dispatcher so the customer's
+  // notification preferences (email + SMS toggles per event) and the
+  // bell icon are honored. Guest tickets (no `customer_id`) take the
+  // direct-email fallback because they have no preferences row, no SMS
+  // phone, and no in-app inbox.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
-    await sendEmail({
-      to: ticket.customerEmail,
-      template: {
-        template: "ticket_assigned",
+    const trackingUrl = guestTicketUrl(
+      appUrl,
+      ticket.ticketNumber,
+      ticket.customerEmail,
+    );
+    if (ticket.customerId) {
+      await inngest.send({
+        name: "notification/dispatch",
         data: {
+          type: "ticket.assigned",
+          recipientUserIds: [ticket.customerId],
+          ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
-          customerName: ticket.customerName,
-          subject: ticket.subject,
-          technicianName: tech.name,
-          trackingUrl,
+          email: {
+            template: {
+              template: "ticket_assigned",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                subject: ticket.subject,
+                technicianName: tech.name,
+                trackingUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            replyToTicket: true,
+          },
+          sms: {
+            template: {
+              template: "ticket_assigned_customer",
+              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { subject: ticket.subject },
+            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+          },
         },
-      },
-      ticketNumber: ticket.ticketNumber,
-      replyToTicket: true,
-    });
+      });
+    } else {
+      await sendEmail({
+        to: ticket.customerEmail,
+        template: {
+          template: "ticket_assigned",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            technicianName: tech.name,
+            trackingUrl,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+        replyToTicket: true,
+      });
+    }
   } catch (err) {
-    console.error("[assignTicket] customer email failed:", err);
+    console.error("[assignTicket] customer notification failed:", err);
   }
 
   // Notify the assigned tech via the M11 dispatch fan-out — emits ONE
@@ -801,35 +846,79 @@ export async function replyToTicket(
     after: { length: parsed.data.body.length },
   });
 
-  // Email the customer (best-effort)
+  // Notify the customer — through the dispatcher (email + SMS + bell
+  // honoring per-event prefs) for authenticated customers. Guest
+  // tickets fall back to direct email; they have no preferences row,
+  // no SMS phone, no in-app inbox. Outbound notifications carry plain
+  // text only — the full HTML reply is visible in the portal via the
+  // tracking URL.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
-    await sendEmail({
-      to: ticket.customerEmail,
-      template: {
-        template: "ticket_reply",
+    const trackingUrl = guestTicketUrl(
+      appUrl,
+      ticket.ticketNumber,
+      ticket.customerEmail,
+    );
+    if (ticket.customerId) {
+      await inngest.send({
+        name: "notification/dispatch",
         data: {
+          type: "ticket.agent_replied",
+          recipientUserIds: [ticket.customerId],
+          ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
-          customerName: ticket.customerName,
-          subject: ticket.subject,
-          agentName: agent.name,
-          // Outbound notification carries plain text only — the full
-          // formatted reply is visible in the portal via trackingUrl.
-          // Avoids email-client HTML compatibility surprises for V1.
-          body: htmlToPlainText(cleanBody),
-          trackingUrl,
+          email: {
+            template: {
+              template: "ticket_reply",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                subject: ticket.subject,
+                agentName: agent.name,
+                body: htmlToPlainText(cleanBody),
+                trackingUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            replyToTicket: true,
+          },
+          sms: {
+            template: {
+              template: "agent_replied",
+              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: {},
+            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+          },
         },
-      },
-      ticketNumber: ticket.ticketNumber,
-      replyToTicket: true,
-      // Surface the replying agent's name in the From: display so the
-      // customer's inbox shows "Maria — Axiom360 Support" rather than
-      // an anonymous brand-only sender.
-      fromActorName: agent.name,
-    });
+      });
+    } else {
+      await sendEmail({
+        to: ticket.customerEmail,
+        template: {
+          template: "ticket_reply",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            agentName: agent.name,
+            body: htmlToPlainText(cleanBody),
+            trackingUrl,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+        replyToTicket: true,
+        // Surface the replying agent's name in the From: display so the
+        // customer's inbox shows "Maria — Axiom360 Support" rather than
+        // an anonymous brand-only sender.
+        fromActorName: agent.name,
+      });
+    }
   } catch (err) {
-    console.error("[replyToTicket] email failed:", err);
+    console.error("[replyToTicket] customer notification failed:", err);
   }
 
   revalidatePath(`/admin/tickets/${ticketId}`);
@@ -1056,36 +1145,88 @@ export async function resolveTicket(
           },
   });
 
-  // CSAT email — best-effort. Auto-close runs hourly in
-  // `inngest/functions/auto-close-resolved.ts`.
+  // Customer notification — fan-out through the dispatcher so the
+  // customer's email + SMS + in-app prefs are all honored (previously
+  // this went through a direct `sendEmail` call, which meant SMS and
+  // the bell-icon notification never fired on resolution). Auto-close
+  // runs hourly in `inngest/functions/auto-close-resolved.ts`.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = guestTicketUrl(
+      appUrl,
+      ticket.ticketNumber,
+      ticket.customerEmail,
+    );
     const satToken = signCsatToken(ticket.ticketNumber, "satisfied");
     const unsatToken = signCsatToken(ticket.ticketNumber, "unsatisfied");
-    await sendEmail({
-      to: ticket.customerEmail,
-      template: {
-        template: "ticket_resolved",
+    if (ticket.customerId) {
+      // Authenticated customer — dispatcher fans out email + SMS + in-app
+      // based on their notification preferences.
+      await inngest.send({
+        name: "notification/dispatch",
         data: {
+          type: "ticket.resolved",
+          recipientUserIds: [ticket.customerId],
+          ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
-          customerName: ticket.customerName,
-          subject: ticket.subject,
-          agentName: agent.name,
-          // Skip path: customer never sees the internal skip reason.
-          // Template renders the resolution-note section conditionally
-          // when this string is empty.
-          resolutionNote: parsed.data.kind === "note" ? parsed.data.note : "",
-          csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
-          csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
-          trackingUrl,
+          email: {
+            template: {
+              template: "ticket_resolved",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                subject: ticket.subject,
+                agentName: agent.name,
+                resolutionNote:
+                  parsed.data.kind === "note" ? parsed.data.note : "",
+                csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
+                csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
+                trackingUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            replyToTicket: true,
+          },
+          sms: {
+            template: {
+              template: "ticket_resolved",
+              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: {},
+            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+          },
         },
-      },
-      ticketNumber: ticket.ticketNumber,
-      replyToTicket: true,
-    });
+      });
+    } else {
+      // Guest ticket (no account) — no notification_preferences row,
+      // no in-app inbox, no SMS phone. Fall back to a direct email,
+      // same shape as before. The CSAT email link is the customer's
+      // only way to respond in that case.
+      await sendEmail({
+        to: ticket.customerEmail,
+        template: {
+          template: "ticket_resolved",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            agentName: agent.name,
+            resolutionNote:
+              parsed.data.kind === "note" ? parsed.data.note : "",
+            csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
+            csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
+            trackingUrl,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+        replyToTicket: true,
+      });
+    }
   } catch (err) {
-    console.error("[resolveTicket] CSAT email failed:", err);
+    console.error("[resolveTicket] resolution notification failed:", err);
   }
 
   revalidatePath("/admin/tickets");
@@ -1137,27 +1278,70 @@ export async function reopenTicket(ticketId: string): Promise<void> {
     after: { status: newStatus },
   });
 
-  // Notify customer (best-effort)
+  // Notify customer — dispatch fan-out for authenticated customers
+  // (email + SMS + bell honoring prefs); direct email fallback for
+  // guests (no preferences row).
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
-    await sendEmail({
-      to: ticket.customerEmail,
-      template: {
-        template: "ticket_reopened",
+    const trackingUrl = guestTicketUrl(
+      appUrl,
+      ticket.ticketNumber,
+      ticket.customerEmail,
+    );
+    if (ticket.customerId) {
+      await inngest.send({
+        name: "notification/dispatch",
         data: {
+          type: "ticket.reopened",
+          recipientUserIds: [ticket.customerId],
+          ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
-          customerName: ticket.customerName,
-          subject: ticket.subject,
-          reason: "agent",
-          trackingUrl,
+          email: {
+            template: {
+              template: "ticket_reopened",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                subject: ticket.subject,
+                reason: "agent",
+                trackingUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            replyToTicket: true,
+          },
+          sms: {
+            template: {
+              template: "ticket_reopened",
+              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { reason: "A team member has reopened your ticket." },
+            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+          },
         },
-      },
-      ticketNumber: ticket.ticketNumber,
-      replyToTicket: true,
-    });
+      });
+    } else {
+      await sendEmail({
+        to: ticket.customerEmail,
+        template: {
+          template: "ticket_reopened",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            reason: "agent",
+            trackingUrl,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+        replyToTicket: true,
+      });
+    }
   } catch (err) {
-    console.error("[reopenTicket] customer email failed:", err);
+    console.error("[reopenTicket] customer notification failed:", err);
   }
 
   revalidatePath("/admin/tickets");

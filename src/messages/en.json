@@ -166,6 +166,16 @@
         "closedNotice": "This ticket is closed. Submit a new ticket if you need more help.",
         "noMessages": "No messages yet."
       },
+      "csat": {
+        "title": "Did this resolve your issue?",
+        "subtitle": "Confirming closes the ticket. If it didn't work, we'll reopen and get someone back on it.",
+        "yesButton": "Yes, this fixed it",
+        "noButton": "No, still not fixed",
+        "hint": "Coordinators auto-close resolved tickets after 24 hours of no response.",
+        "recapSatisfied": "Marked as resolved. Thanks for confirming.",
+        "recapUnsatisfied": "Reopened for the team to take another look.",
+        "recapThanks": "We'll reach out if we need anything else."
+      },
       "new": {
         "metaTitle": "New ticket — Axiom support",
         "title": "Submit a ticket",
@@ -234,7 +244,10 @@
         "smsColumn": "SMS",
         "events": {
           "ticket__assigned": "When my ticket is assigned",
-          "ticket__customer_replied": "When my ticket gets a reply"
+          "ticket__agent_replied": "When the team replies on my ticket",
+          "ticket__resolved": "When my ticket is marked resolved",
+          "ticket__reopened": "When my ticket is reopened",
+          "ticket__closed": "When my ticket is closed"
         }
       },
       "sessions": {
@@ -1266,6 +1279,22 @@
         "title": "Customer replied on {ticketNumber}",
         "body": "{customerName} sent a new message."
       },
+      "resolved": {
+        "title": "Ticket {ticketNumber} resolved",
+        "body": "Your ticket has been resolved. Confirm in the portal to close it."
+      },
+      "agent_replied": {
+        "title": "New reply on {ticketNumber}",
+        "body": "The team replied to your ticket."
+      },
+      "reopened": {
+        "title": "Ticket {ticketNumber} reopened",
+        "body": "{reason}"
+      },
+      "closed": {
+        "title": "Ticket {ticketNumber} closed",
+        "body": "{reason}"
+      },
       "escalated": {
         "title": "{ticketNumber} escalated",
         "body": "{technicianName} escalated this ticket: {subject}"
@@ -1316,6 +1345,21 @@
     },
     "customerReplied": {
       "body": "{ticketNumber}: Customer replied to your ticket. {ticketUrl}"
+    },
+    "ticketAssignedCustomer": {
+      "body": "{ticketNumber}: A technician is now assigned to your ticket. View: {ticketUrl}"
+    },
+    "agentReplied": {
+      "body": "{ticketNumber}: New reply on your ticket. View: {ticketUrl}"
+    },
+    "ticketResolved": {
+      "body": "{ticketNumber}: Your ticket has been resolved. Confirm or reopen: {ticketUrl}"
+    },
+    "ticketReopened": {
+      "body": "{ticketNumber}: Your ticket has been reopened. View: {ticketUrl}"
+    },
+    "ticketClosed": {
+      "body": "{ticketNumber}: Your ticket is now closed. View: {ticketUrl}"
     },
     "slaWarning80": {
       "body": "{ticketNumber}: SLA at 80%. Update or escalate. {ticketUrl}"

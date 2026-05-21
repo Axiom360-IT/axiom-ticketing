@@ -30,6 +30,22 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.ticket.customer_replied.title",
     bodyKey: "notifications.ticket.customer_replied.body",
   },
+  "ticket.resolved": {
+    titleKey: "notifications.ticket.resolved.title",
+    bodyKey: "notifications.ticket.resolved.body",
+  },
+  "ticket.agent_replied": {
+    titleKey: "notifications.ticket.agent_replied.title",
+    bodyKey: "notifications.ticket.agent_replied.body",
+  },
+  "ticket.reopened": {
+    titleKey: "notifications.ticket.reopened.title",
+    bodyKey: "notifications.ticket.reopened.body",
+  },
+  "ticket.closed": {
+    titleKey: "notifications.ticket.closed.title",
+    bodyKey: "notifications.ticket.closed.body",
+  },
   "ticket.escalated": {
     titleKey: "notifications.ticket.escalated.title",
     bodyKey: "notifications.ticket.escalated.body",

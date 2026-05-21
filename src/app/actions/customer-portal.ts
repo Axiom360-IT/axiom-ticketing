@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -593,4 +593,140 @@ export async function customerCreateTicket(
   revalidatePath("/portal/tickets");
   revalidatePath("/admin/tickets");
   return { ok: true, ticketNumber };
+}
+
+// ── In-portal CSAT submission ─────────────────────────────────────
+//
+// Same outcome as `/csat/confirm` (the email-link route handler), but
+// reachable from the customer's ticket detail page after a resolution
+// — the customer says "yes this is fixed" / "no it's not" right inside
+// the portal without going through the email. Doesn't need a signed
+// token because the caller is the authenticated ticket owner; ownership
+// is verified against `tickets.customer_id`.
+
+const csatResponseSchema = z.enum(["satisfied", "unsatisfied"]);
+
+export type CustomerCsatResult =
+  | { ok: true; newStatus: "closed" | "open" | "in_progress" }
+  | { ok: false; error: string };
+
+export async function submitCsatFromPortal(
+  ticketId: string,
+  response: "satisfied" | "unsatisfied",
+): Promise<CustomerCsatResult> {
+  const parsedResponse = csatResponseSchema.safeParse(response);
+  if (!parsedResponse.success) {
+    return { ok: false, error: "Invalid response." };
+  }
+
+  const user = await requireSessionUser();
+  if (!user.roleNames.has("Customer")) {
+    throw new ForbiddenError();
+  }
+
+  const [ticket] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      status: tickets.status,
+      assignedToId: tickets.assignedToId,
+      customerId: tickets.customerId,
+      csatResponse: tickets.csatResponse,
+      subject: tickets.subject,
+    })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+
+  if (!ticket || ticket.customerId !== user.id) {
+    // Either no such ticket OR not the owner. Same opaque error so the
+    // wrong-owner case isn't distinguishable from not-found.
+    return { ok: false, error: "Ticket not found." };
+  }
+  if (ticket.csatResponse) {
+    return { ok: false, error: "You've already given feedback on this ticket." };
+  }
+  if (ticket.status !== "resolved") {
+    return {
+      ok: false,
+      error: "Feedback is only available on resolved tickets.",
+    };
+  }
+
+  const now = new Date();
+  let newStatus: "closed" | "open" | "in_progress";
+
+  if (parsedResponse.data === "satisfied") {
+    newStatus = "closed";
+    await db
+      .update(tickets)
+      .set({
+        csatResponse: "satisfied",
+        csatRespondedAt: now,
+        status: "closed",
+        closedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(tickets.id, ticket.id));
+    await audit({
+      actorId: user.id,
+      action: "ticket.csat.satisfied",
+      targetType: "ticket",
+      targetId: ticket.ticketNumber,
+      before: { status: "resolved" },
+      after: { status: "closed", csatResponse: "satisfied", source: "portal" },
+    });
+  } else {
+    // Unsatisfied → reopen. If still assigned, go to in_progress;
+    // otherwise back to open. Matches the email-link route handler.
+    newStatus = ticket.assignedToId ? "in_progress" : "open";
+    await db
+      .update(tickets)
+      .set({
+        csatResponse: "unsatisfied",
+        csatRespondedAt: now,
+        status: newStatus,
+        resolvedAt: null,
+        reopenedCount: sql`${tickets.reopenedCount} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(tickets.id, ticket.id));
+    await audit({
+      actorId: user.id,
+      action: "ticket.csat.unsatisfied",
+      targetType: "ticket",
+      targetId: ticket.ticketNumber,
+      before: { status: "resolved" },
+      after: {
+        status: newStatus,
+        csatResponse: "unsatisfied",
+        source: "portal",
+      },
+    });
+
+    // Best-effort notify the assigned tech that the customer reopened.
+    if (ticket.assignedToId) {
+      try {
+        await inngest.send({
+          name: "notification/dispatch",
+          data: {
+            type: "ticket.customer_replied",
+            recipientUserIds: [ticket.assignedToId],
+            inApp: {
+              titleArgs: { ticketNumber: ticket.ticketNumber },
+              bodyArgs: { customerName: "Customer" },
+              linkUrl: `/admin/tickets/${ticket.id}`,
+            },
+          },
+        });
+      } catch (err) {
+        console.error("[submitCsatFromPortal] dispatch failed:", err);
+      }
+    }
+  }
+
+  revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
+  revalidatePath("/portal/tickets");
+  revalidatePath(`/admin/tickets/${ticket.id}`);
+  return { ok: true, newStatus };
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { CustomerCsatPrompt } from "@/components/customer/customer-csat-prompt";
 import { CustomerMessageThread } from "@/components/customer/customer-message-thread";
 import { CustomerReplyComposer } from "@/components/customer/customer-reply-composer";
 import { CustomerTicketHeader } from "@/components/customer/customer-ticket-header";
@@ -55,6 +56,17 @@ export default async function PortalTicketDetailPage({
 
       {messages.length > 0 ? (
         <CustomerMessageThread messages={messages} />
+      ) : null}
+
+      {/* CSAT prompt — shown when the ticket is resolved AND the
+          customer hasn't given feedback yet. After they click Yes/No
+          the action revalidates and the prompt either becomes a recap
+          banner (csatResponse now set) or the ticket reopens. */}
+      {ticket.status === "resolved" || ticket.csatResponse ? (
+        <CustomerCsatPrompt
+          ticketId={ticket.id}
+          csatResponse={ticket.csatResponse}
+        />
       ) : null}
 
       {ticket.status === "closed" ? (

@@ -11,10 +11,17 @@ import { twilioClient, twilioFromNumber } from "./client";
 export type { SmsTemplate } from "../notifications/sms-types";
 
 const TEMPLATE_NAMESPACE = {
+  // Staff-facing
   ticket_assigned: "sms.ticketAssigned",
   customer_replied: "sms.customerReplied",
   sla_warning_80: "sms.slaWarning80",
   sla_breached: "sms.slaBreached",
+  // Customer-facing
+  ticket_assigned_customer: "sms.ticketAssignedCustomer",
+  agent_replied: "sms.agentReplied",
+  ticket_resolved: "sms.ticketResolved",
+  ticket_reopened: "sms.ticketReopened",
+  ticket_closed: "sms.ticketClosed",
 } as const;
 
 type SendSmsOptions = {

@@ -447,13 +447,18 @@ Storage keys: `<env>/<ticketId>/<attachmentId>/<sanitizedFilename>` for attachme
 
 ## 17. CSAT flow
 
-1. Agent resolves a ticket → `resolveTicket` inserts a customer-visible resolution note (or, on the skip-note coordinator path, an internal note explaining why) and sends the `ticket_resolved` email with two HMAC-signed buttons.
-2. Customer clicks "Satisfied" / "Not satisfied" → `GET /csat/confirm?t=…&tk=…` → `verifyCsatToken` checks the HMAC, then:
-   - Already responded → redirect to `/csat/result?status=already`
-   - Already moved past resolved (e.g. a new agent reply reopened the ticket) → record the response on the row but don't roll status back
-   - Satisfied + still resolved → close the ticket, send `ticket_closed`
-   - Unsatisfied + still resolved → reopen (back to `in_progress` if still assigned, else `open`), bump `reopened_count`, send `ticket_reopened` to the customer and notify the assigned tech
-3. After 24h with no response, `auto-close-resolved-tickets` closes the ticket with `reason: csat_no_response_24h` and sends `ticket_closed`.
+1. Agent resolves a ticket → `resolveTicket` inserts a customer-visible resolution note (or, on the skip-note coordinator path, an internal note explaining why), then **dispatches `ticket.resolved` through Inngest** (email + SMS + in-app, gated per the customer's per-event preferences). The email carries two HMAC-signed CSAT buttons; the in-app row deep-links to the ticket detail page.
+2. The customer has two paths to give feedback — same outcome either way:
+   - **From email:** click "Satisfied" / "Not satisfied" → `GET /csat/confirm?t=…&tk=…` → `verifyCsatToken` checks the HMAC.
+   - **From the portal:** open the ticket detail page while it's `resolved` → `<CustomerCsatPrompt>` shows two buttons → `submitCsatFromPortal(ticketId, response)` server action verifies ownership (`customer_id === user.id`) without a token.
+3. Either path branches the same way:
+   - Already responded → recap banner (portal) / redirect to `/csat/result?status=already` (email).
+   - Already moved past resolved (e.g. a new agent reply reopened the ticket) → record the response on the row but don't roll status back.
+   - Satisfied + still resolved → close the ticket, send `ticket_closed`.
+   - Unsatisfied + still resolved → reopen (back to `in_progress` if still assigned, else `open`), bump `reopened_count`, send `ticket_reopened` to the customer and notify the assigned tech.
+4. After 24h with no response on either path, `auto-close-resolved-tickets` closes the ticket with `reason: csat_no_response_24h` and sends `ticket_closed`.
+
+**Guest tickets** (no `customer_id`) take a slightly different path: no in-portal prompt (they don't have a portal account), `resolveTicket` falls back to a direct `sendEmail` for the resolution email (no preferences row to consult, no SMS phone, no bell inbox). The email-link CSAT path still works exactly the same for them.
 
 ---
 
@@ -619,6 +624,8 @@ Other notable posture:
 
 Architectural decisions that aren't obvious from reading the code live in [`DECISIONS.md`](./DECISIONS.md), newest first. Examples currently captured:
 
+- **2026-05-21 — Every customer-facing ticket update goes through dispatch:** assigned / agent-replied / resolved / reopened / closed all fan out via `notification/dispatch` for authenticated customers (email + SMS + bell honoring per-event prefs). Guest tickets keep the direct-email fallback at every site. Customer notification-prefs UI now lists all 5 events; `ticket.customer_replied` removed from the customer view (it was always an agent-facing event).
+- **2026-05-21 — Ticket-resolved notification + in-portal CSAT:** `resolveTicket` now dispatches `ticket.resolved` through Inngest (email + SMS + bell) honoring per-event customer preferences; guest tickets still fall back to direct email. New `submitCsatFromPortal` server action + `<CustomerCsatPrompt>` UI on the customer ticket-detail page lets the customer give "Yes, fixed" / "No, still broken" feedback from inside the portal — Yes closes the ticket, No reopens it.
 - **2026-05-21 — Customers don't pick ticket priority:** priority dropdown removed from `/portal/submit` and `/portal/tickets/new`. Server schemas default to `medium`. Coordinator triages priority on review; `recomputeSlaForTicket` re-stamps SLA columns when priority changes. Staff-side `createTicketOnBehalf` keeps the field.
 - **2026-05-21 — Phone field uses `react-phone-number-input` (country picker):** plain `<input type="tel">` swapped for the library's flag-dropdown + auto-formatting + per-country validation. Default country `PK`. Tailwind-friendly theme overrides in `src/app/globals.css`. Server zod check stays as defense-in-depth.
 - **2026-05-21 — Phone everywhere + customer portal shell upgrade:** Phone collection wired into customer sign-up, customer profile, admin user-create, admin profile (E.164 optional, empty → null, magic-link sign-up persists via Better Auth `additionalFields`). Customer portal gets a real shell: `<CustomerSidebar>` on `lg+` mirroring the admin layout, a `/portal` dashboard with status stat cards and recent tickets, notifications bell in the topbar, and ticket-list filters (status chips + search, URL-driven).

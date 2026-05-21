@@ -29,6 +29,10 @@ export const autoCloseResolvedTickets = inngest.createFunction(
           subject: tickets.subject,
           customerEmail: tickets.customerEmail,
           customerName: tickets.customerName,
+          // Project the customer FK so we can route through the
+          // dispatcher (per-prefs email + SMS + bell) for authenticated
+          // customers and fall back to direct email for guests.
+          customerId: tickets.customerId,
         })
         .from(tickets)
         .where(
@@ -75,25 +79,70 @@ export const autoCloseResolvedTickets = inngest.createFunction(
         });
       });
 
-      await step.run(`email-${t.id}`, async () => {
+      await step.run(`notify-${t.id}`, async () => {
         try {
-          await sendEmail({
-            to: t.customerEmail,
-            template: {
-              template: "ticket_closed",
+          if (t.customerId) {
+            // Dispatch fan-out so the customer's email + SMS + bell
+            // preferences are honored on auto-close.
+            await inngest.send({
+              name: "notification/dispatch",
               data: {
+                type: "ticket.closed",
+                recipientUserIds: [t.customerId],
+                ticketId: t.id,
                 ticketNumber: t.ticketNumber,
-                customerName: t.customerName,
-                subject: t.subject,
-                reason: "auto",
-                newTicketUrl: `${appUrl}/portal/submit`,
+                email: {
+                  template: {
+                    template: "ticket_closed",
+                    data: {
+                      ticketNumber: t.ticketNumber,
+                      customerName: t.customerName,
+                      subject: t.subject,
+                      reason: "auto",
+                      newTicketUrl: `${appUrl}/portal/submit`,
+                    },
+                  },
+                  ticketNumber: t.ticketNumber,
+                },
+                sms: {
+                  template: {
+                    template: "ticket_closed",
+                    data: {
+                      ticketNumber: t.ticketNumber,
+                      ticketUrl: `${appUrl}/portal/tickets/${t.ticketNumber}`,
+                    },
+                  },
+                },
+                inApp: {
+                  titleArgs: { ticketNumber: t.ticketNumber },
+                  bodyArgs: {
+                    reason:
+                      "Auto-closed after 24 hours without confirmation.",
+                  },
+                  linkUrl: `/portal/tickets/${t.ticketNumber}`,
+                },
               },
-            },
-            ticketNumber: t.ticketNumber,
-          });
+            });
+          } else {
+            // Guest ticket — no customer_id, fall back to direct email.
+            await sendEmail({
+              to: t.customerEmail,
+              template: {
+                template: "ticket_closed",
+                data: {
+                  ticketNumber: t.ticketNumber,
+                  customerName: t.customerName,
+                  subject: t.subject,
+                  reason: "auto",
+                  newTicketUrl: `${appUrl}/portal/submit`,
+                },
+              },
+              ticketNumber: t.ticketNumber,
+            });
+          }
         } catch (err) {
           console.error(
-            `[auto-close-resolved-tickets] email failed for ${t.ticketNumber}:`,
+            `[auto-close-resolved-tickets] notify failed for ${t.ticketNumber}:`,
             err,
           );
         }

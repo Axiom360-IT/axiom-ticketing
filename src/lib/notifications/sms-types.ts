@@ -9,7 +9,16 @@ export type SmsTemplateData = {
 };
 
 export type SmsTemplate =
+  // Staff-facing
   | { template: "ticket_assigned"; data: SmsTemplateData }
   | { template: "customer_replied"; data: SmsTemplateData }
   | { template: "sla_warning_80"; data: SmsTemplateData }
-  | { template: "sla_breached"; data: SmsTemplateData };
+  | { template: "sla_breached"; data: SmsTemplateData }
+  // Customer-facing — different wording from the staff variants because
+  // the link target is the customer portal and the message describes
+  // events from the customer's POV.
+  | { template: "ticket_assigned_customer"; data: SmsTemplateData }
+  | { template: "agent_replied"; data: SmsTemplateData }
+  | { template: "ticket_resolved"; data: SmsTemplateData }
+  | { template: "ticket_reopened"; data: SmsTemplateData }
+  | { template: "ticket_closed"; data: SmsTemplateData };

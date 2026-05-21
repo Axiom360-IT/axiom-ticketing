@@ -28,6 +28,7 @@ export type CustomerTicket = {
   updatedAt: Date;
   resolvedAt: Date | null;
   closedAt: Date | null;
+  csatResponse: string | null;
 };
 
 export type CustomerAttachment = {
@@ -91,6 +92,7 @@ export async function getMyTicketByNumber(
       updatedAt: tickets.updatedAt,
       resolvedAt: tickets.resolvedAt,
       closedAt: tickets.closedAt,
+      csatResponse: tickets.csatResponse,
     })
     .from(tickets)
     .where(
@@ -127,6 +129,7 @@ export async function getGuestTicket(
       updatedAt: tickets.updatedAt,
       resolvedAt: tickets.resolvedAt,
       closedAt: tickets.closedAt,
+      csatResponse: tickets.csatResponse,
     })
     .from(tickets)
     .where(

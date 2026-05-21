@@ -5,6 +5,40 @@ entries go at the top; date them.
 
 ---
 
+## 2026-05-21 · Every customer-facing ticket update fans out through dispatch (email + SMS + bell)
+
+Yesterday's pass added `ticket.resolved` to the dispatcher but left assigned / agent-replied / reopened / closed as direct `sendEmail` calls — meaning the customer's SMS toggle and bell icon were dead for those events. This change closes the whole class.
+
+**Customer-facing events now fully dispatched** (each fans email + SMS + in-app through `notification/dispatch`, honoring per-event `notification_preferences`):
+
+- `ticket.assigned` — `assignTicket` fires a second dispatch (the first is for the tech) targeting `recipientUserIds: [ticket.customerId]` with the existing `ticket_assigned` email template + new `ticket_assigned_customer` SMS template.
+- `ticket.agent_replied` (NEW) — `replyToTicket` dispatches this with the existing `ticket_reply` email template + new `agent_replied` SMS template.
+- `ticket.resolved` — done yesterday; unchanged today.
+- `ticket.reopened` (NEW) — `reopenTicket` dispatches with the existing `ticket_reopened` email template + new `ticket_reopened` SMS template.
+- `ticket.closed` (NEW) — `auto-close-resolved` cron dispatches with the existing `ticket_closed` email template + new `ticket_closed` SMS template. CSAT-driven closure (customer clicked "Satisfied") doesn't dispatch — the customer just clicked the button, no notification needed.
+
+**Guest tickets** (no `customer_id`) still take the direct `sendEmail` path on every event. They have no preferences row, no SMS phone, and no in-app inbox; falling back to email is the only signal we have. Inlined as `if (customerId) dispatch else sendEmail` blocks at each site so the guest path stays a single hop.
+
+**Customer notification preferences UI** now lists five events: assigned / agent-replied / resolved / reopened / closed. Removed `ticket.customer_replied` from the customer's view — that event fires when the CUSTOMER replies and goes to AGENTS, so the toggle never applied to the customer's own inbox in the first place. Stranded pref rows (if any) under that key are left in place; they default to on/on, which matches the historical behavior, so nothing breaks for users who were toggling that field.
+
+**SMS template overload avoided.** Staff and customer events share names where intent matches (`ticket_assigned` for tech vs `ticket_assigned_customer` for customer) but use distinct template keys so each side's wording can differ — tech links into `/admin/tickets/<id>`, customer links into `/portal/tickets/<number>`.
+
+---
+
+## 2026-05-21 · Ticket-resolved notification fan-out + in-portal CSAT
+
+Two adjacent gaps surfaced in production testing — the customer never got an SMS when their ticket was resolved, and the only way to give CSAT feedback was clicking the buttons in the resolution email. Both are now closed.
+
+- **`ticket.resolved` is a real dispatch event.** Added to `NotificationEventType`, the in-app registry, the SMS template union, and the SMS i18n namespace. `resolveTicket` no longer calls `sendEmail` directly for authenticated customers — it fans out through `notification/dispatch`, which honors the customer's per-event email+SMS preferences AND inserts a bell-icon row. Guest tickets (no `customer_id`) still take the direct-email fallback because they have no preferences row, no SMS phone, no in-app inbox. Closes the gap flagged in `DECISIONS.md` 2026-05-10's "customer notification preferences ship with `ticket.assigned` and `ticket.customer_replied` only — `ticket.resolved` is held back."
+
+- **CSAT is now available from the portal, not just the email.** New `submitCsatFromPortal(ticketId, response)` server action mirrors the logic of the existing `/csat/confirm` route handler, but doesn't need a signed token — the authenticated session is the proof of ownership (`tickets.customer_id === user.id`). Idempotent: refuses on already-responded tickets, refuses if the ticket isn't in `resolved` status. On `satisfied` → `status: closed`. On `unsatisfied` → reopen (`in_progress` if still assigned, else `open`) + bump `reopened_count` + dispatch a `ticket.customer_replied` so the assigned tech sees the bell ping. Audit row tags `source: portal` so the audit log can distinguish portal feedback from email-link feedback.
+
+- **`<CustomerCsatPrompt>` UI component.** Lives on the customer ticket-detail page. Renders when `status === "resolved"` AND `csatResponse IS NULL` — two buttons (Yes / No). When the customer has already responded, renders a small recap banner instead ("Marked as resolved" / "Reopened for the team"). Keeps the page coherent regardless of whether the customer's coming back to view it after their click.
+
+- **`csatResponse` plumbed onto `CustomerTicket`.** `lib/customer/queries.ts:getMyTicketByNumber` + `getGuestTicket` now project `csat_response`. The prompt component needs it to decide between prompt-mode and recap-mode.
+
+---
+
 ## 2026-05-21 · Customers don't pick ticket priority
 
 The customer-facing ticket forms (anonymous `/portal/submit` and authenticated `/portal/tickets/new`) used to require the submitter to choose a priority — `low / medium / high / critical`. Two production failures of that design (independent of our codebase, observed across the industry):

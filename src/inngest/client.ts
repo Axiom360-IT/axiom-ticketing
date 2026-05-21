@@ -54,7 +54,19 @@ export type Events = {
 };
 
 export type NotificationEventType =
+  // ── Customer-facing (delivered to ticket owner) ──
+  // `ticket.assigned` is overloaded: the SAME event type is used for the
+  // customer ("someone's working on your ticket") and the tech ("you've
+  // been assigned"). Different dispatch calls with different email
+  // templates and different recipient sets; the dispatcher looks up
+  // per-user `notification_preferences` so each side toggles their own
+  // copy independently.
   | "ticket.assigned"
+  | "ticket.agent_replied"
+  | "ticket.resolved"
+  | "ticket.reopened"
+  | "ticket.closed"
+  // ── Staff-facing ──
   | "ticket.customer_replied"
   | "ticket.escalated"
   | "sla.warning_50"

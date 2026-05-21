@@ -7,9 +7,21 @@ import {
   updateNotificationPreference,
 } from "@/app/actions/profile";
 
+// Customer-facing notification events. Each one has a per-user pref row
+// in `notification_preferences` (email + SMS toggle). The previous list
+// had `ticket.customer_replied` here, but that event is fired to AGENTS
+// when the CUSTOMER replies — wrong recipient for the customer's
+// "when my ticket gets a reply" intent. Replaced with
+// `ticket.agent_replied` which fires to the customer when an agent
+// posts a reply. Existing pref rows under the old event key will fall
+// back to the schema defaults (email on, SMS on) since no UI exposes
+// them anymore — acceptable for a tool whose users are still onboarding.
 const CUSTOMER_EVENTS = [
   "ticket.assigned",
-  "ticket.customer_replied",
+  "ticket.agent_replied",
+  "ticket.resolved",
+  "ticket.reopened",
+  "ticket.closed",
 ] as const;
 
 type Props = {
