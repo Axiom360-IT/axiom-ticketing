@@ -174,7 +174,14 @@
         "hint": "Coordinators auto-close resolved tickets after 24 hours of no response.",
         "recapSatisfied": "Marked as resolved. Thanks for confirming.",
         "recapUnsatisfied": "Reopened for the team to take another look.",
-        "recapThanks": "We'll reach out if we need anything else."
+        "recapThanks": "We'll reach out if we need anything else.",
+        "commentLabel": "Tell us what's still broken",
+        "commentPlaceholder": "What's still not working? The more detail, the faster we can help.",
+        "commentHint": "Optional, up to 2000 characters.",
+        "commentTooLong": "Comment is too long — please keep it under 2000 characters.",
+        "submitUnsatisfied": "Reopen ticket",
+        "submittingUnsatisfied": "Reopening…",
+        "cancel": "Cancel"
       },
       "new": {
         "metaTitle": "New ticket — Axiom support",
@@ -1298,6 +1305,10 @@
       "escalated": {
         "title": "{ticketNumber} escalated",
         "body": "{technicianName} escalated this ticket: {subject}"
+      },
+      "csat_unsatisfied": {
+        "title": "{ticketNumber} reopened — still not resolved",
+        "body": "{customerName} pushed back on the resolution."
       }
     },
     "sla": {
@@ -1345,6 +1356,9 @@
     },
     "customerReplied": {
       "body": "{ticketNumber}: Customer replied to your ticket. {ticketUrl}"
+    },
+    "csatUnsatisfiedStaff": {
+      "body": "{ticketNumber}: Customer reopened — still not resolved. {ticketUrl}"
     },
     "ticketAssignedCustomer": {
       "body": "{ticketNumber}: A technician is now assigned to your ticket. View: {ticketUrl}"
@@ -1592,6 +1606,15 @@
       "guidance": "The ticket is still assigned to {technicianName}. Please review and either take it over, advise, or de-escalate when ready.",
       "view": "Open ticket",
       "subject": "[{ticketNumber}] Ticket escalated: {subject}"
+    },
+    "csatUnsatisfiedStaff": {
+      "preview": "Customer reopened ticket {ticketNumber} — still not resolved",
+      "title": "Customer says the ticket is still not resolved",
+      "body": "Ticket {ticketNumber} “{subject}” was marked resolved, but the customer pushed back. The ticket has been reopened.",
+      "metaCustomer": "Customer: {customerName}",
+      "guidance": "Please review the latest customer comment on the ticket and follow up.",
+      "view": "Open ticket",
+      "subject": "[{ticketNumber}] Customer reopened — still not resolved"
     },
     "inboundBounce": {
       "preview": "We couldn't match your email to a ticket",

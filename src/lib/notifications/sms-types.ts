@@ -12,6 +12,7 @@ export type SmsTemplate =
   // Staff-facing
   | { template: "ticket_assigned"; data: SmsTemplateData }
   | { template: "customer_replied"; data: SmsTemplateData }
+  | { template: "csat_unsatisfied_staff"; data: SmsTemplateData }
   | { template: "sla_warning_80"; data: SmsTemplateData }
   | { template: "sla_breached"; data: SmsTemplateData }
   // Customer-facing — different wording from the staff variants because

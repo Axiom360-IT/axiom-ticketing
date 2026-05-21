@@ -5,6 +5,18 @@ entries go at the top; date them.
 
 ---
 
+## 2026-05-21 · CSAT-unsatisfied captures customer comment + notifies tech & Coordinator; email links route by account state
+
+Three issues surfaced once customers actually used the CSAT prompt in production. All three close together because they share the same flow (resolution → customer pushes back → ticket reopens).
+
+- **"No, still not fixed" now takes a comment.** Previously the portal's CSAT prompt fired immediately on the No button, so the ticket reopened with no signal beyond "reopen count went up." Two-stage UI now: clicking No reveals a textarea (`portal.tickets.csat.commentLabel`, 2000-char cap) with Reopen + Cancel buttons. On submit, `submitCsatFromPortal(ticketId, "unsatisfied", comment)` wraps the status update + message insert in a single `transactional` so the comment lands on the thread as an authored `messages` row (`authorType: "customer"`, `bodyFormat: "text"`, `channel: "portal"`) — the assigned tech now sees the customer's words in context, not just a status flip. Comment is optional; empty submissions still work for users who can't articulate the problem.
+
+- **Email "view your ticket" links now route by account state.** When the ticket has a `customer_id` (registered customer), outbound email buttons go to `/portal/tickets/<num>` (authenticated portal); when null (guest), they go to the existing HMAC-signed `/portal/guest/tickets/<num>?token=...` URL. Implemented once in `lib/tokens.ts:ticketTrackingUrl({appUrl, ticketNumber, customerEmail, customerId})` so every email producer (`assignTicket`, `replyToTicket`, `resolveTicket`, `reopenTicket`, `/csat/confirm` route handler, `process-inbound-email`) picks the right URL without duplicating the if-else. Old `guestTicketUrl` remains for the two paths where customer linkage isn't known at send time (`createTicket`, `createTicketOnBehalf`).
+
+- **New `ticket.csat_unsatisfied` dispatch event for staff.** When a customer reopens via CSAT (portal button OR email link), we now fan out a notification to the assigned tech + every active Coordinator through `notification/dispatch`. Honors each recipient's email/SMS/bell prefs (added the event to `KNOWN_EVENT_TYPES` so it shows up in their preference page; defaults email + SMS both on per the schema). Dispatched from both entry points (`submitCsatFromPortal` and `/csat/confirm`) so the team is notified regardless of which CSAT surface the customer used. The previous email-link path had a half-baked direct `sendEmail` to the tech only with the wrong template (`new_assignment`); that's removed in favor of the dispatched event + dedicated `csat_unsatisfied_staff` email template. Stack additions: event in `NotificationEventType`, descriptor in `registry.ts`, SMS template in `sms-types.ts` + `sms.csatUnsatisfiedStaff` namespace, email template `csat-unsatisfied-staff.tsx` + `emails.csatUnsatisfiedStaff` namespace, in-app i18n under `notifications.ticket.csat_unsatisfied`.
+
+---
+
 ## 2026-05-21 · Every customer-facing ticket update fans out through dispatch (email + SMS + bell)
 
 Yesterday's pass added `ticket.resolved` to the dispatcher but left assigned / agent-replied / reopened / closed as direct `sendEmail` calls — meaning the customer's SMS toggle and bell icon were dead for those events. This change closes the whole class.

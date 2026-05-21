@@ -14,6 +14,7 @@ const TEMPLATE_NAMESPACE = {
   // Staff-facing
   ticket_assigned: "sms.ticketAssigned",
   customer_replied: "sms.customerReplied",
+  csat_unsatisfied_staff: "sms.csatUnsatisfiedStaff",
   sla_warning_80: "sms.slaWarning80",
   sla_breached: "sms.slaBreached",
   // Customer-facing

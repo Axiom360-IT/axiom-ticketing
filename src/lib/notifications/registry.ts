@@ -50,6 +50,10 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.ticket.escalated.title",
     bodyKey: "notifications.ticket.escalated.body",
   },
+  "ticket.csat_unsatisfied": {
+    titleKey: "notifications.ticket.csat_unsatisfied.title",
+    bodyKey: "notifications.ticket.csat_unsatisfied.body",
+  },
   "sla.warning_50": {
     titleKey: "notifications.sla.warning_50.title",
     bodyKey: "notifications.sla.warning_50.body",

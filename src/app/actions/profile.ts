@@ -232,6 +232,7 @@ export async function revokeOtherSessions(): Promise<{
 const KNOWN_EVENT_TYPES = new Set<NotificationEventType>([
   "ticket.assigned",
   "ticket.customer_replied",
+  "ticket.csat_unsatisfied",
   "ticket.escalated",
   "sla.warning_50",
   "sla.warning_80",

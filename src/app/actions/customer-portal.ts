@@ -19,7 +19,7 @@ import {
   checkRateLimit,
   enforceUserRateLimit,
 } from "@/lib/ratelimit";
-import { clientIp } from "@/lib/request";
+import { clientIp, getAppUrl } from "@/lib/request";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { loadTicketScope } from "@/lib/tickets/load";
@@ -308,23 +308,25 @@ export async function customerReply(
     after: { length: parsed.data.body.length },
   });
 
-  if (ticket.assignedToId) {
-    try {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.customer_replied",
-          recipientUserIds: [ticket.assignedToId],
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { customerName: profile.name },
-            linkUrl: `/admin/tickets/${ticket.id}`,
-          },
+  // Notify the assignee — or, if the ticket is still in triage with no
+  // assignee, broadcast to Coordinators so the reply doesn't sit silently
+  // until someone happens to look at the queue.
+  try {
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.customer_replied",
+        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+        recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { customerName: profile.name },
+          linkUrl: `/admin/tickets/${ticket.id}`,
         },
-      });
-    } catch (err) {
-      console.error("[customerReply] dispatch failed:", err);
-    }
+      },
+    });
+  } catch (err) {
+    console.error("[customerReply] dispatch failed:", err);
   }
 
   revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
@@ -446,23 +448,22 @@ export async function guestReply(input: {
     ipAddress: ip ?? undefined,
   });
 
-  if (ticket.assignedToId) {
-    try {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.customer_replied",
-          recipientUserIds: [ticket.assignedToId],
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { customerName: ticket.customerName },
-            linkUrl: `/admin/tickets/${ticket.id}`,
-          },
+  try {
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.customer_replied",
+        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+        recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { customerName: ticket.customerName },
+          linkUrl: `/admin/tickets/${ticket.id}`,
         },
-      });
-    } catch (err) {
-      console.error("[guestReply] dispatch failed:", err);
-    }
+      },
+    });
+  } catch (err) {
+    console.error("[guestReply] dispatch failed:", err);
   }
 
   revalidatePath(`/portal/guest/tickets/${ticket.ticketNumber}`);
@@ -604,7 +605,13 @@ export async function customerCreateTicket(
 // token because the caller is the authenticated ticket owner; ownership
 // is verified against `tickets.customer_id`.
 
-const csatResponseSchema = z.enum(["satisfied", "unsatisfied"]);
+const csatSubmitSchema = z.object({
+  response: z.enum(["satisfied", "unsatisfied"]),
+  // Optional explanation when the customer says "not fixed". Posted as a
+  // message on the ticket so the assigned tech has the customer's words
+  // to act on (not just "reopened, no context").
+  comment: z.string().trim().max(2000).optional(),
+});
 
 export type CustomerCsatResult =
   | { ok: true; newStatus: "closed" | "open" | "in_progress" }
@@ -613,10 +620,14 @@ export type CustomerCsatResult =
 export async function submitCsatFromPortal(
   ticketId: string,
   response: "satisfied" | "unsatisfied",
+  comment?: string,
 ): Promise<CustomerCsatResult> {
-  const parsedResponse = csatResponseSchema.safeParse(response);
-  if (!parsedResponse.success) {
-    return { ok: false, error: "Invalid response." };
+  const parsed = csatSubmitSchema.safeParse({ response, comment });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid response.",
+    };
   }
 
   const user = await requireSessionUser();
@@ -631,6 +642,7 @@ export async function submitCsatFromPortal(
       status: tickets.status,
       assignedToId: tickets.assignedToId,
       customerId: tickets.customerId,
+      customerName: tickets.customerName,
       csatResponse: tickets.csatResponse,
       subject: tickets.subject,
     })
@@ -653,10 +665,17 @@ export async function submitCsatFromPortal(
     };
   }
 
+  const [profile] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!profile) throw new NotFoundError();
+
   const now = new Date();
   let newStatus: "closed" | "open" | "in_progress";
 
-  if (parsedResponse.data === "satisfied") {
+  if (parsed.data.response === "satisfied") {
     newStatus = "closed";
     await db
       .update(tickets)
@@ -680,17 +699,40 @@ export async function submitCsatFromPortal(
     // Unsatisfied → reopen. If still assigned, go to in_progress;
     // otherwise back to open. Matches the email-link route handler.
     newStatus = ticket.assignedToId ? "in_progress" : "open";
-    await db
-      .update(tickets)
-      .set({
-        csatResponse: "unsatisfied",
-        csatRespondedAt: now,
-        status: newStatus,
-        resolvedAt: null,
-        reopenedCount: sql`${tickets.reopenedCount} + 1`,
-        updatedAt: now,
-      })
-      .where(eq(tickets.id, ticket.id));
+
+    const trimmedComment = parsed.data.comment?.trim() ?? "";
+
+    await transactional(async (tx) => {
+      await tx
+        .update(tickets)
+        .set({
+          csatResponse: "unsatisfied",
+          csatRespondedAt: now,
+          status: newStatus,
+          resolvedAt: null,
+          reopenedCount: sql`${tickets.reopenedCount} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(tickets.id, ticket.id));
+
+      // Persist the customer's "still not fixed" comment as a real
+      // message on the thread so the assigned tech sees it in context.
+      // Stored as plain text — the textarea is a single-line input, not
+      // the rich composer.
+      if (trimmedComment.length > 0) {
+        await tx.insert(messages).values({
+          ticketId: ticket.id,
+          authorId: user.id,
+          authorEmail: profile.email,
+          authorName: profile.name,
+          authorType: "customer",
+          body: trimmedComment,
+          bodyFormat: "text",
+          channel: "portal",
+        });
+      }
+    });
+
     await audit({
       actorId: user.id,
       action: "ticket.csat.unsatisfied",
@@ -701,27 +743,54 @@ export async function submitCsatFromPortal(
         status: newStatus,
         csatResponse: "unsatisfied",
         source: "portal",
+        commentLength: trimmedComment.length,
       },
     });
 
-    // Best-effort notify the assigned tech that the customer reopened.
-    if (ticket.assignedToId) {
-      try {
-        await inngest.send({
-          name: "notification/dispatch",
-          data: {
-            type: "ticket.customer_replied",
-            recipientUserIds: [ticket.assignedToId],
-            inApp: {
-              titleArgs: { ticketNumber: ticket.ticketNumber },
-              bodyArgs: { customerName: "Customer" },
-              linkUrl: `/admin/tickets/${ticket.id}`,
+    // Notify the assigned tech + Coordinator role that the customer
+    // pushed back. Goes through the dispatcher so per-user
+    // email/SMS/bell prefs are honored.
+    try {
+      const appUrl = getAppUrl();
+      const adminTicketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "ticket.csat_unsatisfied",
+          recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+          recipientRoles: ["Coordinator"],
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          email: {
+            template: {
+              template: "csat_unsatisfied_staff",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                subject: ticket.subject,
+                customerName: profile.name,
+                ticketUrl: adminTicketUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+          },
+          sms: {
+            template: {
+              template: "csat_unsatisfied_staff",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                ticketUrl: adminTicketUrl,
+              },
             },
           },
-        });
-      } catch (err) {
-        console.error("[submitCsatFromPortal] dispatch failed:", err);
-      }
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { customerName: profile.name },
+            linkUrl: `/admin/tickets/${ticket.id}`,
+          },
+        },
+      });
+    } catch (err) {
+      console.error("[submitCsatFromPortal] dispatch failed:", err);
     }
   }
 

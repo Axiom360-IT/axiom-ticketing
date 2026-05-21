@@ -22,7 +22,7 @@ import {
   MAX_FILE_BYTES,
   sanitizeFilename,
 } from "@/lib/storage/mime";
-import { guestTicketUrl } from "@/lib/tokens";
+import { ticketTrackingUrl } from "@/lib/tokens";
 import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
@@ -282,56 +282,58 @@ export const processInboundEmail = inngest.createFunction(
       after: { from: payload.fromEmail, length: messageBody.length },
     });
 
-    // Notify the assigned tech via the dispatch fan-out.
-    if (ticket.assignedToId) {
-      await step.run("notify-assignee", async () => {
-        try {
-          const customerName = payload.fromName ?? payload.fromEmail;
-          await inngest.send({
-            name: "notification/dispatch",
-            data: {
-              type: "ticket.customer_replied",
-              recipientUserIds: [ticket.assignedToId!],
-              ticketId: ticket.id,
+    // Notify the assigned tech via the dispatch fan-out. If the ticket
+    // is still unassigned (sitting in the triage queue), fall back to
+    // broadcasting to Coordinators so the reply doesn't sit silently
+    // until someone happens to look at the queue.
+    await step.run("notify-assignee", async () => {
+      try {
+        const customerName = payload.fromName ?? payload.fromEmail;
+        await inngest.send({
+          name: "notification/dispatch",
+          data: {
+            type: "ticket.customer_replied",
+            recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+            recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+            ticketId: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            email: {
+              template: {
+                template: "ticket_reply",
+                data: {
+                  ticketNumber: ticket.ticketNumber,
+                  customerName,
+                  subject: ticket.subject,
+                  agentName: customerName,
+                  body: messageBody,
+                  trackingUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+                },
+              },
               ticketNumber: ticket.ticketNumber,
-              email: {
-                template: {
-                  template: "ticket_reply",
-                  data: {
-                    ticketNumber: ticket.ticketNumber,
-                    customerName,
-                    subject: ticket.subject,
-                    agentName: customerName,
-                    body: messageBody,
-                    trackingUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-                  },
+            },
+            sms: {
+              template: {
+                template: "customer_replied",
+                data: {
+                  ticketNumber: ticket.ticketNumber,
+                  ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
                 },
-                ticketNumber: ticket.ticketNumber,
-              },
-              sms: {
-                template: {
-                  template: "customer_replied",
-                  data: {
-                    ticketNumber: ticket.ticketNumber,
-                    ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-                  },
-                },
-              },
-              inApp: {
-                titleArgs: { ticketNumber: ticket.ticketNumber },
-                bodyArgs: { customerName },
-                linkUrl: `/admin/tickets/${ticket.id}`,
               },
             },
-          });
-        } catch (err) {
-          console.error(
-            "[process-inbound-email] dispatch failed:",
-            err,
-          );
-        }
-      });
-    }
+            inApp: {
+              titleArgs: { ticketNumber: ticket.ticketNumber },
+              bodyArgs: { customerName },
+              linkUrl: `/admin/tickets/${ticket.id}`,
+            },
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[process-inbound-email] dispatch failed:",
+          err,
+        );
+      }
+    });
 
     return { status: "ok", ticketNumber };
   },
@@ -479,7 +481,12 @@ async function createTicketFromInbound(
   // `replyToTicket: true` makes the Reply-To header carry the per-
   // ticket address, so a customer reply continues the same ticket.
   try {
-    const trackingUrl = guestTicketUrl(appUrl, ticketNumber, fromEmail);
+    const trackingUrl = ticketTrackingUrl({
+      appUrl,
+      ticketNumber,
+      customerEmail: fromEmail,
+      customerId: knownUser?.id ?? null,
+    });
     await sendEmail({
       to: payload.fromEmail,
       template: {

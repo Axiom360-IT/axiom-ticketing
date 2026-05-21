@@ -11,12 +11,15 @@ import { submitCsatFromPortal } from "@/app/actions/customer-portal";
 //   2. `ticket.csatResponse IS NULL` (no feedback yet).
 //
 // On "Yes, this fixed it" → ticket closes immediately (newStatus=closed).
-// On "No, still not fixed" → ticket reopens (newStatus=open|in_progress).
-// On either, the server action revalidates the page, so the prompt
-// disappears (csatResponse is now set) and the new status pill appears.
+// On "No, still not fixed" → reveals a textarea so the customer can
+// describe what's still broken; on submit the ticket reopens
+// (newStatus=open|in_progress) and the comment is posted as a customer
+// message on the thread so the assigned tech has context.
 //
 // Same logic as `/csat/confirm` (the email-link route), without needing
 // a signed token — the caller is the authenticated ticket owner.
+
+const COMMENT_MAX = 2000;
 
 type Props = {
   ticketId: string;
@@ -30,6 +33,8 @@ export function CustomerCsatPrompt({ ticketId, csatResponse }: Props) {
   const t = useTranslations("portal.tickets.csat");
   const [error, setError] = useState<string | null>(null);
   const [submitting, startTransition] = useTransition();
+  const [stage, setStage] = useState<"prompt" | "unsatisfied">("prompt");
+  const [comment, setComment] = useState("");
 
   // Already responded — show a small confirmation pill so the customer
   // remembers they've given feedback. Different copy for satisfied vs
@@ -57,18 +62,92 @@ export function CustomerCsatPrompt({ ticketId, csatResponse }: Props) {
     );
   }
 
-  function submit(response: "satisfied" | "unsatisfied") {
+  function submitSatisfied() {
     setError(null);
     startTransition(async () => {
-      const result = await submitCsatFromPortal(ticketId, response);
+      const result = await submitCsatFromPortal(ticketId, "satisfied");
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      // Page revalidates inside the action; just refresh the route to
-      // pick up the updated ticket status + csatResponse.
       router.refresh();
     });
+  }
+
+  function submitUnsatisfied() {
+    setError(null);
+    if (comment.length > COMMENT_MAX) {
+      setError(t("commentTooLong"));
+      return;
+    }
+    startTransition(async () => {
+      const result = await submitCsatFromPortal(
+        ticketId,
+        "unsatisfied",
+        comment.trim() || undefined,
+      );
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  if (stage === "unsatisfied") {
+    return (
+      <div className="mt-6 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/30 p-5">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("commentLabel")}
+        </h2>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          disabled={submitting}
+          rows={4}
+          maxLength={COMMENT_MAX}
+          placeholder={t("commentPlaceholder")}
+          aria-label={t("commentLabel")}
+          className="mt-3 w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          {t("commentHint")}
+        </p>
+
+        <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={submitUnsatisfied}
+            disabled={submitting}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 min-h-[44px]"
+          >
+            {submitting ? t("submittingUnsatisfied") : t("submitUnsatisfied")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStage("prompt");
+              setComment("");
+              setError(null);
+            }}
+            disabled={submitting}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 min-h-[44px]"
+          >
+            {t("cancel")}
+          </button>
+        </div>
+
+        {error ? (
+          <p
+            role="alert"
+            aria-live="polite"
+            className="mt-3 text-sm text-red-600 dark:text-red-400"
+          >
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -83,7 +162,7 @@ export function CustomerCsatPrompt({ ticketId, csatResponse }: Props) {
       <div className="mt-4 flex flex-col sm:flex-row gap-2">
         <button
           type="button"
-          onClick={() => submit("satisfied")}
+          onClick={submitSatisfied}
           disabled={submitting}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 min-h-[44px]"
         >
@@ -92,7 +171,10 @@ export function CustomerCsatPrompt({ ticketId, csatResponse }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => submit("unsatisfied")}
+          onClick={() => {
+            setError(null);
+            setStage("unsatisfied");
+          }}
           disabled={submitting}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 min-h-[44px]"
         >

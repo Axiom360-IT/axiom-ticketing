@@ -54,6 +54,34 @@ export function guestTicketUrl(
   return `${appUrl}/portal/guest/tickets/${ticketNumber}?token=${token}`;
 }
 
+/**
+ * Picks the right "View your ticket" URL for outbound email links.
+ *
+ * - If the ticket is owned by a registered user (`customerId` set), link
+ *   to the authenticated portal at `/portal/tickets/<num>`. Clicking the
+ *   link sends a signed-in customer straight into their normal portal
+ *   view; a signed-out one passes through the proxy auth gate and gets
+ *   redirected to sign-in (then back).
+ * - If the ticket has no `customerId` (guest submission, inbound email
+ *   from an unknown sender), fall back to the token-signed guest URL.
+ *   The guest UI lets them view + reply without an account.
+ *
+ * Use this everywhere email templates need a "view ticket" link so
+ * registered customers don't get shoved into the guest UI when they
+ * already have an account.
+ */
+export function ticketTrackingUrl(opts: {
+  appUrl: string;
+  ticketNumber: string;
+  customerEmail: string;
+  customerId: string | null;
+}): string {
+  if (opts.customerId) {
+    return `${opts.appUrl}/portal/tickets/${opts.ticketNumber}`;
+  }
+  return guestTicketUrl(opts.appUrl, opts.ticketNumber, opts.customerEmail);
+}
+
 /** Verifies a guest token. Returns the email of the original submitter on success, null on failure. */
 export function verifyGuestToken(
   token: string,

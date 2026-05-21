@@ -69,6 +69,7 @@ export type NotificationEventType =
   // ── Staff-facing ──
   | "ticket.customer_replied"
   | "ticket.escalated"
+  | "ticket.csat_unsatisfied"
   | "sla.warning_50"
   | "sla.warning_80"
   | "sla.breached"

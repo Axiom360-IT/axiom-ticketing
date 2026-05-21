@@ -26,7 +26,11 @@ import {
 import { inngest } from "@/inngest/client";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
-import { guestTicketUrl, signCsatToken } from "@/lib/tokens";
+import {
+  guestTicketUrl,
+  signCsatToken,
+  ticketTrackingUrl,
+} from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 // ── Public ticket submission (no auth required) ──────────────────────
@@ -418,11 +422,16 @@ export async function assignTicket(
   // phone, and no in-app inbox.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(
+    // `ticketTrackingUrl` returns the portal URL for registered
+    // customers (so they land in their normal inbox view) and falls
+    // back to the token-signed guest URL only for tickets with no
+    // `customerId`.
+    const trackingUrl = ticketTrackingUrl({
       appUrl,
-      ticket.ticketNumber,
-      ticket.customerEmail,
-    );
+      ticketNumber: ticket.ticketNumber,
+      customerEmail: ticket.customerEmail,
+      customerId: ticket.customerId,
+    });
     if (ticket.customerId) {
       await inngest.send({
         name: "notification/dispatch",
@@ -854,11 +863,12 @@ export async function replyToTicket(
   // tracking URL.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(
+    const trackingUrl = ticketTrackingUrl({
       appUrl,
-      ticket.ticketNumber,
-      ticket.customerEmail,
-    );
+      ticketNumber: ticket.ticketNumber,
+      customerEmail: ticket.customerEmail,
+      customerId: ticket.customerId,
+    });
     if (ticket.customerId) {
       await inngest.send({
         name: "notification/dispatch",
@@ -1152,11 +1162,12 @@ export async function resolveTicket(
   // runs hourly in `inngest/functions/auto-close-resolved.ts`.
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(
+    const trackingUrl = ticketTrackingUrl({
       appUrl,
-      ticket.ticketNumber,
-      ticket.customerEmail,
-    );
+      ticketNumber: ticket.ticketNumber,
+      customerEmail: ticket.customerEmail,
+      customerId: ticket.customerId,
+    });
     const satToken = signCsatToken(ticket.ticketNumber, "satisfied");
     const unsatToken = signCsatToken(ticket.ticketNumber, "unsatisfied");
     if (ticket.customerId) {
@@ -1283,11 +1294,12 @@ export async function reopenTicket(ticketId: string): Promise<void> {
   // guests (no preferences row).
   try {
     const appUrl = getAppUrl();
-    const trackingUrl = guestTicketUrl(
+    const trackingUrl = ticketTrackingUrl({
       appUrl,
-      ticket.ticketNumber,
-      ticket.customerEmail,
-    );
+      ticketNumber: ticket.ticketNumber,
+      customerEmail: ticket.customerEmail,
+      customerId: ticket.customerId,
+    });
     if (ticket.customerId) {
       await inngest.send({
         name: "notification/dispatch",

@@ -24,6 +24,10 @@ import {
   type StaffSetupInviteProps,
 } from "./templates/staff-setup-invite";
 import {
+  CsatUnsatisfiedStaffEmail,
+  type CsatUnsatisfiedStaffProps,
+} from "./templates/csat-unsatisfied-staff";
+import {
   EscalationAlertEmail,
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
@@ -94,6 +98,10 @@ export type EmailTemplate =
   | {
       template: "escalation_alert";
       data: Omit<EscalationAlertProps, "locale">;
+    }
+  | {
+      template: "csat_unsatisfied_staff";
+      data: Omit<CsatUnsatisfiedStaffProps, "locale">;
     }
   | { template: "inbound_bounce"; data: Omit<InboundBounceProps, "locale"> }
   | {
@@ -183,6 +191,10 @@ async function renderTemplate(
       return await render(
         <EscalationAlertEmail {...t.data} locale={locale} />,
       );
+    case "csat_unsatisfied_staff":
+      return await render(
+        <CsatUnsatisfiedStaffEmail {...t.data} locale={locale} />,
+      );
     case "inbound_bounce":
       return await render(<InboundBounceEmail {...t.data} locale={locale} />);
     case "inbound_closed_ticket":
@@ -237,6 +249,7 @@ const TEMPLATE_NAMESPACE = {
   ticket_reopened: "emails.ticketReopened",
   new_assignment: "emails.newAssignment",
   escalation_alert: "emails.escalationAlert",
+  csat_unsatisfied_staff: "emails.csatUnsatisfiedStaff",
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",
   procurement_submitted: "emails.procurementSubmitted",

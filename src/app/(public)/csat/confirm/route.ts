@@ -3,11 +3,11 @@ import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/auth";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
-import { guestTicketUrl, verifyCsatToken } from "@/lib/tokens";
+import { ticketTrackingUrl, verifyCsatToken } from "@/lib/tokens";
+import { inngest } from "@/inngest/client";
 
 // One-click CSAT confirmation. The link in the resolved-email HMAC-encodes
 // (ticketNumber, response) so a single GET is enough — no DB lookup is
@@ -37,6 +37,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       subject: tickets.subject,
       status: tickets.status,
       assignedToId: tickets.assignedToId,
+      customerId: tickets.customerId,
       customerEmail: tickets.customerEmail,
       customerName: tickets.customerName,
       csatResponse: tickets.csatResponse,
@@ -147,39 +148,59 @@ export async function GET(request: NextRequest): Promise<Response> {
     after: { status: newStatus, csatResponse: "unsatisfied" },
   });
 
-  // Notify the assigned tech (best-effort) so they know the customer pushed back.
-  if (ticket.assignedToId) {
-    try {
-      const [tech] = await db
-        .select({ name: users.name, email: users.email })
-        .from(users)
-        .where(eq(users.id, ticket.assignedToId))
-        .limit(1);
-      if (tech) {
-        await sendEmail({
-          to: tech.email,
+  // Notify the assigned tech + Coordinator role so the team knows the
+  // customer pushed back and the ticket is still not resolved. Goes
+  // through the dispatcher so each recipient's email/SMS/bell prefs
+  // are honored.
+  try {
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.csat_unsatisfied",
+        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+        recipientRoles: ["Coordinator"],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
           template: {
-            template: "new_assignment",
+            template: "csat_unsatisfied_staff",
             data: {
               ticketNumber: ticket.ticketNumber,
-              technicianName: tech.name,
               subject: ticket.subject,
-              priority: "high",
               customerName: ticket.customerName,
               ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
             },
           },
           ticketNumber: ticket.ticketNumber,
-        });
-      }
-    } catch (err) {
-      console.error("[csat/confirm] tech notification failed:", err);
-    }
+        },
+        sms: {
+          template: {
+            template: "csat_unsatisfied_staff",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+            },
+          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { customerName: ticket.customerName },
+          linkUrl: `/admin/tickets/${ticket.id}`,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[csat/confirm] staff notification dispatch failed:", err);
   }
 
   // Confirm to the customer that we've reopened.
   try {
-    const trackingUrl = guestTicketUrl(appUrl, ticket.ticketNumber, ticket.customerEmail);
+    const trackingUrl = ticketTrackingUrl({
+      appUrl,
+      ticketNumber: ticket.ticketNumber,
+      customerEmail: ticket.customerEmail,
+      customerId: ticket.customerId,
+    });
     await sendEmail({
       to: ticket.customerEmail,
       template: {
