@@ -191,6 +191,8 @@
         "subjectPlaceholder": "Brief summary of the problem",
         "categoryLabel": "Category",
         "categoryPlaceholder": "Select category",
+        "categoryOtherLabel": "Other (please specify)",
+        "categoryOtherPlaceholder": "What category does this fall under?",
         "priorityLabel": "Priority",
         "priorityPlaceholder": "Select priority",
         "descriptionLabel": "Description",
@@ -199,7 +201,8 @@
         "submitting": "Submitting…",
         "errors": {
           "tooMany": "You've reached today's ticket limit. Try again tomorrow.",
-          "chooseCategory": "Please choose a category."
+          "chooseCategory": "Please choose a category.",
+          "describeOther": "Please describe what 'Other' refers to."
         }
       },
       "reply": {
@@ -427,6 +430,8 @@
         "subjectAgentPlaceholder": "Short summary as the customer described it",
         "category": "Category",
         "categoryPlaceholder": "Select category",
+        "categoryOtherLabel": "Other (please specify)",
+        "categoryOtherPlaceholder": "What category does this fall under?",
         "priority": "Priority",
         "priorityPlaceholder": "Select priority",
         "description": "Description",
@@ -445,6 +450,7 @@
       "draftPreparing": "Preparing…",
       "chooseCategoryPriority": "Please choose a category and priority.",
       "chooseCategory": "Please choose a category.",
+      "describeOther": "Please describe what 'Other' refers to.",
       "errors": {
         "tooManyByIp": "Too many submissions from your network. Try again in an hour.",
         "tooManyByEmail": "Too many submissions from this email today. Try again tomorrow.",

@@ -514,10 +514,18 @@ const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 // trigger `recomputeSlaForTicket`. (Mirrors the same decision in the
 // public `createTicket` schema.)
 const customerCreateSchema = z.object({
-  subject: z.string().trim().min(3).max(150),
+  subject: z
+    .string()
+    .trim()
+    .min(3, "Subject must be at least 3 characters")
+    .max(150, "Subject must be at most 150 characters"),
   category: z.enum(TICKET_CATEGORIES),
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
-  description: z.string().trim().min(20).max(5000),
+  description: z
+    .string()
+    .trim()
+    .min(20, "Description must be at least 20 characters")
+    .max(5000, "Description must be at most 5000 characters"),
   // Optional ID of a draft ticket created via `prepareCustomerTicketDraft`.
   // When present, the action UPDATES the draft to `open` instead of
   // inserting a new ticket — so pre-uploaded attachments already linked

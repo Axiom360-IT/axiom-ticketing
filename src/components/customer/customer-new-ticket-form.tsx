@@ -34,6 +34,7 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
 
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number] | "">("");
+  const [categoryOther, setCategoryOther] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +64,22 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
       setError(t("errors.chooseCategory"));
       return;
     }
+    const otherTrim = categoryOther.trim();
+    if (category === "other" && otherTrim.length === 0) {
+      setError(t("errors.describeOther"));
+      return;
+    }
+    // Prepend the "Other: X" specifier so the Coordinator sees it in
+    // the description block when triaging.
+    const finalDescription =
+      category === "other"
+        ? `[Other category: ${otherTrim}]\n\n${description.trim()}`
+        : description.trim();
     setSubmitting(true);
     const result = await customerCreateTicket({
       subject: subject.trim(),
       category,
-      description: description.trim(),
+      description: finalDescription,
       draftTicketId: draftTicketId ?? undefined,
     });
     setSubmitting(false);
@@ -126,6 +138,20 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
             </option>
           ))}
         </select>
+        {category === "other" ? (
+          <input
+            id="categoryOther"
+            name="categoryOther"
+            type="text"
+            required
+            maxLength={120}
+            value={categoryOther}
+            onChange={(e) => setCategoryOther(e.target.value)}
+            placeholder={t("categoryOtherPlaceholder")}
+            aria-label={t("categoryOtherLabel")}
+            className="mt-2 w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        ) : null}
       </div>
 
       <div>

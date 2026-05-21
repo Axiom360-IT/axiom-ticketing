@@ -81,6 +81,7 @@ export function SubmissionForm({
     customerEmail: initialEmail,
     subject: "",
     category: "" as "" | CategoryValue,
+    categoryOther: "",
     description: "",
   });
   const [turnstileToken, setTurnstileToken] = useState<string>("");
@@ -174,6 +175,16 @@ export function SubmissionForm({
       return;
     }
 
+    const otherTrim = formData.categoryOther.trim();
+    if (formData.category === "other" && otherTrim.length === 0) {
+      setError(tSubmit("describeOther"));
+      return;
+    }
+    const finalDescription =
+      formData.category === "other"
+        ? `[Other category: ${otherTrim}]\n\n${formData.description}`
+        : formData.description;
+
     setSubmitting(true);
     const result = await createTicket({
       customerName: formData.customerName,
@@ -182,7 +193,7 @@ export function SubmissionForm({
       category: formData.category,
       // Priority intentionally omitted — server defaults to `medium`,
       // Coordinator triages on review.
-      description: formData.description,
+      description: finalDescription,
       turnstileToken: turnstileToken || undefined,
       honeypot,
       draftTicketId: draftTicketId ?? undefined,
@@ -285,6 +296,18 @@ export function SubmissionForm({
               ))}
             </SelectContent>
           </Select>
+          {formData.category === "other" ? (
+            <Input
+              id="categoryOther"
+              required
+              maxLength={120}
+              value={formData.categoryOther}
+              onChange={(e) => update("categoryOther", e.target.value)}
+              placeholder={tFields("categoryOtherPlaceholder")}
+              aria-label={tFields("categoryOtherLabel")}
+              className="mt-2"
+            />
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
