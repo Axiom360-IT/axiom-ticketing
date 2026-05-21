@@ -43,6 +43,15 @@ const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 // Module-private — Next.js 16 forbids non-async-function exports from
 // "use server" files. Schemas + types stay internal; callers pass plain
 // objects to the actions and the schema validates server-side.
+//
+// Priority is deliberately NOT required from customers. Letting end users
+// self-assign priority is the fastest known way to make every ticket
+// "critical" within weeks — the Coordinator triages priority on review.
+// Defaulting to `medium` here lands new tickets in a reasonable SLA bucket;
+// when a coordinator later changes the priority, `recomputeSlaForTicket`
+// re-stamps the due-time columns. Internal-staff actions that genuinely
+// know the priority up front (`createTicketOnBehalf`) still take it
+// explicitly — that schema is below and unchanged.
 const createTicketSchema = z.object({
   customerName: z.string().trim().min(1, "Name is required").max(120),
   customerEmail: z.string().trim().toLowerCase().email("Enter a valid email"),
@@ -52,7 +61,7 @@ const createTicketSchema = z.object({
     .min(3, "Subject must be at least 3 characters")
     .max(150, "Subject must be at most 150 characters"),
   category: z.enum(TICKET_CATEGORIES),
-  priority: z.enum(TICKET_PRIORITIES),
+  priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   description: z
     .string()
     .trim()
@@ -63,7 +72,12 @@ const createTicketSchema = z.object({
   honeypot: z.string().optional(),
 });
 
-type CreateTicketInput = z.infer<typeof createTicketSchema>;
+// `z.input` rather than `z.infer` so callers can OMIT `priority` —
+// the schema's `.optional().default("medium")` makes priority optional
+// in the input but defaulted (non-optional) in the output. `z.input<>`
+// gives us the caller-facing shape; the action body uses `parsed.data`
+// which is the output type (always has priority defined).
+type CreateTicketInput = z.input<typeof createTicketSchema>;
 
 type CreateTicketResult =
   | { ok: true; ticketNumber: string }

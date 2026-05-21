@@ -25,10 +25,11 @@ const CATEGORY_OPTIONS = [
   "other",
 ] as const;
 
-const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
+// Priority is intentionally not exposed to customers (see
+// `createTicketSchema` comment in `src/app/actions/tickets.ts`). The
+// server defaults to `medium`; coordinators triage on review.
 
 type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
-type PriorityValue = (typeof PRIORITY_OPTIONS)[number];
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -65,7 +66,6 @@ export function SubmissionForm({
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
   const tCategory = useTranslations("tickets.category");
-  const tPriorityDesc = useTranslations("tickets.categoryDescription");
 
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -75,7 +75,6 @@ export function SubmissionForm({
     customerEmail: initialEmail,
     subject: "",
     category: "" as "" | CategoryValue,
-    priority: "" as "" | PriorityValue,
     description: "",
   });
   const [turnstileToken, setTurnstileToken] = useState<string>("");
@@ -116,8 +115,8 @@ export function SubmissionForm({
     e.preventDefault();
     setError(null);
 
-    if (!formData.category || !formData.priority) {
-      setError(tSubmit("chooseCategoryPriority"));
+    if (!formData.category) {
+      setError(tSubmit("chooseCategory"));
       return;
     }
 
@@ -127,7 +126,8 @@ export function SubmissionForm({
       customerEmail: formData.customerEmail,
       subject: formData.subject,
       category: formData.category,
-      priority: formData.priority,
+      // Priority intentionally omitted — server defaults to `medium`,
+      // Coordinator triages on review.
       description: formData.description,
       turnstileToken: turnstileToken || undefined,
       honeypot,
@@ -210,47 +210,25 @@ export function SubmissionForm({
           />
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="category">{tFields("category")}</Label>
-            <Select
-              value={formData.category}
-              onValueChange={(v) =>
-                update("category", v as typeof formData.category)
-              }
-            >
-              <SelectTrigger id="category">
-                <SelectValue placeholder={tFields("categoryPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORY_OPTIONS.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {tCategory(value)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="priority">{tFields("priority")}</Label>
-            <Select
-              value={formData.priority}
-              onValueChange={(v) =>
-                update("priority", v as typeof formData.priority)
-              }
-            >
-              <SelectTrigger id="priority">
-                <SelectValue placeholder={tFields("priorityPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITY_OPTIONS.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {tPriorityDesc(value)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="category">{tFields("category")}</Label>
+          <Select
+            value={formData.category}
+            onValueChange={(v) =>
+              update("category", v as typeof formData.category)
+            }
+          >
+            <SelectTrigger id="category">
+              <SelectValue placeholder={tFields("categoryPlaceholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {tCategory(value)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-1.5">

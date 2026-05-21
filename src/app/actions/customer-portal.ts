@@ -481,14 +481,21 @@ const TICKET_CATEGORIES = [
 ] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
+// Customer-portal ticket creation. Priority is deliberately not asked
+// for here — the Coordinator triages on review. Defaults to `medium`
+// so the new ticket lands in a sane SLA bucket, and changes later
+// trigger `recomputeSlaForTicket`. (Mirrors the same decision in the
+// public `createTicket` schema.)
 const customerCreateSchema = z.object({
   subject: z.string().trim().min(3).max(150),
   category: z.enum(TICKET_CATEGORIES),
-  priority: z.enum(TICKET_PRIORITIES),
+  priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   description: z.string().trim().min(20).max(5000),
 });
 
-export type CustomerCreateTicketInput = z.infer<typeof customerCreateSchema>;
+// `z.input<>` so callers can omit `priority` — see the matching note
+// on `CreateTicketInput` in `src/app/actions/tickets.ts`.
+export type CustomerCreateTicketInput = z.input<typeof customerCreateSchema>;
 
 export type CustomerCreateTicketResult =
   | { ok: true; ticketNumber: string }

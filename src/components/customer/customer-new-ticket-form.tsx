@@ -6,17 +6,18 @@ import { useTranslations } from "next-intl";
 import { customerCreateTicket } from "@/app/actions/customer-portal";
 
 const CATEGORIES = ["hardware", "software", "network", "access", "other"] as const;
-const PRIORITIES = ["low", "medium", "high", "critical"] as const;
+
+// Priority is intentionally not collected from customers — Coordinator
+// triages on review. Server defaults to `medium`. See the
+// `customerCreateSchema` comment in `src/app/actions/customer-portal.ts`.
 
 export function CustomerNewTicketForm() {
   const router = useRouter();
   const t = useTranslations("portal.tickets.new");
   const tCat = useTranslations("tickets.category");
-  const tPri = useTranslations("tickets.priority");
 
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number] | "">("");
-  const [priority, setPriority] = useState<(typeof PRIORITIES)[number] | "">("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,15 +25,15 @@ export function CustomerNewTicketForm() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!category || !priority) {
-      setError(t("errors.tooMany"));
+    if (!category) {
+      setError(t("errors.chooseCategory"));
       return;
     }
     setSubmitting(true);
     const result = await customerCreateTicket({
       subject: subject.trim(),
       category,
-      priority,
+      // Priority omitted — server defaults to `medium`.
       description: description.trim(),
     });
     setSubmitting(false);
@@ -67,58 +68,30 @@ export function CustomerNewTicketForm() {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label
-            htmlFor="category"
-            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
-          >
-            {t("categoryLabel")}
-          </label>
-          <select
-            id="category"
-            name="category"
-            required
-            value={category}
-            onChange={(e) =>
-              setCategory(e.target.value as (typeof CATEGORIES)[number] | "")
-            }
-            className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">{t("categoryPlaceholder")}</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {tCat(c)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label
-            htmlFor="priority"
-            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
-          >
-            {t("priorityLabel")}
-          </label>
-          <select
-            id="priority"
-            name="priority"
-            required
-            value={priority}
-            onChange={(e) =>
-              setPriority(e.target.value as (typeof PRIORITIES)[number] | "")
-            }
-            className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">{t("priorityPlaceholder")}</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {tPri(p)}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label
+          htmlFor="category"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("categoryLabel")}
+        </label>
+        <select
+          id="category"
+          name="category"
+          required
+          value={category}
+          onChange={(e) =>
+            setCategory(e.target.value as (typeof CATEGORIES)[number] | "")
+          }
+          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">{t("categoryPlaceholder")}</option>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {tCat(c)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>

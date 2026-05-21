@@ -5,6 +5,28 @@ entries go at the top; date them.
 
 ---
 
+## 2026-05-21 · Customers don't pick ticket priority
+
+The customer-facing ticket forms (anonymous `/portal/submit` and authenticated `/portal/tickets/new`) used to require the submitter to choose a priority — `low / medium / high / critical`. Two production failures of that design (independent of our codebase, observed across the industry):
+
+1. **Priority inflation.** Every customer thinks their issue is the most important one. Within weeks "everything is critical." The categorical meaning collapses; the team can't actually triage.
+2. **Vested-interest field.** The submitter has an obvious incentive to mark their own issue high. Asking them is asking the wrong person.
+
+Zendesk, Jira Service Management, Freshdesk all hide priority from customers on the standard form for the same reasons.
+
+**New flow:**
+
+- Both customer-facing forms drop the priority dropdown entirely.
+- Server schemas (`createTicketSchema` in `tickets.ts`, `customerCreateSchema` in `customer-portal.ts`) now have `priority: z.enum(TICKET_PRIORITIES).optional().default("medium")`. Tickets that omit priority land at `medium` — a reasonable SLA bucket.
+- Caller-facing types are `z.input<typeof schema>` not `z.infer<>`, so `priority` is properly optional on the action's input but always defined on `parsed.data` inside the action body.
+- **`createTicketOnBehalf` (staff creating a ticket for a customer) keeps the priority field.** Staff have the context to set it correctly, and that's a different flow.
+- **Inbound-email tickets** were already defaulting to `medium` (see `DEFAULT_INBOUND_PRIORITY` in `process-inbound-email.ts`) — consistent.
+- When the Coordinator later changes priority on a ticket, `recomputeSlaForTicket` re-stamps the due-time columns. That code path already existed; this change just makes it the primary mechanism for priority assignment.
+
+**What this does NOT do:** doesn't remove "Urgency" as a concept. If we ever want a softer urgency input from customers (a 3-level "Low / Normal / High" picker that maps to priority but doesn't pretend to BE priority), we can add it later. For now the subject + description carries the urgency signal — a coordinator reading "Production database is down" doesn't need a dropdown to know it's critical.
+
+---
+
 ## 2026-05-21 · Phone field uses `react-phone-number-input` (country picker)
 
 Plain `<input type="tel">` accepted E.164 but didn't help users enter it — anyone typing `416-555-0123` got a validation error with no guidance. Swapped for `react-phone-number-input` across all four phone surfaces (customer sign-up, customer profile, admin user-create, admin profile).

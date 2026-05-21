@@ -181,7 +181,8 @@
         "submit": "Submit ticket",
         "submitting": "Submitting…",
         "errors": {
-          "tooMany": "You've reached today's ticket limit. Try again tomorrow."
+          "tooMany": "You've reached today's ticket limit. Try again tomorrow.",
+          "chooseCategory": "Please choose a category."
         }
       },
       "reply": {
@@ -417,6 +418,7 @@
       "submitButton": "Submit ticket",
       "submitting": "Submitting…",
       "chooseCategoryPriority": "Please choose a category and priority.",
+      "chooseCategory": "Please choose a category.",
       "errors": {
         "tooManyByIp": "Too many submissions from your network. Try again in an hour.",
         "tooManyByEmail": "Too many submissions from this email today. Try again tomorrow.",

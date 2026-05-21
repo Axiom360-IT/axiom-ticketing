@@ -461,7 +461,7 @@ Storage keys: `<env>/<ticketId>/<attachmentId>/<sanitizedFilename>` for attachme
 
 `/portal/submit` → `submission-form.tsx` → `createTicket` Server Action. Layered defenses:
 
-1. zod validation (name 1–120, email, subject 3–150, description 20–5000, category in 5 enum values, priority in 4 enum values).
+1. zod validation (name 1–120, email, subject 3–150, description 20–5000, category in 5 enum values). **Priority is not asked of the customer** — schema defaults to `medium`, Coordinator triages on review.
 2. Honeypot field — if a bot fills it, the action returns a success-shaped result with `ticketNumber: "AX-XXXX"` to discourage retries.
 3. IP rate limit (`publicSubmitByIp`, 5/hour) and email rate limit (`publicSubmitByEmail`, 20/day) — both checked before Turnstile to avoid burning the captcha budget.
 4. Cloudflare Turnstile (`verifyTurnstile`) — required in production, skipped in dev with a warning when no secret is set.
@@ -619,6 +619,7 @@ Other notable posture:
 
 Architectural decisions that aren't obvious from reading the code live in [`DECISIONS.md`](./DECISIONS.md), newest first. Examples currently captured:
 
+- **2026-05-21 — Customers don't pick ticket priority:** priority dropdown removed from `/portal/submit` and `/portal/tickets/new`. Server schemas default to `medium`. Coordinator triages priority on review; `recomputeSlaForTicket` re-stamps SLA columns when priority changes. Staff-side `createTicketOnBehalf` keeps the field.
 - **2026-05-21 — Phone field uses `react-phone-number-input` (country picker):** plain `<input type="tel">` swapped for the library's flag-dropdown + auto-formatting + per-country validation. Default country `PK`. Tailwind-friendly theme overrides in `src/app/globals.css`. Server zod check stays as defense-in-depth.
 - **2026-05-21 — Phone everywhere + customer portal shell upgrade:** Phone collection wired into customer sign-up, customer profile, admin user-create, admin profile (E.164 optional, empty → null, magic-link sign-up persists via Better Auth `additionalFields`). Customer portal gets a real shell: `<CustomerSidebar>` on `lg+` mirroring the admin layout, a `/portal` dashboard with status stat cards and recent tickets, notifications bell in the topbar, and ticket-list filters (status chips + search, URL-driven).
 - **2026-05-21 — Sanitizer swap + sign-in production fixes:** `isomorphic-dompurify` replaced with `sanitize-html` (a transitive ESM dep crashed every server action that imported the sanitizer on Vercel's Node 24 / Next 16 runtime); proxy now checks both `better-auth.session_token` AND `__Secure-better-auth.session_token` so magic-link-verified users don't bounce back to sign-in; sign-in is existing-accounts-only — unknown emails get a friendly `account_not_found` error pointing at `/portal/sign-up` where the name field is captured.
