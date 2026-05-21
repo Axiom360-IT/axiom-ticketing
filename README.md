@@ -200,8 +200,10 @@ The App Router tree is split into two route groups: `(admin)` and `(public)`. Th
 
 Next.js 16 renamed the `middleware.ts` convention to `proxy.ts`. Two responsibilities:
 
-1. **Auth pre-check** on `/admin/*` and `/portal/(authenticated)/*` — if the `better-auth.session_token` cookie is missing, redirect to the relevant sign-in page with `?from=<original-pathname>`. Full session validation still runs server-side in each gated layout via `getSessionUser()`.
+1. **Auth pre-check** on `/admin/*` and `/portal/(authenticated)/*` — if no session cookie is present, redirect to the relevant sign-in page with `?from=<original-pathname>`. Full session validation still runs server-side in each gated layout via `getSessionUser()`.
 2. **IP-based rate limit** of 5/minute on `/api/auth/sign-in/*` (per-account lockout is enforced separately inside the sign-in Server Action).
+
+**Session-cookie name resolution:** Better Auth promotes its cookie to the `__Secure-` prefix over HTTPS (browser security convention — `__Secure-` cookies can only be set over TLS). The proxy's helper `hasBetterAuthSessionCookie(req)` checks BOTH `better-auth.session_token` (HTTP / local dev) and `__Secure-better-auth.session_token` (HTTPS / production). Without this, the proxy in production never sees the cookie Better Auth just set after a successful magic-link verification and redirects the user right back to the sign-in page.
 
 **Public-on-purpose exclusions under `/admin`:** `/admin/login` (front door) and `/admin/setup` (where the staff setup-invite email lands so a fresh user can pick a password BEFORE they have any way to authenticate). Both are reachable without a session — gating either would create a redirect loop.
 

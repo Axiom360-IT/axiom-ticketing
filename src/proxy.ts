@@ -13,6 +13,20 @@ import { clientIp } from "@/lib/request";
 //    is enforced inside the sign-in Server Action, not here — the proxy
 //    only sees the IP, not the email.
 
+// Better Auth promotes its session cookie to the `__Secure-` prefix when
+// the connection is HTTPS — a browser-security convention that forbids
+// the cookie from being set over plain HTTP. So in production the cookie
+// is `__Secure-better-auth.session_token`, while in local dev (HTTP) it
+// stays `better-auth.session_token`. The proxy doesn't validate the
+// value (the layout does); it only needs to know "is a session cookie
+// present?" — so checking both names is enough.
+function hasBetterAuthSessionCookie(req: NextRequest): boolean {
+  return Boolean(
+    req.cookies.get("better-auth.session_token")?.value ||
+      req.cookies.get("__Secure-better-auth.session_token")?.value,
+  );
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -50,8 +64,7 @@ export async function proxy(req: NextRequest) {
     !pathname.startsWith("/admin/login") &&
     !pathname.startsWith("/admin/setup")
   ) {
-    const sessionToken = req.cookies.get("better-auth.session_token");
-    if (!sessionToken) {
+    if (!hasBetterAuthSessionCookie(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/admin/login";
       url.searchParams.set("from", pathname);
@@ -68,8 +81,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/portal/profile/") ||
     pathname === "/portal/sign-out"
   ) {
-    const sessionToken = req.cookies.get("better-auth.session_token");
-    if (!sessionToken) {
+    if (!hasBetterAuthSessionCookie(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/portal/sign-in";
       url.searchParams.set("from", pathname);

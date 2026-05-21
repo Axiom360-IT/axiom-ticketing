@@ -144,16 +144,10 @@ export function SignInForm() {
       >
         {mode === "magic" ? t("usePassword") : t("useMagic")}
       </button>
-
-      <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-        {t("noAccount")}{" "}
-        <a
-          href="/portal/sign-up"
-          className="text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          {t("signUpLink")}
-        </a>
-      </p>
+      {/* The "Don't have an account? Create one" + "Submit as guest"
+          links are rendered ONCE by the page's footerSlot below the
+          card. Repeating them inside the form produced two copies of
+          the same line stacked on top of each other. */}
     </form>
   );
 }
