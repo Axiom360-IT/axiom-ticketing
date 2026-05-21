@@ -99,12 +99,9 @@ export async function requestMagicLink(
       body: {
         email: normalized,
         callbackURL: "/portal/tickets",
-        // `newUserCallbackURL` is kept here even though the user-existence
-        // check above already rules out new accounts on this path. Better
-        // Auth's request validation may require the field to be present;
-        // setting it is harmless (the new-user branch is unreachable
-        // because we filter unknown emails out earlier) and avoids a
-        // runtime "invalid input" throw on certain plugin builds.
+        // `newUserCallbackURL` kept defensively; the existence check
+        // above already rules out new accounts on this path, but Better
+        // Auth's request validator may require the field to be present.
         newUserCallbackURL: "/portal/tickets",
         errorCallbackURL: "/portal/sign-in?error=expired",
       },

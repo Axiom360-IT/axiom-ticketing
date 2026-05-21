@@ -5,6 +5,18 @@ entries go at the top; date them.
 
 ---
 
+## 2026-05-21 · Sanitizer swap (isomorphic-dompurify → sanitize-html); sign-in cookie-prefix fix; sign-in is existing-accounts-only
+
+Three changes ship together. Common thread: every fix here was forced by production runtime behavior that doesn't show up in dev or in tests.
+
+- **`isomorphic-dompurify` is gone; `sanitize-html` is in.** A late-2025 dependency tree shift caused `html-encoding-sniffer@6` to `require()` an ESM-only `@exodus/bytes/encoding-lite.js`, which Vercel's Node 24 runtime under Next 16 / Turbopack can't resolve synchronously. Every server action that loaded `lib/messages/sanitize.ts` — including the sign-in path via `customer-portal.ts` — crashed at module load with `ERR_REQUIRE_ESM`. The user couldn't sign in. `sanitize-html` is pure CommonJS, purpose-built for server-side HTML sanitization, no DOM polyfill, no jsdom. Same security guarantees: allowlist of tags, allowlist of attributes, restricted URL schemes, every `<a>` rewritten to `target="_blank" rel="noopener noreferrer"`. The `transformTags` API is cleaner than DOMPurify's `ADD_ATTR` + regex post-processing we had before.
+
+- **Proxy now checks both session-cookie names.** Better Auth promotes its session cookie to the `__Secure-` prefix over HTTPS (browser security convention — `__Secure-` cookies can only be set over TLS). The proxy was only looking for `better-auth.session_token`, missing the prefixed version in production. After a successful magic-link verification, the proxy saw "no cookie" and redirected the freshly-signed-in user back to `/portal/sign-in?from=/portal/tickets`. Helper `hasBetterAuthSessionCookie(req)` checks both names; the proxy never validates the value (the layout does that), so accepting either name is enough.
+
+- **Sign-in is existing-accounts-only.** Previously `requestMagicLink` passed `newUserCallbackURL`, so Better Auth auto-created accounts on first magic-link click for unknown emails. That meant users who took the "shortcut" of entering email on the sign-in page (skipping `/portal/sign-up`) ended up with nameless accounts (the sign-in form has no name field). Hard for agents to triage "(no name) opened a ticket." New rule: sign-in performs a user-existence check before issuing the magic link; unknown emails get `account_not_found`, surfaced as a friendly "Use Create one below" message in the form. New users MUST go through `/portal/sign-up`, where the name is captured. Trade-off: minor email enumeration risk (an attacker can probe which addresses exist), acceptable for an internal IT ticketing tool. Rate limits (10/IP/hr, 3/email/hr) keep probing slow.
+
+---
+
 ## 2026-05-22 · Admin user-create direct insert; setup-invite auto-sign-in; sidebar permission gating; hierarchy filter; matrix native `<details>`
 
 A bundle of corrections after the system was used end-to-end in production. Common thread: every fix here closes a gap that wasn't obvious from reading the code alone — only from operating it.
