@@ -101,7 +101,11 @@ export function RichTextEditor({
   return (
     <div
       className={cn(
-        "rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent",
+        // `relative` is required so the absolutely-positioned empty-state
+        // placeholder below anchors INSIDE this box. Without it the
+        // placeholder escapes to the nearest positioned ancestor and
+        // overlaps whatever is rendered near the editor.
+        "relative rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent",
         disabled && "opacity-60 pointer-events-none",
         className,
       )}

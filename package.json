@@ -22,7 +22,9 @@
     "db:seed": "tsx --env-file=.env.local src/lib/db/seed.ts",
     "db:seed-super-admin": "tsx --env-file=.env.local src/lib/db/seed-super-admin.ts",
     "db:seed-demo": "tsx --env-file=.env.local src/lib/db/seed-demo.ts",
-    "db:backfill-customers": "tsx --env-file=.env.local src/lib/db/backfill-customer-ids.ts"
+    "db:backfill-customers": "tsx --env-file=.env.local src/lib/db/backfill-customer-ids.ts",
+    "db:reset-keep-superadmin": "tsx src/lib/db/reset-keep-superadmin.ts",
+    "db:list-users": "tsx src/lib/db/list-users.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",
