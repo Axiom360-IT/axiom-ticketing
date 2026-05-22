@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
@@ -26,6 +26,9 @@ export async function claimTicketsForCustomer(
     .where(
       and(
         isNull(tickets.customerId),
+        // Skip pre-submission drafts — those are still being authored
+        // and the cleanup cron sweeps abandoned ones anyway.
+        ne(tickets.status, "draft"),
         sql`lower(${tickets.customerEmail}) = lower(${email})`,
       ),
     )

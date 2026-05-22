@@ -7,6 +7,7 @@ import { CustomerSidebar } from "@/components/customer/customer-sidebar";
 import { CustomerTopbar } from "@/components/customer/customer-topbar";
 import { getRecentNotifications } from "@/app/actions/notifications";
 import { loadBranding } from "@/lib/branding/load";
+import { claimTicketsForCustomer } from "@/lib/customer/reconcile";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 export default async function PortalAuthedLayout({
@@ -23,6 +24,21 @@ export default async function PortalAuthedLayout({
     .from(users)
     .where(eq(users.id, user.id))
     .limit(1);
+
+  // Reconcile any guest-submitted tickets whose `customer_email` matches
+  // this user but were never bound to the account. The `user.create.after`
+  // hook only claims tickets that existed AT sign-up time — anything
+  // submitted as a guest AFTER the account was created would otherwise
+  // stay orphaned. The claim is idempotent (filters `customer_id IS NULL`)
+  // and indexed on `customer_email`, so the steady-state cost is one
+  // 0-row UPDATE per portal navigation.
+  if (profile?.email) {
+    try {
+      await claimTicketsForCustomer(user.id, profile.email);
+    } catch (err) {
+      console.error("[portal/layout] ticket reconciliation failed:", err);
+    }
+  }
 
   // image stores the R2 storage key; sign with 1h TTL for browser caching.
   const avatarUrl = profile?.image
