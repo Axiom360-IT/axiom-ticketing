@@ -156,13 +156,18 @@ export async function updateRole(
     .limit(1);
   if (!role) throw new NotFoundError();
 
-  // System roles: name + description editable, but the permission set
-  // is locked. (Otherwise removing tickets.view from "Customer" would
-  // break the contract that customers can see their own tickets.)
-  if (role.isSystem && parsed.data.permissions !== undefined) {
+  // System roles: the permission set is locked for everyone EXCEPT the
+  // Super Admin (Meeting-2, CR-27 — "even the system roles should be editable
+  // by the system admin"). Name + description stay editable by anyone with
+  // roles.update. Deletion of system roles remains blocked for all.
+  if (
+    role.isSystem &&
+    parsed.data.permissions !== undefined &&
+    !caller.roleNames.has("Super Admin")
+  ) {
     return {
       ok: false,
-      error: "System role permissions can't be changed.",
+      error: "Only the Super Admin can change a system role's permissions.",
     };
   }
 

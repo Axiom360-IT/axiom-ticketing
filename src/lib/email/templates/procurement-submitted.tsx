@@ -8,7 +8,6 @@ export type ProcurementSubmittedProps = {
   requesterName: string;
   itemName: string;
   quantity: number;
-  urgency: string;
   adminUrl: string;
   locale: string;
 };
@@ -19,17 +18,12 @@ export async function ProcurementSubmittedEmail({
   requesterName,
   itemName,
   quantity,
-  urgency,
   adminUrl,
   locale,
 }: ProcurementSubmittedProps) {
   const t = await getTranslations({
     locale,
     namespace: "emails.procurementSubmitted",
-  });
-  const tUrgency = await getTranslations({
-    locale,
-    namespace: "procurement.urgency",
   });
   return (
     <EmailLayout
@@ -43,11 +37,7 @@ export async function ProcurementSubmittedEmail({
         {t("body", { requesterName, itemName, quantity })}
       </Text>
       <Text style={textStyles.meta}>
-        {t("meta", {
-          ticketNumber,
-          ticketSubject,
-          urgency: tUrgency(urgency as "low" | "medium" | "high"),
-        })}
+        {t("meta", { ticketNumber, ticketSubject })}
       </Text>
       <Link href={adminUrl} style={textStyles.button}>
         {t("review")}
@@ -62,7 +52,6 @@ ProcurementSubmittedEmail.PreviewProps = {
   requesterName: "Priya",
   itemName: "Dell Latitude 5450",
   quantity: 1,
-  urgency: "high",
   adminUrl: "https://tickets.axiom360.it/admin/procurement/00000000",
   locale: "en",
 } satisfies ProcurementSubmittedProps;

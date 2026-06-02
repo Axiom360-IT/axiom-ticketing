@@ -1,5 +1,6 @@
-import { type SQL, and, eq, isNull, ne, sql } from "drizzle-orm";
+import { type SQL, and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { tickets } from "../db/schema/tickets";
+import { ticketAssignees } from "../db/schema/ticket-assignees";
 import {
   type SessionUser,
   isStrictCustomer,
@@ -36,9 +37,16 @@ export function ticketsVisibilityCondition(user: SessionUser): SQL {
     if (ELEVATED_TICKET_ROLES.has(r)) return ACTIVE_TICKETS_BASE;
   }
 
-  // Strict Technician — only assigned tickets
+  // Strict Technician — tickets assigned to them OR where they are an
+  // additional collaborator (Meeting-2, CR-11).
   if (isStrictTechnician(user)) {
-    return and(ACTIVE_TICKETS_BASE, eq(tickets.assignedToId, user.id))!;
+    return and(
+      ACTIVE_TICKETS_BASE,
+      or(
+        eq(tickets.assignedToId, user.id),
+        sql`EXISTS (SELECT 1 FROM ${ticketAssignees} WHERE ${ticketAssignees.ticketId} = ${tickets.id} AND ${ticketAssignees.userId} = ${user.id})`,
+      ),
+    )!;
   }
 
   // Strict Customer — only own tickets. Linking guest-submitted tickets

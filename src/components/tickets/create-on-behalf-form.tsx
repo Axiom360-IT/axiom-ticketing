@@ -29,7 +29,16 @@ const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
 type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
 type PriorityValue = (typeof PRIORITY_OPTIONS)[number];
 
-export function CreateOnBehalfForm() {
+// Sentinel for "no organization" (the Select needs a non-empty value).
+const NO_ORG = "__none__";
+
+type OrgOption = { id: string; name: string };
+
+export function CreateOnBehalfForm({
+  organizations = [],
+}: {
+  organizations?: OrgOption[];
+}) {
   const router = useRouter();
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
@@ -41,6 +50,7 @@ export function CreateOnBehalfForm() {
   const [data, setData] = useState({
     customerName: "",
     customerEmail: "",
+    organizationId: NO_ORG,
     subject: "",
     category: "" as "" | CategoryValue,
     priority: "" as "" | PriorityValue,
@@ -67,6 +77,8 @@ export function CreateOnBehalfForm() {
     const res = await createTicketOnBehalf({
       customerName: data.customerName,
       customerEmail: data.customerEmail,
+      organizationId:
+        data.organizationId === NO_ORG ? undefined : data.organizationId,
       subject: data.subject,
       category: data.category,
       priority: data.priority,
@@ -105,6 +117,28 @@ export function CreateOnBehalfForm() {
           />
         </div>
       </div>
+
+      {organizations.length > 0 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="organization">{tFields("organization")}</Label>
+          <Select
+            value={data.organizationId}
+            onValueChange={(v) => update("organizationId", v ?? NO_ORG)}
+          >
+            <SelectTrigger id="organization">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_ORG}>{tFields("organizationNone")}</SelectItem>
+              {organizations.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       <div className="space-y-1.5">
         <Label htmlFor="subject">{tFields("subject")}</Label>

@@ -7,30 +7,14 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createTicket, prepareGuestTicketDraft } from "@/app/actions/tickets";
 import { AttachmentPicker } from "@/components/customer/attachment-picker";
 
-const CATEGORY_OPTIONS = [
-  "hardware",
-  "software",
-  "network",
-  "access",
-  "other",
-] as const;
-
-// Priority is intentionally not exposed to customers (see
-// `createTicketSchema` comment in `src/app/actions/tickets.ts`). The
-// server defaults to `medium`; coordinators triage on review.
-
-type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
+// Category was removed from the customer form (Meeting-2, CR-03) — customers
+// don't reliably know hardware vs software. The server defaults it to "other"
+// and the Coordinator triages (AI classification later). Priority is likewise
+// not exposed to customers; the server defaults to `medium`.
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -71,7 +55,6 @@ export function SubmissionForm({
   const router = useRouter();
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
-  const tCategory = useTranslations("tickets.category");
 
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -79,9 +62,8 @@ export function SubmissionForm({
   const [formData, setFormData] = useState({
     customerName: initialName,
     customerEmail: initialEmail,
+    organization: "",
     subject: "",
-    category: "" as "" | CategoryValue,
-    categoryOther: "",
     description: "",
   });
   const [turnstileToken, setTurnstileToken] = useState<string>("");
@@ -170,30 +152,15 @@ export function SubmissionForm({
     e.preventDefault();
     setError(null);
 
-    if (!formData.category) {
-      setError(tSubmit("chooseCategory"));
-      return;
-    }
-
-    const otherTrim = formData.categoryOther.trim();
-    if (formData.category === "other" && otherTrim.length === 0) {
-      setError(tSubmit("describeOther"));
-      return;
-    }
-    const finalDescription =
-      formData.category === "other"
-        ? `[Other category: ${otherTrim}]\n\n${formData.description}`
-        : formData.description;
-
     setSubmitting(true);
     const result = await createTicket({
       customerName: formData.customerName,
       customerEmail: formData.customerEmail,
+      organization: formData.organization,
       subject: formData.subject,
-      category: formData.category,
       // Priority intentionally omitted — server defaults to `medium`,
       // Coordinator triages on review.
-      description: finalDescription,
+      description: formData.description,
       turnstileToken: turnstileToken || undefined,
       honeypot,
       draftTicketId: draftTicketId ?? undefined,
@@ -266,6 +233,19 @@ export function SubmissionForm({
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="organization">{tFields("organization")}</Label>
+          <Input
+            id="organization"
+            required
+            autoComplete="organization"
+            value={formData.organization}
+            onChange={(e) => update("organization", e.target.value)}
+            maxLength={160}
+            placeholder={tFields("organizationPlaceholder")}
+          />
+        </div>
+
+        <div className="space-y-1.5">
           <Label htmlFor="subject">{tFields("subject")}</Label>
           <Input
             id="subject"
@@ -275,39 +255,6 @@ export function SubmissionForm({
             maxLength={150}
             placeholder={tFields("subjectPlaceholder")}
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="category">{tFields("category")}</Label>
-          <Select
-            value={formData.category}
-            onValueChange={(v) =>
-              update("category", v as typeof formData.category)
-            }
-          >
-            <SelectTrigger id="category">
-              <SelectValue placeholder={tFields("categoryPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORY_OPTIONS.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {tCategory(value)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {formData.category === "other" ? (
-            <Input
-              id="categoryOther"
-              required
-              maxLength={120}
-              value={formData.categoryOther}
-              onChange={(e) => update("categoryOther", e.target.value)}
-              placeholder={tFields("categoryOtherPlaceholder")}
-              aria-label={tFields("categoryOtherLabel")}
-              className="mt-2"
-            />
-          ) : null}
         </div>
 
         <div className="space-y-1.5">

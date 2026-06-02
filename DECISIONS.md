@@ -5,6 +5,34 @@ entries go at the top; date them.
 
 ---
 
+## 2026-06-02 · Meeting-2 revisions — Organizations, work logs, billing, procurement rework, role/numbering/branding changes
+
+Implementation of the client's Meeting-2 (2026-05-22) change requests. Source + a sequenced change list live in `docs/meeting-2-revisions-2026-05-22/`. Migrations `0008`–`0010`. Highlights and the non-obvious calls:
+
+- **Organizations registry (CR-06)** — new `organizations` table (name, unique `abbreviation` 2–5 alnum, `is_monthly_plan`, `monthly_minutes_included/balance`, contract notes). Hours are stored as **integer minutes**, not fractional hours, so the Monthly-Plan deduction is exact. `users.organization_id` + `tickets.organization_id` (both nullable FKs; the users FK is hand-written in `0008` to avoid a schema import cycle). New `organizations.*` permission domain (back-filled to seeded roles in the migration). Full admin CRUD under `/admin/organizations`.
+
+- **Ticket numbering `ORG-YYYYMMDD-NNN` (CR-07)** — replaced the `AX-####` generator with `generate_ticket_number(prefix, tz)` backed by an atomic per-(prefix, day) `ticket_number_counters` table. The prefix is the matched org's abbreviation (or a 2-letter fallback derived from a typed name, else `AX`); the date uses the business timezone. The number is generated once and stored, so a reply never spawns a new ticket — and for the guest draft-with-attachment path it is **regenerated at promotion** (the org isn't known at draft time). The inbound-email extractor now matches both the legacy and new formats.
+
+- **Statuses + escalation (CR-13/14)** — added `awaiting_customer_confirmation` and `escalation` to the status CHECK. `awaiting_customer_confirmation` is a real status a tech sets via `setTicketStatus` (shown to the customer as "Awaiting customer"). **Escalation stays a flag** (`is_escalated`), NOT a status — the boss said "*flag* it as escalation," and a status would leak the internal escalation into the customer's status view. Escalation now also captures `escalation_target_role` (which upper-hierarchy role it went to) and routes the notification there.
+
+- **Completion time (CR-15)** — computed on read as `closedAt − createdAt`; no stored column.
+
+- **Work log + Monthly-Plan deduction (CR-12/19)** — new `work_logs` table (description, integer `minutes`, on-site/remote, auto timestamp), UI above the conversation. Deduction is **idempotent**: `tickets.monthly_plan_deducted_minutes` tracks how much a ticket has already taken from its org's balance, and `syncMonthlyPlanDeduction(tx, ticketId)` only ever applies the delta — safe + reversible when logs change or `billable` toggles.
+
+- **Billable (CR-16/17/18)** — `tickets.billable` (yes/no/monthly_plan/project/**rework** — Rework included per the client's answer), set **per ticket** by anyone with `tickets.update` (the boss's "everyone for now").
+
+- **Technician collaboration (CR-08/09/10/11)** — Reply composer split into two cards ("Reply to Customer" + "Internal Notes") via a `mode` prop. Technicians can directly reassign their own ticket: `tickets.assign` added to the ticket-scoped `can()` group (strict tech → own ticket only) and granted to the Technician role. Multi-tech assignment uses a `ticket_assignees` junction (primary assignee stays on `tickets.assigned_to_id`); collaborators get ticket access via an extended `can()` ticket target (`assigneeIds`) + an `EXISTS` clause in `ticketsVisibilityCondition`.
+
+- **Procurement rework (CR-20..26)** — approval workflow removed entirely. `type` gains `other`; `urgency` and all approval/purchase/deliver columns dropped (`0010` remaps existing rows to the new stages before the new CHECK applies). Four single-select stages: `awaiting_customer_payment → order_pending → order_placed → order_completed`. The 4 old permissions collapse into one `procurement.manage`. Who/when moved a stage lives in the **audit log**, not columns on the row (this also let the destructive migration generate without an interactive rename prompt).
+
+- **Roles + language + branding (CR-27/28/29)** — Super Admin can edit **system-role permissions** (others still can't; system-role deletion stays blocked for all). The **Language field** is removed from every form/action; the `users.language` column is kept (defaults `en`) as the forward i18n placeholder the email layer reads. Brand confirmed as **"Axiom360"** (the transcript's "Axium" was a mishearing — every written artifact uses "Axiom"); fixed the bare-"Axiom" strings to the full name (the wordmark already composes `brandName "Axiom" + accent "360"`).
+
+- **Customer forms** — mandatory Organization field on the guest submit + sign-up forms; Category removed from customer forms (defaults to `other` server-side, kept for staff); file-size limit shown in MB.
+
+Pre-existing test note: `can.test.ts` has 2 failing cases on Super-Admin `users.update` self/hierarchy that predate this work and contradict `can.ts`'s own deliberate behavior — left untouched.
+
+---
+
 ## 2026-05-21 · CSAT-unsatisfied captures customer comment + notifies tech & Coordinator; email links route by account state
 
 Three issues surfaced once customers actually used the CSAT prompt in production. All three close together because they share the same flow (resolution → customer pushes back → ticket reopens).

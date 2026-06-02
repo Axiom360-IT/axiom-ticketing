@@ -34,6 +34,10 @@ export const users = pgTable(
     // E.164-formatted phone (e.g. "+14165550123") for SMS notifications.
     // Optional — when null we skip the SMS leg of any notification.
     phone: text("phone"),
+    // Organization this user belongs to (Meeting-2, CR-06). Plain uuid +
+    // FK added in the migration to avoid a schema import cycle with
+    // organizations.ts (which references users for `created_by_id`).
+    organizationId: uuid("organization_id"),
     createdById: uuid("created_by_id"),
     isActive: boolean("is_active").notNull().default(true),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
@@ -54,6 +58,7 @@ export const users = pgTable(
     index("users_email_idx").on(t.email),
     index("users_created_by_id_idx").on(t.createdById),
     index("users_is_active_idx").on(t.isActive),
+    index("users_organization_id_idx").on(t.organizationId),
     foreignKey({
       columns: [t.createdById],
       foreignColumns: [t.id],

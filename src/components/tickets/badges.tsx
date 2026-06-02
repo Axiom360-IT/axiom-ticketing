@@ -12,6 +12,8 @@ const STATUS_STYLES: Record<string, string> = {
   open: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
   in_progress:
     "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
+  awaiting_customer_confirmation:
+    "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900",
   resolved:
     "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
   closed:
@@ -20,8 +22,15 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const t = useTranslations("tickets.status");
-  // Cast: status is validated at the DB-check level (open/in_progress/resolved/closed)
-  const label = t(status as "open" | "in_progress" | "resolved" | "closed");
+  // Cast: status is validated at the DB-check level.
+  const label = t(
+    status as
+      | "open"
+      | "in_progress"
+      | "awaiting_customer_confirmation"
+      | "resolved"
+      | "closed",
+  );
   return (
     <span
       className={cn(

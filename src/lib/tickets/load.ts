@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
+import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { tickets } from "@/lib/db/schema/tickets";
 
 /**
@@ -29,7 +30,16 @@ export async function loadTicketScope(ticketId: string) {
     .from(tickets)
     .where(eq(tickets.id, ticketId))
     .limit(1);
-  return t;
+  if (!t) return t;
+
+  // Additional collaborating technicians (Meeting-2, CR-11). Included so the
+  // can() gate grants them ticket access alongside the primary assignee.
+  const collaborators = await db
+    .select({ userId: ticketAssignees.userId })
+    .from(ticketAssignees)
+    .where(eq(ticketAssignees.ticketId, ticketId));
+
+  return { ...t, assigneeIds: collaborators.map((c) => c.userId) };
 }
 
 export type AssignableTechnician = {

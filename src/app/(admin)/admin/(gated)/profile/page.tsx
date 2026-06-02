@@ -68,7 +68,6 @@ export default async function ProfilePage() {
             initial={{
               name: me.name,
               email: me.email,
-              language: me.language,
               phone: me.phone ?? "",
             }}
           />

@@ -35,28 +35,16 @@ export default async function ProcurementDetailPage({
     .where(eq(tickets.id, r.ticketId))
     .limit(1);
 
-  const [canApprove, canReject, canMarkPurchased, canMarkDelivered] =
-    await Promise.all([
-      can(user, "procurement.approve", { type: "global" }, productionContext),
-      can(user, "procurement.reject", { type: "global" }, productionContext),
-      can(
-        user,
-        "procurement.mark_purchased",
-        { type: "global" },
-        productionContext,
-      ),
-      can(
-        user,
-        "procurement.mark_delivered",
-        { type: "global" },
-        productionContext,
-      ),
-    ]);
+  const canManage = await can(
+    user,
+    "procurement.manage",
+    { type: "global" },
+    productionContext,
+  );
 
   const t = await getTranslations("procurement.detail");
   const tList = await getTranslations("procurement.list");
   const tType = await getTranslations("procurement.type");
-  const tUrgency = await getTranslations("procurement.urgency");
   const formatter = await getFormatter();
 
   return (
@@ -66,9 +54,7 @@ export default async function ProcurementDetailPage({
         <div className="flex items-center gap-2 flex-wrap text-sm text-zinc-500 dark:text-zinc-400">
           <ProcurementStatusBadge status={r.status} />
           <span>·</span>
-          <span>{tType(r.type as "hardware" | "software")}</span>
-          <span>·</span>
-          <span>{tUrgency(r.urgency as "low" | "medium" | "high")}</span>
+          <span>{tType(r.type as "hardware" | "software" | "other")}</span>
         </div>
       </header>
 
@@ -115,30 +101,7 @@ export default async function ProcurementDetailPage({
         </CardContent>
       </Card>
 
-      {r.status === "rejected" && r.rejectionReason ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">{t("rejectionTitle")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="whitespace-pre-wrap">{r.rejectionReason}</p>
-            {r.rejectedAtStep ? (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t("rejectionAtStep", {
-                  step:
-                    r.rejectedAtStep === "admin"
-                      ? t("stepAdmin")
-                      : t("stepCoordinator"),
-                })}
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {(canApprove || canReject || canMarkPurchased || canMarkDelivered) &&
-      r.status !== "rejected" &&
-      r.status !== "delivered" ? (
+      {canManage ? (
         <Card>
           <CardHeader>
             <CardTitle>{t("actionsTitle")}</CardTitle>
@@ -147,10 +110,7 @@ export default async function ProcurementDetailPage({
             <ProcurementDecisionButtons
               requestId={r.id}
               status={r.status}
-              canApprove={canApprove}
-              canReject={canReject}
-              canMarkPurchased={canMarkPurchased}
-              canMarkDelivered={canMarkDelivered}
+              canManage={canManage}
             />
           </CardContent>
         </Card>

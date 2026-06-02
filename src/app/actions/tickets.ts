@@ -20,6 +20,11 @@ import { clientIp, getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
+  resolveTicketOrgById,
+  resolveTicketOrgByName,
+} from "@/lib/tickets/org";
+import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
+import {
   htmlToPlainText,
   sanitizeMessageHtml,
 } from "@/lib/messages/sanitize";
@@ -66,7 +71,14 @@ const createTicketSchema = z.object({
     .trim()
     .min(3, "Subject must be at least 3 characters")
     .max(150, "Subject must be at most 150 characters"),
-  category: z.enum(TICKET_CATEGORIES),
+  // Organization (company) raising the ticket (Meeting-2, CR-01). Mandatory.
+  // Category was removed from the customer form (CR-03); it defaults to
+  // "other" server-side and the Coordinator triages/AI-classifies later.
+  organization: z
+    .string()
+    .trim()
+    .min(1, "Organization is required")
+    .max(160, "Organization must be at most 160 characters"),
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   description: z
     .string()
@@ -246,7 +258,11 @@ export async function createTicket(
   // otherwise it falls back to the `internal_email_domains` allowlist.
   const stream = await classifyStream(data.customerEmail);
 
-  // 7. Generate ticket number + compute SLA deadlines
+  // 6b. Resolve the organization the customer typed → FK link (when it
+  // matches a registered org) + the ticket-number prefix (CR-02/06/07).
+  const org = await resolveTicketOrgByName(data.organization);
+
+  // 7. Compute SLA deadlines (number is generated per-branch below).
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
     createdAt,
@@ -278,15 +294,21 @@ export async function createTicket(
     ) {
       return { ok: false, error: "Draft ticket session is invalid or expired." };
     }
-    ticketNumber = draft.ticketNumber;
+    // The draft's number was generated before the org was known (placeholder
+    // "AX" prefix). Regenerate it now with the resolved org prefix so the
+    // final number reflects the company (CR-07). Nothing references the draft
+    // number before promotion (attachments link by ticket id, not number).
+    ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
 
     await transactional(async (tx) => {
       await tx
         .update(tickets)
         .set({
+          ticketNumber,
+          organizationId: org.organizationId,
           subject: data.subject,
           description: data.description,
-          category: data.category,
+          category: "other",
           priority: data.priority,
           status: "open",
           stream,
@@ -324,15 +346,16 @@ export async function createTicket(
         );
     });
   } else {
-    ticketNumber = await generateTicketNumber();
+    ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
     await transactional(async (tx) => {
       const [ticket] = await tx
         .insert(tickets)
         .values({
           ticketNumber,
+          organizationId: org.organizationId,
           subject: data.subject,
           description: data.description,
-          category: data.category,
+          category: "other",
           priority: data.priority,
           status: "open",
           stream,
@@ -365,7 +388,9 @@ export async function createTicket(
     after: {
       ticketNumber,
       subject: data.subject,
-      category: data.category,
+      organization: data.organization,
+      organizationId: org.organizationId,
+      category: "other",
       priority: data.priority,
       stream,
       origin: "web_form",
@@ -418,6 +443,8 @@ const createOnBehalfSchema = z.object({
     .max(150, "Subject must be at most 150 characters"),
   category: z.enum(TICKET_CATEGORIES),
   priority: z.enum(TICKET_PRIORITIES),
+  // Staff pick the organization from a dropdown of registered orgs (CR-02).
+  organizationId: z.string().uuid().optional(),
   description: z
     .string()
     .trim()
@@ -449,8 +476,9 @@ export async function createTicketOnBehalf(
   const data = parsed.data;
 
   const stream = await classifyStream(data.customerEmail);
+  const org = await resolveTicketOrgById(data.organizationId ?? null);
 
-  const ticketNumber = await generateTicketNumber();
+  const ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket({
     createdAt,
@@ -462,6 +490,7 @@ export async function createTicketOnBehalf(
       .insert(tickets)
       .values({
         ticketNumber,
+        organizationId: org.organizationId,
         subject: data.subject,
         description: data.description,
         category: data.category,
@@ -1536,6 +1565,131 @@ export async function reopenTicket(ticketId: string): Promise<void> {
   revalidatePath(`/admin/tickets/${ticketId}`);
 }
 
+// ── Working-status control (Meeting-2, CR-13) ────────────────────────
+//
+// Lets staff move a ticket between the "in-flight" statuses — most
+// importantly to "awaiting_customer_confirmation" when blocked on the
+// customer, so completion time isn't held against the technician. Resolve /
+// reopen / close keep their dedicated actions (they have side effects like
+// CSAT). Resolved/closed/draft tickets are not touched here.
+
+const WORKING_STATUSES = [
+  "open",
+  "in_progress",
+  "awaiting_customer_confirmation",
+] as const;
+type WorkingStatus = (typeof WORKING_STATUSES)[number];
+
+export async function setTicketStatus(
+  ticketId: string,
+  status: WorkingStatus,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!WORKING_STATUSES.includes(status)) {
+    return { ok: false, error: "Invalid status." };
+  }
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (
+    ticket.status === "resolved" ||
+    ticket.status === "closed" ||
+    ticket.status === "draft"
+  ) {
+    return {
+      ok: false,
+      error: "Use resolve or reopen to change a resolved or closed ticket.",
+    };
+  }
+  if (ticket.status === status) return { ok: true };
+
+  await db
+    .update(tickets)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.status_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { status: ticket.status },
+    after: { status },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+// ── Billable categorization (Meeting-2, CR-16/17/18/19) ──────────────
+//
+// Set per individual ticket (not hardcoded per org). The boss's call:
+// "give that access to everyone for now" — so the gate is the same
+// tickets.update the assigned technician already holds. Toggling to/from
+// 'monthly_plan' re-syncs the org's Monthly-Plan balance.
+
+const BILLABLE_VALUES = [
+  "yes",
+  "no",
+  "monthly_plan",
+  "project",
+  "rework",
+] as const;
+type BillableValue = (typeof BILLABLE_VALUES)[number];
+
+export async function setTicketBillable(
+  ticketId: string,
+  billable: BillableValue | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (billable !== null && !BILLABLE_VALUES.includes(billable)) {
+    return { ok: false, error: "Invalid billable category." };
+  }
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  await transactional(async (tx) => {
+    await tx
+      .update(tickets)
+      .set({ billable, updatedAt: new Date() })
+      .where(eq(tickets.id, ticket.id));
+    // Re-sync the Monthly-Plan deduction now the billable value changed.
+    await syncMonthlyPlanDeduction(tx, ticket.id);
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.set_billable",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { billable },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
 // ── Escalate / De-escalate ───────────────────────────────────────────
 
 const ESCALATION_REASONS = [
@@ -1553,14 +1707,18 @@ const escalateSchema = z.object({
   // Optional supplementary context (max 1000 chars). Stored alongside
   // the categorical reason; never replaces it.
   note: z.string().trim().max(1000).optional(),
+  // Who the ticket is being escalated TO (Meeting-2, CR-14): an upper-
+  // hierarchy role name. Drives who gets notified; stored on the ticket.
+  targetRole: z.string().trim().max(80).optional(),
 });
 
 export async function escalateTicket(
   ticketId: string,
   reason: EscalationReason,
   note?: string,
+  targetRole?: string,
 ): Promise<void> {
-  const parsed = escalateSchema.safeParse({ reason, note });
+  const parsed = escalateSchema.safeParse({ reason, note, targetRole });
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid reason");
   }
@@ -1591,6 +1749,10 @@ export async function escalateTicket(
     .where(eq(users.id, user.id))
     .limit(1);
 
+  const targetRoleClean = parsed.data.targetRole?.length
+    ? parsed.data.targetRole
+    : null;
+
   await db
     .update(tickets)
     .set({
@@ -1599,6 +1761,7 @@ export async function escalateTicket(
       escalatedById: user.id,
       escalationReason: parsed.data.reason,
       escalationNote: parsed.data.note?.length ? parsed.data.note : null,
+      escalationTargetRole: targetRoleClean,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));
@@ -1608,7 +1771,11 @@ export async function escalateTicket(
     action: "ticket.escalate",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { reason: parsed.data.reason, note: parsed.data.note ?? null },
+    after: {
+      reason: parsed.data.reason,
+      note: parsed.data.note ?? null,
+      targetRole: targetRoleClean,
+    },
   });
 
   // Notify IT Director + Coordinator via dispatch fan-out.
@@ -1620,7 +1787,11 @@ export async function escalateTicket(
       name: "notification/dispatch",
       data: {
         type: "ticket.escalated",
-        recipientRoles: ["IT Director", "Coordinator"],
+        // Notify the specific role the ticket was escalated to (CR-14); fall
+        // back to the standard supervisory roles when none was selected.
+        recipientRoles: targetRoleClean
+          ? [targetRoleClean]
+          : ["IT Director", "Coordinator"],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
@@ -1679,6 +1850,7 @@ export async function deescalateTicket(ticketId: string): Promise<void> {
       escalatedById: null,
       escalationReason: null,
       escalationNote: null,
+      escalationTargetRole: null,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));

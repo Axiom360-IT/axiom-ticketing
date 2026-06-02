@@ -16,8 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createProcurementRequest } from "@/app/actions/procurement";
 
-const TYPES = ["hardware", "software"] as const;
-const URGENCIES = ["low", "medium", "high"] as const;
+const TYPES = ["hardware", "software", "other"] as const;
 
 type Props = {
   ticketId: string;
@@ -28,7 +27,6 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
   const router = useRouter();
   const tForm = useTranslations("procurement.form");
   const tType = useTranslations("procurement.type");
-  const tUrgency = useTranslations("procurement.urgency");
   const tCommon = useTranslations("common");
 
   const [type, setType] = useState<"" | (typeof TYPES)[number]>("");
@@ -37,7 +35,6 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
   const [estimatedCost, setEstimatedCost] = useState("");
   const [vendor, setVendor] = useState("");
   const [justification, setJustification] = useState("");
-  const [urgency, setUrgency] = useState<"" | (typeof URGENCIES)[number]>("");
   const [dateNeededBy, setDateNeededBy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +42,14 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!type || !urgency) return;
+    if (!type) {
+      setError(tForm("typeRequired"));
+      return;
+    }
+    if (!dateNeededBy) {
+      setError(tForm("dateNeededByRequired"));
+      return;
+    }
     setSubmitting(true);
     const res = await createProcurementRequest({
       ticketId,
@@ -55,8 +59,7 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
       estimatedCost: estimatedCost.trim() || undefined,
       vendor: vendor.trim() || undefined,
       justification,
-      urgency,
-      dateNeededBy: dateNeededBy || undefined,
+      dateNeededBy,
     });
     setSubmitting(false);
     if (!res.ok) {
@@ -69,43 +72,20 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="proc-type">{tForm("type")}</Label>
-          <Select
-            value={type}
-            onValueChange={(v) => setType(v as typeof type)}
-          >
-            <SelectTrigger id="proc-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TYPES.map((v) => (
-                <SelectItem key={v} value={v}>
-                  {tType(v)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="proc-urgency">{tForm("urgency")}</Label>
-          <Select
-            value={urgency}
-            onValueChange={(v) => setUrgency(v as typeof urgency)}
-          >
-            <SelectTrigger id="proc-urgency">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {URGENCIES.map((v) => (
-                <SelectItem key={v} value={v}>
-                  {tUrgency(v)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="proc-type">{tForm("type")}</Label>
+        <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+          <SelectTrigger id="proc-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TYPES.map((v) => (
+              <SelectItem key={v} value={v}>
+                {tType(v)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-1.5">
@@ -157,6 +137,7 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
         <Input
           id="proc-needed"
           type="date"
+          required
           value={dateNeededBy}
           onChange={(e) => setDateNeededBy(e.target.value)}
         />

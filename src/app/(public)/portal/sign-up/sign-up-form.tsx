@@ -14,6 +14,7 @@ export function SignUpForm() {
   const tSignIn = useTranslations("portal.signIn");
 
   const [name, setName] = useState("");
+  const [organization, setOrganization] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +35,13 @@ export function SignUpForm() {
     }
     setSubmitting(true);
     try {
-      const result = await requestSignUpMagicLink(name, email, phone, password);
+      const result = await requestSignUpMagicLink(
+        name,
+        email,
+        phone,
+        password,
+        organization,
+      );
       if (!result.ok) {
         const map = {
           invalid_email: tSignIn("errors.invalidEmail"),
@@ -82,6 +89,27 @@ export function SignUpForm() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("namePlaceholder")}
+          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="organization"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
+        >
+          {t("organizationLabel")}
+        </label>
+        <input
+          id="organization"
+          name="organization"
+          type="text"
+          required
+          autoComplete="organization"
+          value={organization}
+          onChange={(e) => setOrganization(e.target.value)}
+          placeholder={t("organizationPlaceholder")}
+          maxLength={160}
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

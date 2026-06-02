@@ -89,6 +89,11 @@ type NumberProps = {
   min?: number;
   max?: number;
   step?: number;
+  /** Display the value in a larger unit while persisting the base value.
+   *  e.g. scale=1048576 + unitSuffix="MB" shows bytes as megabytes
+   *  (Meeting-2, CR-04 — the size limit must read in MB, not KB/bytes). */
+  scale?: number;
+  unitSuffix?: string;
 };
 
 export function NumberSettingForm({
@@ -99,10 +104,14 @@ export function NumberSettingForm({
   min,
   max,
   step,
+  scale,
+  unitSuffix,
 }: NumberProps) {
   const router = useRouter();
   const { runWithReauth, gate } = useReauthGate();
-  const [value, setValue] = useState(initial);
+  // Hold the value in DISPLAY units; convert to the base unit on save.
+  const factor = scale && scale > 0 ? scale : 1;
+  const [value, setValue] = useState(initial / factor);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -113,7 +122,7 @@ export function NumberSettingForm({
     setSaved(false);
     startTransition(async () => {
       const res = await runWithReauth(
-        () => updateSetting(settingKey, value),
+        () => updateSetting(settingKey, Math.round(value * factor)),
         "settings",
       );
       if (!res.ok) {
@@ -129,15 +138,22 @@ export function NumberSettingForm({
     <form onSubmit={handleSubmit} className="space-y-3" noValidate>
       <div className="space-y-1.5 max-w-sm">
         <Label htmlFor={`s-${settingKey}`}>{label}</Label>
-        <Input
-          id={`s-${settingKey}`}
-          type="number"
-          value={value}
-          onChange={(e) => setValue(Number(e.target.value))}
-          min={min}
-          max={max}
-          step={step}
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            id={`s-${settingKey}`}
+            type="number"
+            value={value}
+            onChange={(e) => setValue(Number(e.target.value))}
+            min={min}
+            max={max}
+            step={step}
+          />
+          {unitSuffix ? (
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+              {unitSuffix}
+            </span>
+          ) : null}
+        </div>
         {hint ? (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>
         ) : null}

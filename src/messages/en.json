@@ -70,7 +70,7 @@
       "createFirst": "File your first ticket"
     },
     "signIn": {
-      "metaTitle": "Sign in — Axiom support",
+      "metaTitle": "Sign in — Axiom360 support",
       "title": "Sign in to your support portal",
       "subtitle": "Use your password, or get a one-time link by email.",
       "panel": {
@@ -109,25 +109,27 @@
       }
     },
     "signInSent": {
-      "metaTitle": "Check your email — Axiom support",
+      "metaTitle": "Check your email — Axiom360 support",
       "title": "Check your email",
       "body": "We sent a sign-in link to {email}. The link expires in 10 minutes.",
       "resend": "Send another link",
       "back": "Back to sign in"
     },
     "signUpVerify": {
-      "metaTitle": "Confirm your email — Axiom support",
+      "metaTitle": "Confirm your email — Axiom360 support",
       "title": "Confirm your email",
       "body": "We sent a confirmation link to {email}. Click it to finish setting up your account.",
       "hint": "Check your spam folder if you don't see it within a minute or two.",
       "backToSignIn": "Back to sign in"
     },
     "signUp": {
-      "metaTitle": "Create your portal — Axiom support",
+      "metaTitle": "Create your portal — Axiom360 support",
       "title": "Create your support portal",
       "subtitle": "Set up your account in a minute.",
       "nameLabel": "Your name",
       "namePlaceholder": "Jane Doe",
+      "organizationLabel": "Organization",
+      "organizationPlaceholder": "Name of your organization",
       "emailLabel": "Email",
       "emailPlaceholder": "you@example.com",
       "phoneLabel": "Phone",
@@ -175,7 +177,7 @@
         "searchPlaceholder": "Search by subject or number"
       },
       "detail": {
-        "metaTitle": "{ticketNumber} — Axiom support",
+        "metaTitle": "{ticketNumber} — Axiom360 support",
         "openedAt": "Opened {when}",
         "back": "Back to tickets",
         "closedNotice": "This ticket is closed. Submit a new ticket if you need more help.",
@@ -199,7 +201,7 @@
         "cancel": "Cancel"
       },
       "new": {
-        "metaTitle": "New ticket — Axiom support",
+        "metaTitle": "New ticket — Axiom360 support",
         "title": "Submit a ticket",
         "subtitle": "Tell us what's wrong and we'll route it to the right team.",
         "subjectLabel": "Subject",
@@ -234,7 +236,7 @@
       }
     },
     "profile": {
-      "metaTitle": "Profile — Axiom support",
+      "metaTitle": "Profile — Axiom360 support",
       "title": "Profile",
       "subtitle": "Update your details and notification preferences.",
       "avatar": {
@@ -380,8 +382,11 @@
     },
     "detail": {
       "openedBy": "Opened {date} by {customerName}",
+      "completedIn": "Completed in {duration}",
       "conversationTitle": "Conversation",
       "replyTitle": "Reply",
+      "replyToCustomerTitle": "Reply to Customer",
+      "internalNotesTitle": "Internal Notes",
       "actionsTitle": "Actions",
       "customerTitle": "Customer",
       "assigneeTitle": "Assignee",
@@ -399,6 +404,7 @@
     "status": {
       "open": "Open",
       "in_progress": "In progress",
+      "awaiting_customer_confirmation": "Awaiting customer",
       "resolved": "Resolved",
       "closed": "Closed"
     },
@@ -458,6 +464,9 @@
         "email": "Email",
         "customerName": "Customer name",
         "customerEmail": "Customer email",
+        "organization": "Organization",
+        "organizationPlaceholder": "Name of your organization",
+        "organizationNone": "No organization (external)",
         "subject": "Subject",
         "subjectPlaceholder": "Brief summary of the problem",
         "subjectAgentPlaceholder": "Short summary as the customer described it",
@@ -517,13 +526,52 @@
       "skipReasonMinError": "Skip reason must be at least 10 characters.",
       "genericError": "Failed to resolve ticket."
     },
+    "multiAssign": {
+      "collaboratorsLabel": "Also working on this",
+      "addPlaceholder": "Add a technician…",
+      "removeLabel": "Remove {name}",
+      "empty": "No additional technicians."
+    },
+    "billable": {
+      "title": "Billable",
+      "unset": "Not set",
+      "yes": "Yes (billable)",
+      "no": "No (not billable)",
+      "monthly_plan": "Monthly plan",
+      "project": "Project",
+      "rework": "Rework"
+    },
+    "statusControl": {
+      "label": "Set status"
+    },
+    "workLog": {
+      "title": "Work log",
+      "totalLabel": "Total time logged",
+      "empty": "No work logged yet.",
+      "descriptionLabel": "What did you do?",
+      "descriptionPlaceholder": "e.g. Replaced failed RAM module and ran diagnostics",
+      "hoursLabel": "Hours",
+      "minutesLabel": "Minutes",
+      "serviceTypeLabel": "Service type",
+      "serviceOnsite": "On-site",
+      "serviceRemote": "Remote",
+      "addButton": "Log work",
+      "adding": "Logging…",
+      "timeRequired": "Enter how long the work took.",
+      "deleteLabel": "Delete entry",
+      "unknownTech": "Unknown",
+      "entryMeta": "{duration} · {service} · {technician} · {date}"
+    },
     "escalateModal": {
       "escalateTitle": "Escalate ticket",
-      "escalateDescription": "The ticket stays assigned to you. IT Director and Coordinator are notified to review.",
+      "escalateDescription": "The ticket stays assigned to you. The role you escalate to is notified to review.",
       "reasonLabel": "Reason",
       "reasonPlaceholder": "Pick the closest reason…",
+      "targetRoleLabel": "Escalate to",
+      "targetRolePlaceholder": "Who should look at this?",
+      "targetRoleRequired": "Pick who to escalate to.",
       "noteLabel": "Additional context (optional)",
-      "notePlaceholder": "Anything else the IT Director should know? (max 1000 characters)",
+      "notePlaceholder": "Anything else the escalation target should know? (max 1000 characters)",
       "reasonRequired": "Pick a reason for escalation.",
       "escalateError": "Failed to escalate ticket.",
       "deescalateError": "Failed to de-escalate ticket."
@@ -707,7 +755,8 @@
       "email": "Email",
       "password": "Password",
       "passwordHint": "Minimum 12 characters.",
-      "language": "Language",
+      "organization": "Organization",
+      "organizationNone": "No organization",
       "phone": "Phone",
       "phoneOptional": "(optional)",
       "phonePlaceholder": "+14165550123",
@@ -748,11 +797,9 @@
       "empty": "No requests match your filters.",
       "filterStatus": "Status",
       "filterType": "Type",
-      "filterUrgency": "Urgency",
       "columns": {
         "item": "Item",
         "type": "Type",
-        "urgency": "Urgency",
         "status": "Status",
         "cost": "Estimated cost",
         "requester": "Requester",
@@ -781,56 +828,86 @@
       "vendor": "Vendor",
       "justification": "Justification",
       "justificationHint": "Why is this needed? Minimum 10 characters.",
-      "urgency": "Urgency",
       "dateNeededBy": "Needed by",
+      "typeRequired": "Pick a type.",
+      "dateNeededByRequired": "A needed-by date is required.",
       "submit": "Submit request",
       "submitting": "Submitting…"
     },
     "type": {
       "hardware": "Hardware",
-      "software": "Software"
-    },
-    "urgency": {
-      "low": "Low",
-      "medium": "Medium",
-      "high": "High"
+      "software": "Software",
+      "other": "Other"
     },
     "status": {
-      "pending_coordinator_approval": "Pending coordinator approval",
-      "pending_admin_approval": "Pending admin approval",
-      "approved": "Approved",
-      "rejected": "Rejected",
-      "purchased": "Purchased",
-      "delivered": "Delivered"
+      "awaiting_customer_payment": "Awaiting customer payment",
+      "order_pending": "Order pending",
+      "order_placed": "Order placed",
+      "order_completed": "Order completed"
     },
     "detail": {
       "summaryTitle": "Request",
       "actionsTitle": "Actions",
-      "approve": "Approve",
-      "approving": "Approving…",
-      "reject": "Reject",
-      "rejecting": "Rejecting…",
-      "rejectModalTitle": "Reject request",
-      "rejectModalDescription": "Tell the requester why this can't proceed.",
-      "rejectReasonPlaceholder": "Explain the rejection (visible to the requester)",
-      "rejectionTitle": "Rejection",
-      "rejectionAtStep": "Rejected at {step} step",
-      "stepCoordinator": "coordinator",
-      "stepAdmin": "admin",
-      "markPurchased": "Mark purchased",
-      "markPurchasing": "Marking…",
-      "markDelivered": "Mark delivered",
-      "markDelivering": "Marking…",
+      "stageLabel": "Set stage",
       "ticketLabel": "Ticket",
       "requesterLabel": "Requester",
       "vendorLabel": "Vendor",
       "costLabel": "Estimated cost",
       "neededByLabel": "Needed by",
       "submittedLabel": "Submitted",
-      "errorGeneric": "Action failed.",
-      "decisionMeta": "Coordinator decision: {date} · Admin decision: {adminDate}",
-      "purchasedMeta": "Purchased {date}",
-      "deliveredMeta": "Delivered {date}"
+      "errorGeneric": "Action failed."
+    }
+  },
+  "organizations": {
+    "list": {
+      "title": "Organizations",
+      "subtitle": "Client companies that raise tickets",
+      "count": "{count} organizations",
+      "createButton": "Add organization",
+      "monthlyPlan": "Monthly plan",
+      "oneOff": "One-off",
+      "active": "Active",
+      "inactive": "Inactive",
+      "balanceHours": "{balance}h of {included}h left",
+      "columns": {
+        "name": "Name",
+        "abbreviation": "Code",
+        "plan": "Plan",
+        "balance": "Hours balance",
+        "status": "Status"
+      }
+    },
+    "create": {
+      "title": "Add organization",
+      "subtitle": "Register a client company so its tickets carry its code and its contract is tracked.",
+      "cardTitle": "Organization details"
+    },
+    "edit": {
+      "title": "Edit {name}",
+      "subtitle": "Update the organization's details and contract balance.",
+      "cardTitle": "Organization details",
+      "readOnly": "You don't have permission to edit this organization."
+    },
+    "fields": {
+      "name": "Organization name",
+      "abbreviation": "Code",
+      "abbreviationHint": "2–5 letters or digits used as the ticket-number prefix (e.g. KI → KI-20260522-001).",
+      "isMonthlyPlan": "On a monthly support plan",
+      "monthlyHoursIncluded": "Hours included per month",
+      "monthlyHoursBalance": "Hours remaining (balance)",
+      "monthlyHoursBalanceHint": "Defaults to the included hours. Monthly-plan work deducts from this balance.",
+      "contractNotes": "Contract notes",
+      "isActive": "Active"
+    },
+    "form": {
+      "create": "Create organization",
+      "save": "Save changes",
+      "saving": "Saving…"
+    },
+    "rowActions": {
+      "deleteTitle": "Delete {name}?",
+      "deleteDescription": "This permanently removes the organization. It is refused if any tickets or users still reference it — deactivate it instead.",
+      "deleting": "Deleting…"
     }
   },
   "roles": {
@@ -878,6 +955,7 @@
       "deleting": "Deleting…",
       "deleteConfirm": "Delete this role? This can't be undone.",
       "systemBadge": "System role — permissions are locked.",
+      "systemEditableBadge": "System role — you're the Super Admin, so its permissions are editable.",
       "permissionsTitle": "Permissions"
     },
     "fields": {
@@ -928,10 +1006,7 @@
         "procurement__view": "View procurement",
         "procurement__create": "Create procurement requests",
         "procurement__update": "Update procurement requests",
-        "procurement__approve": "Approve procurement",
-        "procurement__reject": "Reject procurement",
-        "procurement__mark_purchased": "Mark as purchased",
-        "procurement__mark_delivered": "Mark as delivered",
+        "procurement__manage": "Action procurement (move stages)",
         "procurement__export": "Export procurement",
         "reports__view": "View reports",
         "reports__export": "Export reports",
@@ -968,11 +1043,8 @@
         "tickets__export": "Export tickets to CSV.",
         "procurement__view": "Read procurement requests against tickets.",
         "procurement__create": "File a hardware or software purchase request.",
-        "procurement__update": "Edit a procurement request before approval.",
-        "procurement__approve": "Approve pending procurement requests.",
-        "procurement__reject": "Reject pending procurement requests with a reason.",
-        "procurement__mark_purchased": "Record that the purchase has been made.",
-        "procurement__mark_delivered": "Record that the item has arrived.",
+        "procurement__update": "Edit a procurement request.",
+        "procurement__manage": "Move requests through the order stages.",
         "procurement__export": "Export procurement to CSV.",
         "reports__view": "See the reports dashboard.",
         "reports__export": "Export reports to CSV.",
@@ -1108,7 +1180,7 @@
     "fileUpload": {
       "title": "File uploads",
       "maxSizeLabel": "Maximum size",
-      "maxSizeHint": "Bytes. Default 10 MiB = 10485760. Hard-capped at 10485760 by the database constraint.",
+      "maxSizeHint": "Per-file size limit in megabytes. Default 10 MB. Hard-capped at 10 MB by the database constraint.",
       "maxFilesLabel": "Maximum files per message",
       "maxFilesHint": "Per reply or new ticket. Default 5, range 1–20.",
       "mimeTypesLabel": "Allowed MIME types",
@@ -1439,6 +1511,7 @@
       "mainNavLabel": "Main",
       "navTickets": "Tickets",
       "navProcurement": "Procurement",
+      "navOrganizations": "Organizations",
       "navUsers": "Users",
       "navHierarchy": "Hierarchy",
       "navRoles": "Roles",
@@ -1687,7 +1760,7 @@
       "title": "New procurement request",
       "greeting": "Hi team,",
       "body": "{requesterName} requested {quantity} × {itemName}.",
-      "meta": "Ticket {ticketNumber}: {ticketSubject} · Urgency: {urgency}",
+      "meta": "Ticket {ticketNumber}: {ticketSubject}",
       "review": "Review request",
       "subject": "[{ticketNumber}] Procurement request: {itemName}"
     },
@@ -1732,16 +1805,16 @@
       "body": "We saw {attempts} failed sign-in attempts on your account in a short window, so we've temporarily locked it as a precaution. The lock lifts automatically in {minutes} minutes.",
       "ifYou": "If this was you and you've forgotten your password, use the password reset flow once the lock lifts. If it wasn't you, please change your password right after sign-in and consider enabling two-factor authentication.",
       "support": "If you need to get back in sooner, contact your administrator — they can unlock the account.",
-      "subject": "Your Axiom account has been temporarily locked"
+      "subject": "Your Axiom360 account has been temporarily locked"
     },
     "customerMagicLink": {
-      "preview": "Sign in to your Axiom support portal",
+      "preview": "Sign in to your Axiom360 support portal",
       "title": "Sign in to your support portal",
       "body": "Click the button below to sign in. No password needed.",
       "button": "Sign in",
       "expiry": "This link expires in 10 minutes and can only be used once.",
       "ifNotYou": "If you didn't request this email, you can safely ignore it.",
-      "subject": "Your Axiom sign-in link"
+      "subject": "Your Axiom360 sign-in link"
     },
     "customerEmailVerification": {
       "preview": "Confirm your email to finish creating your account",
@@ -1749,8 +1822,8 @@
       "greeting": "Hi {recipientName},",
       "body": "Thanks for signing up. To finish setting up your support portal account, please confirm this is your email address.",
       "button": "Confirm email",
-      "ifNotYou": "If you didn't sign up for Axiom support, you can safely ignore this email.",
-      "subject": "Confirm your Axiom support email"
+      "ifNotYou": "If you didn't sign up for Axiom360 support, you can safely ignore this email.",
+      "subject": "Confirm your Axiom360 support email"
     },
     "staffSetupInvite": {
       "previewSet": "Set your Axiom360 password to get started",
@@ -1766,13 +1839,13 @@
       "subject": "Set your Axiom360 password"
     },
     "customerWelcome": {
-      "preview": "Welcome to your Axiom support portal",
+      "preview": "Welcome to your Axiom360 support portal",
       "title": "Welcome to your support portal",
       "greeting": "Hi {customerName},",
       "claimedBody": "{count, plural, =1 {We found 1 existing ticket linked to your email and added it to your portal.} other {We found # existing tickets linked to your email and added them to your portal.}}",
       "noClaimedBody": "Your portal is ready. You can submit and track tickets from here.",
       "button": "Open my portal",
-      "subject": "Welcome to your Axiom support portal"
+      "subject": "Welcome to your Axiom360 support portal"
     }
   }
 }

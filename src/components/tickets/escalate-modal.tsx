@@ -36,16 +36,23 @@ const ESCALATION_REASONS = [
 ] as const;
 type EscalationReason = (typeof ESCALATION_REASONS)[number];
 
+// Upper-hierarchy roles a technician can escalate to (Meeting-2, CR-14).
+// Overridable so a deployment with extra elevated roles (e.g. "CTO") can
+// pass its own list from the server.
+const DEFAULT_ESCALATION_TARGETS = ["Coordinator", "IT Director", "Super Admin"];
+
 type EscalateModalProps = {
   ticketId: string;
   isEscalated: boolean;
   canDeescalate: boolean;
+  escalationTargets?: string[];
 };
 
 export function EscalateModal({
   ticketId,
   isEscalated,
   canDeescalate,
+  escalationTargets = DEFAULT_ESCALATION_TARGETS,
 }: EscalateModalProps) {
   const router = useRouter();
   const tModal = useTranslations("tickets.escalateModal");
@@ -55,6 +62,7 @@ export function EscalateModal({
 
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<EscalationReason | "">("");
+  const [targetRole, setTargetRole] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -66,14 +74,20 @@ export function EscalateModal({
       setError(tModal("reasonRequired"));
       return;
     }
+    if (!targetRole) {
+      setError(tModal("targetRoleRequired"));
+      return;
+    }
     startTransition(async () => {
       try {
         await escalateTicket(
           ticketId,
           reason,
           note.trim() || undefined,
+          targetRole,
         );
         setReason("");
+        setTargetRole("");
         setNote("");
         setOpen(false);
         router.refresh();
@@ -142,6 +156,28 @@ export function EscalateModal({
 
           <div className="space-y-1.5">
             <label className="text-xs text-zinc-600 dark:text-zinc-400">
+              {tModal("targetRoleLabel")}
+            </label>
+            <Select
+              value={targetRole}
+              onValueChange={(v) => setTargetRole(v ?? "")}
+              disabled={isPending}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={tModal("targetRolePlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {escalationTargets.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-600 dark:text-zinc-400">
               {tModal("noteLabel")}
             </label>
             <Textarea
@@ -170,7 +206,7 @@ export function EscalateModal({
             <DialogClose render={<Button type="button" variant="outline" />}>
               {tCommon("cancel")}
             </DialogClose>
-            <Button type="submit" disabled={isPending || !reason}>
+            <Button type="submit" disabled={isPending || !reason || !targetRole}>
               {isPending ? tActions("escalatePending") : tActions("escalate")}
             </Button>
           </DialogFooter>

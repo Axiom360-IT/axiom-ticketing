@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  Building2,
   ClipboardList,
   GitBranch,
   History,
@@ -24,6 +25,7 @@ type NavItem = {
     | "navTickets"
     | "navProcurement"
     | "navReports"
+    | "navOrganizations"
     | "navUsers"
     | "navRoles"
     | "navHierarchy"
@@ -41,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket, requires: "tickets.view" },
   { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart, requires: "procurement.view" },
   { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList, requires: "reports.view" },
+  { href: "/admin/organizations", labelKey: "navOrganizations", icon: Building2, requires: "organizations.view" },
   { href: "/admin/users", labelKey: "navUsers", icon: Users, requires: "users.view" },
   { href: "/admin/roles", labelKey: "navRoles", icon: Shield, requires: "roles.view" },
   { href: "/admin/hierarchy", labelKey: "navHierarchy", icon: GitBranch, requires: "users.view" },

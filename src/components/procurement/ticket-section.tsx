@@ -14,7 +14,6 @@ export type TicketProcurementRow = {
   type: string;
   itemName: string;
   quantity: number;
-  urgency: string;
   status: string;
   createdAt: Date;
 };
@@ -32,7 +31,6 @@ export function TicketProcurementSection({
 }: Props) {
   const t = useTranslations("procurement.section");
   const tType = useTranslations("procurement.type");
-  const tUrgency = useTranslations("procurement.urgency");
   const [creating, setCreating] = useState(false);
 
   return (
@@ -79,8 +77,7 @@ export function TicketProcurementSection({
                   <span className="text-zinc-500 dark:text-zinc-400">
                     {" — "}
                     {r.quantity} ·{" "}
-                    {tType(r.type as "hardware" | "software")} ·{" "}
-                    {tUrgency(r.urgency as "low" | "medium" | "high")}
+                    {tType(r.type as "hardware" | "software" | "other")}
                   </span>
                 </Link>
                 <ProcurementStatusBadge status={r.status} />

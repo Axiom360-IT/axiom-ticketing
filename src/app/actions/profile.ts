@@ -41,7 +41,9 @@ const MIME_TO_EXT: Record<(typeof AVATAR_ALLOWED_MIMES)[number], string> = {
 
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  language: z.string().trim().min(2).max(10),
+  // Language field removed from the UI (Meeting-2, CR-28). The users.language
+  // column stays (defaults 'en') as the forward i18n placeholder the email
+  // layer reads; it is simply no longer user-settable.
   // Optional E.164 phone — accepts empty string (cleared) or a valid
   // number. Stored as null when empty. The dispatch SMS leg gates on
   // `users.phone` being truthy, so clearing it disables SMS for the
@@ -86,7 +88,6 @@ export async function updateProfile(
     .update(users)
     .set({
       name: parsed.data.name,
-      language: parsed.data.language,
       ...(phoneValue !== undefined ? { phone: phoneValue } : {}),
       updatedAt: new Date(),
     })
@@ -99,7 +100,6 @@ export async function updateProfile(
     targetId: user.id,
     after: {
       name: parsed.data.name,
-      language: parsed.data.language,
       ...(phoneValue !== undefined ? { phone: phoneValue } : {}),
     },
   });

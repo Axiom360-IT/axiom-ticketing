@@ -22,6 +22,8 @@ type Props = {
   callerPermissions: Permission[];
   callerHasAll: boolean;
   canDelete: boolean;
+  /** Super Admin can edit system-role permissions (Meeting-2, CR-27). */
+  callerIsSuperAdmin: boolean;
 };
 
 export function EditRoleForm({
@@ -30,6 +32,7 @@ export function EditRoleForm({
   callerPermissions,
   callerHasAll,
   canDelete,
+  callerIsSuperAdmin,
 }: Props) {
   const router = useRouter();
   const tFields = useTranslations("roles.fields");
@@ -43,6 +46,9 @@ export function EditRoleForm({
   const [saving, setSaving] = useState(false);
   const [isDeletePending, startDelete] = useTransition();
 
+  // System-role permissions are editable only by a Super Admin (CR-27).
+  const permsLocked = initial.isSystem && !callerIsSuperAdmin;
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -50,8 +56,8 @@ export function EditRoleForm({
     const res = await updateRole(roleId, {
       name,
       description,
-      // System roles: don't send permissions, the action would reject anyway.
-      ...(initial.isSystem ? {} : { permissions: perms }),
+      // Send permissions unless they're locked (the action would reject).
+      ...(permsLocked ? {} : { permissions: perms }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -79,7 +85,7 @@ export function EditRoleForm({
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       {initial.isSystem ? (
         <div className="text-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900 text-amber-800 dark:text-amber-300">
-          {tEdit("systemBadge")}
+          {permsLocked ? tEdit("systemBadge") : tEdit("systemEditableBadge")}
         </div>
       ) : null}
 
@@ -111,7 +117,7 @@ export function EditRoleForm({
           value={perms}
           callerPermissions={callerPermissions}
           callerHasAll={callerHasAll}
-          readOnly={initial.isSystem}
+          readOnly={permsLocked}
           onChange={setPerms}
         />
       </div>

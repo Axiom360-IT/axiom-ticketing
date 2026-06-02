@@ -7,6 +7,8 @@ import {
   AssignControl,
   type Technician,
 } from "@/components/tickets/assign-control";
+import { BillableControl } from "@/components/tickets/billable-control";
+import { MultiAssignControl } from "@/components/tickets/multi-assign-control";
 import {
   CategoryBadge,
   EscalatedBadge,
@@ -22,10 +24,14 @@ import { MergeModal } from "@/components/tickets/merge-modal";
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
+import { StatusControl } from "@/components/tickets/status-control";
+import { WorkLog } from "@/components/tickets/work-log";
 import { TicketProcurementSection } from "@/components/procurement/ticket-section";
 import { listProcurementForTicket } from "@/app/actions/procurement";
+import { listWorkLogsForTicket } from "@/app/actions/work-logs";
+import { listTicketCollaborators } from "@/app/actions/ticket-assignees";
 import { getAttachmentLimits } from "@/lib/storage/limits";
-import { can } from "@/lib/auth/can";
+import { can, isStrictTechnician } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
@@ -41,6 +47,17 @@ const ORIGIN_KEYS: Record<string, "originWebForm" | "originEmail" | "originPorta
   portal: "originPortal",
 };
 
+/** Human-readable completion time from open → close (Meeting-2, CR-15). */
+function formatCompletionTime(fromMs: number, toMs: number): string {
+  const totalMinutes = Math.max(0, Math.round((toMs - fromMs) / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export default async function TicketDetailPage({
   params,
 }: {
@@ -50,6 +67,9 @@ export default async function TicketDetailPage({
   if (!user) redirect("/admin/login");
 
   const t = await getTranslations("tickets.detail");
+  const tWorkLog = await getTranslations("tickets.workLog");
+  const tBillable = await getTranslations("tickets.billable");
+  const tMultiAssign = await getTranslations("tickets.multiAssign");
   const tQueue = await getTranslations("tickets.queue");
   const tCsat = await getTranslations("tickets.csat");
   const tEscalationReason = await getTranslations("tickets.escalationReason");
@@ -86,6 +106,7 @@ export default async function TicketDetailPage({
     canDeescalate,
     canReopen,
     canDelete,
+    canUpdate,
     canProcurementView,
     canProcurementCreate,
   ] = await Promise.all([
@@ -98,6 +119,7 @@ export default async function TicketDetailPage({
     can(user, "tickets.deescalate", ticketScope, productionContext),
     can(user, "tickets.reopen", ticketScope, productionContext),
     can(user, "tickets.delete", ticketScope, productionContext),
+    can(user, "tickets.update", ticketScope, productionContext),
     can(user, "procurement.view", { type: "global" }, productionContext),
     can(user, "procurement.create", { type: "global" }, productionContext),
   ]);
@@ -105,6 +127,8 @@ export default async function TicketDetailPage({
   const procurementRows = canProcurementView
     ? await listProcurementForTicket(ticket.id)
     : [];
+
+  const workLogEntries = await listWorkLogsForTicket(ticket.id);
 
   const attachmentLimits = await getAttachmentLimits();
 
@@ -217,6 +241,17 @@ export default async function TicketDetailPage({
     }
   }
 
+  // Multi-technician assignment (Meeting-2, CR-11) — elevated assigners only.
+  const canMultiAssign = canAssign && !isStrictTechnician(user);
+  const collaborators = canMultiAssign
+    ? await listTicketCollaborators(ticket.id)
+    : [];
+  const collaboratorIds = new Set(collaborators.map((c) => c.id));
+  const collaboratorCandidates = technicians.filter(
+    (techUser) =>
+      techUser.id !== ticket.assignedToId && !collaboratorIds.has(techUser.id),
+  );
+
   const isClosedOrResolved =
     ticket.status === "resolved" || ticket.status === "closed";
 
@@ -285,10 +320,45 @@ export default async function TicketDetailPage({
             customerName: ticket.customerName,
           })}
         </span>
+        {ticket.closedAt ?? ticket.resolvedAt ? (
+          <>
+            <span>·</span>
+            <span>
+              {t("completedIn", {
+                duration: formatCompletionTime(
+                  ticket.createdAt.getTime(),
+                  (ticket.closedAt ?? ticket.resolvedAt)!.getTime(),
+                ),
+              })}
+            </span>
+          </>
+        ) : null}
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
+          {/* Work Log sits ABOVE the conversation (Meeting-2, CR-12) so it's
+              the first thing a technician records against the ticket. */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{tWorkLog("title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WorkLog
+                ticketId={ticket.id}
+                canLog={canUpdate}
+                entries={workLogEntries.map((e) => ({
+                  id: e.id,
+                  description: e.description,
+                  minutes: e.minutes,
+                  serviceType: e.serviceType,
+                  createdAt: e.createdAt,
+                  technicianName: e.technicianName,
+                }))}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>{t("conversationTitle")}</CardTitle>
@@ -298,15 +368,34 @@ export default async function TicketDetailPage({
             </CardContent>
           </Card>
 
-          {(canReply || canInternalNote) && !isClosedOrResolved ? (
+          {/* Reply to Customer + Internal Notes are now distinct sections
+              (Meeting-2, CR-08/09) so a technician can't confuse the two. */}
+          {canReply && !isClosedOrResolved ? (
             <Card>
               <CardHeader>
-                <CardTitle>{t("replyTitle")}</CardTitle>
+                <CardTitle>{t("replyToCustomerTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ReplyComposer
                   ticketId={ticket.id}
-                  canInternalNote={canInternalNote}
+                  mode="customer"
+                  maxFiles={attachmentLimits.maxFilesPerMessage}
+                  maxFileBytes={attachmentLimits.maxFileBytes}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {canInternalNote && !isClosedOrResolved ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("internalNotesTitle")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ReplyComposer
+                  ticketId={ticket.id}
+                  mode="internal"
+                  canInternalNote
                   maxFiles={attachmentLimits.maxFilesPerMessage}
                   maxFileBytes={attachmentLimits.maxFileBytes}
                 />
@@ -322,7 +411,6 @@ export default async function TicketDetailPage({
                 type: r.type,
                 itemName: r.itemName,
                 quantity: r.quantity,
-                urgency: r.urgency,
                 status: r.status,
                 createdAt: r.createdAt,
               }))}
@@ -330,13 +418,16 @@ export default async function TicketDetailPage({
             />
           ) : null}
 
-          {(canResolve || canEscalate || canDeescalate) &&
+          {(canUpdate || canResolve || canEscalate || canDeescalate || canDelete) &&
           !isClosedOrResolved ? (
             <Card>
               <CardHeader>
                 <CardTitle>{t("actionsTitle")}</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {canUpdate ? (
+                  <StatusControl ticketId={ticket.id} current={ticket.status} />
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {canResolve ? (
                     <ResolveModal
@@ -414,6 +505,49 @@ export default async function TicketDetailPage({
                     <span className="text-zinc-400">
                       {tQueue("unassigned")}
                     </span>
+                  )}
+                </div>
+              )}
+
+              {canMultiAssign ? (
+                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-1.5">
+                    {tMultiAssign("collaboratorsLabel")}
+                  </p>
+                  <MultiAssignControl
+                    ticketId={ticket.id}
+                    collaborators={collaborators.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                    }))}
+                    candidates={collaboratorCandidates.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                    }))}
+                  />
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {/* Billing categorization (Meeting-2, CR-16/17/18) — set per ticket
+              by anyone who can update it. */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">{tBillable("title")}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {canUpdate ? (
+                <BillableControl
+                  ticketId={ticket.id}
+                  current={ticket.billable}
+                />
+              ) : (
+                <div>
+                  {ticket.billable ? (
+                    tBillable(ticket.billable)
+                  ) : (
+                    <span className="text-zinc-400">{tBillable("unset")}</span>
                   )}
                 </div>
               )}

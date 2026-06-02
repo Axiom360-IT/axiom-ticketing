@@ -3,9 +3,20 @@ import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateUserForm } from "@/components/users/create-user-form";
 import { listAllRoles } from "@/app/actions/users";
+import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+
+async function loadOrgOptions(user: Awaited<ReturnType<typeof getSessionUser>>) {
+  if (
+    !user ||
+    !(await can(user, "organizations.view", { type: "global" }, productionContext))
+  ) {
+    return [];
+  }
+  return (await listActiveOrganizations()).map((o) => ({ id: o.id, name: o.name }));
+}
 
 export async function generateMetadata() {
   const t = await getTranslations("users.create");
@@ -20,7 +31,10 @@ export default async function NewUserPage() {
   }
 
   const t = await getTranslations("users.create");
-  const roles = await listAllRoles();
+  const [roles, organizations] = await Promise.all([
+    listAllRoles(),
+    loadOrgOptions(user),
+  ]);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -35,7 +49,7 @@ export default async function NewUserPage() {
           <CardTitle>{t("cardTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <CreateUserForm roles={roles} />
+          <CreateUserForm roles={roles} organizations={organizations} />
         </CardContent>
       </Card>
     </div>

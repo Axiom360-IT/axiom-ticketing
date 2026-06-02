@@ -13,6 +13,13 @@ import {
 import { users } from "./auth";
 import { tickets } from "./tickets";
 
+// ── Procurement (Meeting-2, CR-20..CR-26) ─────────────────────────────
+//
+// The approval workflow was removed: if a technician says an item is needed,
+// it is needed. The coordinator ACTIONS the request through four single-select
+// stages instead of approving it. Urgency was dropped to minimise inputs.
+// ──────────────────────────────────────────────────────────────────────
+
 export const procurementRequests = pgTable(
   "procurement_requests",
   {
@@ -24,38 +31,21 @@ export const procurementRequests = pgTable(
       onDelete: "set null",
     }),
     requestedByEmail: text("requested_by_email").notNull(),
+    // hardware | software | other (CR-20)
     type: text("type").notNull(),
     itemName: text("item_name").notNull(),
     quantity: integer("quantity").notNull().default(1),
+    // Optional (CR-23) — technician may not know the cost/vendor.
     estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
     vendor: text("vendor"),
     justification: text("justification").notNull(),
-    urgency: text("urgency").notNull(),
+    // Required at the form level (CR-22); nullable in DB for legacy rows.
     dateNeededBy: date("date_needed_by"),
-    status: text("status")
-      .notNull()
-      .default("pending_coordinator_approval"),
-    coordinatorDecisionById: uuid("coordinator_decision_by_id").references(
-      () => users.id,
-      { onDelete: "set null" },
-    ),
-    coordinatorDecisionAt: timestamp("coordinator_decision_at", {
-      withTimezone: true,
-    }),
-    adminDecisionById: uuid("admin_decision_by_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    adminDecisionAt: timestamp("admin_decision_at", { withTimezone: true }),
-    rejectionReason: text("rejection_reason"),
-    rejectedAtStep: text("rejected_at_step"),
-    purchasedAt: timestamp("purchased_at", { withTimezone: true }),
-    purchasedById: uuid("purchased_by_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
-    deliveredById: uuid("delivered_by_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    // Four single-select stages (CR-26):
+    // awaiting_customer_payment | order_pending | order_placed | order_completed
+    // Who moved the stage + when is captured in the audit log
+    // (procurement.set_status), so no decision columns live on the row.
+    status: text("status").notNull().default("awaiting_customer_payment"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -70,19 +60,11 @@ export const procurementRequests = pgTable(
     check("procurement_quantity_check", sql`${t.quantity} > 0`),
     check(
       "procurement_status_check",
-      sql`${t.status} IN ('pending_coordinator_approval','pending_admin_approval','approved','rejected','purchased','delivered')`,
+      sql`${t.status} IN ('awaiting_customer_payment','order_pending','order_placed','order_completed')`,
     ),
     check(
       "procurement_type_check",
-      sql`${t.type} IN ('hardware','software')`,
-    ),
-    check(
-      "procurement_urgency_check",
-      sql`${t.urgency} IN ('low','medium','high')`,
-    ),
-    check(
-      "procurement_rejected_at_step_check",
-      sql`${t.rejectedAtStep} IS NULL OR ${t.rejectedAtStep} IN ('coordinator','admin')`,
+      sql`${t.type} IN ('hardware','software','other')`,
     ),
   ],
 );

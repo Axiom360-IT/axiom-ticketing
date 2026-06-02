@@ -9,11 +9,11 @@ import {
 } from "@/app/actions/customer-portal";
 import { AttachmentPicker } from "./attachment-picker";
 
-const CATEGORIES = ["hardware", "software", "network", "access", "other"] as const;
-
-// Priority is intentionally not collected from customers — Coordinator
-// triages on review. Server defaults to `medium`. See the
-// `customerCreateSchema` comment in `src/app/actions/customer-portal.ts`.
+// Category was removed from the customer form (Meeting-2, CR-03); the server
+// defaults it to "other". The organization comes from the customer's account,
+// not the form. Priority is likewise not collected — Coordinator triages on
+// review and the server defaults to `medium`. See the `customerCreateSchema`
+// comment in `src/app/actions/customer-portal.ts`.
 //
 // A draft ticket is created the first time the user picks a file (lazy
 // — we don't burn a ticket number for users who never attach anything).
@@ -29,12 +29,9 @@ type Props = {
 export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.new");
-  const tCat = useTranslations("tickets.category");
   const tAtt = useTranslations("tickets.attachments");
 
   const [subject, setSubject] = useState("");
-  const [category, setCategory] = useState<(typeof CATEGORIES)[number] | "">("");
-  const [categoryOther, setCategoryOther] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,26 +57,10 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!category) {
-      setError(t("errors.chooseCategory"));
-      return;
-    }
-    const otherTrim = categoryOther.trim();
-    if (category === "other" && otherTrim.length === 0) {
-      setError(t("errors.describeOther"));
-      return;
-    }
-    // Prepend the "Other: X" specifier so the Coordinator sees it in
-    // the description block when triaging.
-    const finalDescription =
-      category === "other"
-        ? `[Other category: ${otherTrim}]\n\n${description.trim()}`
-        : description.trim();
     setSubmitting(true);
     const result = await customerCreateTicket({
       subject: subject.trim(),
-      category,
-      description: finalDescription,
+      description: description.trim(),
       draftTicketId: draftTicketId ?? undefined,
     });
     setSubmitting(false);
@@ -112,46 +93,6 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
           placeholder={t("subjectPlaceholder")}
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-      </div>
-
-      <div>
-        <label
-          htmlFor="category"
-          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
-        >
-          {t("categoryLabel")}
-        </label>
-        <select
-          id="category"
-          name="category"
-          required
-          value={category}
-          onChange={(e) =>
-            setCategory(e.target.value as (typeof CATEGORIES)[number] | "")
-          }
-          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">{t("categoryPlaceholder")}</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {tCat(c)}
-            </option>
-          ))}
-        </select>
-        {category === "other" ? (
-          <input
-            id="categoryOther"
-            name="categoryOther"
-            type="text"
-            required
-            maxLength={120}
-            value={categoryOther}
-            onChange={(e) => setCategoryOther(e.target.value)}
-            placeholder={t("categoryOtherPlaceholder")}
-            aria-label={t("categoryOtherLabel")}
-            className="mt-2 w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        ) : null}
       </div>
 
       <div>

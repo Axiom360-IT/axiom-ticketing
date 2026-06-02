@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateOnBehalfForm } from "@/components/tickets/create-on-behalf-form";
+import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -23,6 +24,17 @@ export default async function NewTicketPage() {
   );
   if (!allowed) redirect("/admin/tickets");
 
+  // Offer the org dropdown when the agent can read the registry (CR-02).
+  const canViewOrgs = await can(
+    user,
+    "organizations.view",
+    { type: "global" },
+    productionContext,
+  );
+  const organizations = canViewOrgs
+    ? (await listActiveOrganizations()).map((o) => ({ id: o.id, name: o.name }))
+    : [];
+
   const t = await getTranslations("tickets.createOnBehalf");
 
   return (
@@ -39,7 +51,7 @@ export default async function NewTicketPage() {
           <CardTitle>{t("cardTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <CreateOnBehalfForm />
+          <CreateOnBehalfForm organizations={organizations} />
         </CardContent>
       </Card>
     </div>

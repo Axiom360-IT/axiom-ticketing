@@ -6,6 +6,13 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { updateUser } from "@/app/actions/users";
 import {
@@ -13,19 +20,28 @@ import {
   type RoleOption,
 } from "@/components/users/role-multi-select";
 
+const NO_ORG = "__none__";
+
 type Props = {
   userId: string;
   initial: {
     name: string;
     email: string;
-    language: string;
+    organizationId: string | null;
     roleIds: string[];
   };
   roles: RoleOption[];
+  organizations: { id: string; name: string }[];
   isActive: boolean;
 };
 
-export function EditUserForm({ userId, initial, roles, isActive }: Props) {
+export function EditUserForm({
+  userId,
+  initial,
+  roles,
+  organizations,
+  isActive,
+}: Props) {
   const router = useRouter();
   const { runWithReauth, gate } = useReauthGate();
   const tFields = useTranslations("users.fields");
@@ -33,7 +49,9 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
   const tCommon = useTranslations("common");
 
   const [name, setName] = useState(initial.name);
-  const [language, setLanguage] = useState(initial.language);
+  const [organizationId, setOrganizationId] = useState(
+    initial.organizationId ?? NO_ORG,
+  );
   const [selected, setSelected] = useState<string[]>(initial.roleIds);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,7 +64,7 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
       () =>
         updateUser(userId, {
           name,
-          language,
+          organizationId: organizationId === NO_ORG ? null : organizationId,
           roleIds: selected,
         }),
       "superAdmin",
@@ -86,14 +104,24 @@ export function EditUserForm({ userId, initial, roles, isActive }: Props) {
       </div>
 
       <div className="space-y-1.5 max-w-xs">
-        <Label htmlFor="language">{tFields("language")}</Label>
-        <Input
-          id="language"
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          maxLength={10}
+        <Label htmlFor="organization">{tFields("organization")}</Label>
+        <Select
+          value={organizationId}
+          onValueChange={(v) => setOrganizationId(v ?? NO_ORG)}
           disabled={!isActive}
-        />
+        >
+          <SelectTrigger id="organization">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_ORG}>{tFields("organizationNone")}</SelectItem>
+            {organizations.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <fieldset className="space-y-2">

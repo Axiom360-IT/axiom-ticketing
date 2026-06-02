@@ -76,7 +76,6 @@ export default async function PortalProfilePage() {
         initial={{
           name: profile?.name ?? "",
           email: profile?.email ?? "",
-          language: profile?.language ?? "en",
           phone: profile?.phone ?? "",
         }}
       />

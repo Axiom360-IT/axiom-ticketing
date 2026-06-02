@@ -127,15 +127,23 @@ export function normalizeResendInbound(
 
 // ── Ticket-number extraction ─────────────────────────────────────────
 
-const TICKET_NUMBER = /\b(AX-\d+)\b/i;
-const TICKET_PLUS_ADDRESS = /\bticket\+([A-Za-z]+-\d+)@/i;
+// Matches BOTH the legacy `AX-####` numbers and the new
+// `<ABBREV>-<YYYYMMDD>-<NNN>` format (Meeting-2, CR-07, e.g. KI-20260522-001).
+// The org-prefixed form is listed first so the more specific alternative wins.
+const TICKET_NUMBER_CORE = "[A-Za-z0-9]{2,5}-\\d{8}-\\d{3}|AX-\\d+";
+const TICKET_NUMBER = new RegExp(`\\b(${TICKET_NUMBER_CORE})\\b`, "i");
+const TICKET_PLUS_ADDRESS = new RegExp(
+  `\\bticket\\+(${TICKET_NUMBER_CORE})@`,
+  "i",
+);
 
 /**
  * Find the ticket number this inbound email is replying to. Two methods:
- *   1. `ticket+AX-XXXX@<domain>` in any of the To addresses (preferred —
+ *   1. `ticket+<NUM>@<domain>` in any of the To addresses (preferred —
  *      can't be defeated by a customer changing the subject line).
- *   2. `[AX-XXXX]` in the subject (fallback for clients that strip
+ *   2. `[<NUM>]` in the subject (fallback for clients that strip
  *      sub-addressing).
+ * `<NUM>` is either the legacy `AX-XXXX` or the new `KI-20260522-001` form.
  * Returns null when neither method finds anything.
  */
 export function extractTicketNumber(

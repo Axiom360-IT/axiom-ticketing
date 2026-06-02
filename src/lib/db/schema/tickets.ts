@@ -11,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth";
+import { organizations } from "./organizations";
 
 export const tickets = pgTable(
   "tickets",
@@ -25,11 +26,28 @@ export const tickets = pgTable(
     status: text("status").notNull().default("open"),
     stream: text("stream").notNull(),
     origin: text("origin").notNull(),
+    // Organization that raised the ticket (Meeting-2, CR-02). Nullable so
+    // guest/legacy submissions that don't match a registered org still work;
+    // the org abbreviation drives the ticket-number prefix when present.
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
     customerId: uuid("customer_id").references(() => users.id, {
       onDelete: "set null",
     }),
     customerEmail: text("customer_email").notNull(),
     customerName: text("customer_name").notNull(),
+    // Billing categorization (Meeting-2, CR-16). NULL until triaged; one of
+    // yes | no | monthly_plan | project | rework. When 'monthly_plan', logged
+    // work-log minutes are deducted from the org's monthly balance.
+    billable: text("billable"),
+    // How many work-log minutes this ticket has already deducted from its
+    // organization's Monthly-Plan balance (Meeting-2, CR-19). Lets the
+    // deduction stay idempotent + reversible as logs change or billable
+    // toggles — we only ever apply the delta against this number.
+    monthlyPlanDeductedMinutes: integer("monthly_plan_deducted_minutes")
+      .notNull()
+      .default(0),
     assignedToId: uuid("assigned_to_id").references(() => users.id, {
       onDelete: "restrict",
     }),
@@ -48,6 +66,10 @@ export const tickets = pgTable(
     // escalates (optional). Lives next to the categorical reason so
     // reporting can group by enum without losing context.
     escalationNote: text("escalation_note"),
+    // Who the ticket was escalated TO (Meeting-2, CR-14): the name of an
+    // upper-hierarchy role (e.g. "IT Director", "Super Admin"). Free text so
+    // it tracks whatever roles exist; NULL when not escalated.
+    escalationTargetRole: text("escalation_target_role"),
     csatResponse: text("csat_response"),
     csatRespondedAt: timestamp("csat_responded_at", { withTimezone: true }),
     responseDueAt: timestamp("response_due_at", { withTimezone: true }),
@@ -75,6 +97,7 @@ export const tickets = pgTable(
   (t) => [
     index("tickets_status_priority_idx").on(t.status, t.priority),
     index("tickets_assigned_to_id_idx").on(t.assignedToId),
+    index("tickets_organization_id_idx").on(t.organizationId),
     index("tickets_customer_id_idx").on(t.customerId),
     index("tickets_customer_email_idx").on(t.customerEmail),
     index("tickets_is_escalated_idx")
@@ -102,7 +125,11 @@ export const tickets = pgTable(
     ),
     check(
       "tickets_status_check",
-      sql`${t.status} IN ('draft','open','in_progress','resolved','closed')`,
+      sql`${t.status} IN ('draft','open','in_progress','awaiting_customer_confirmation','escalation','resolved','closed')`,
+    ),
+    check(
+      "tickets_billable_check",
+      sql`${t.billable} IS NULL OR ${t.billable} IN ('yes','no','monthly_plan','project','rework')`,
     ),
     check("tickets_stream_check", sql`${t.stream} IN ('internal','external')`),
     check(

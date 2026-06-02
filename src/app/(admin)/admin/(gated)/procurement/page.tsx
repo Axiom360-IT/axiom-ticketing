@@ -31,20 +31,16 @@ import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 
 const STATUSES = [
-  "pending_coordinator_approval",
-  "pending_admin_approval",
-  "approved",
-  "purchased",
-  "delivered",
-  "rejected",
+  "awaiting_customer_payment",
+  "order_pending",
+  "order_placed",
+  "order_completed",
 ] as const;
-const TYPES = ["hardware", "software"] as const;
-const URGENCIES = ["low", "medium", "high"] as const;
+const TYPES = ["hardware", "software", "other"] as const;
 
 type SearchParams = Promise<{
   status?: string;
   type?: string;
-  urgency?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -68,7 +64,6 @@ export default async function ProcurementListPage({
   const { items: rows, hasMore } = await listProcurementForAdmin({
     status: sp.status,
     type: sp.type,
-    urgency: sp.urgency,
     page,
     pageSize,
   });
@@ -91,7 +86,6 @@ export default async function ProcurementListPage({
 
   const t = await getTranslations("procurement.list");
   const tType = await getTranslations("procurement.type");
-  const tUrgency = await getTranslations("procurement.urgency");
   const tStatus = await getTranslations("procurement.status");
   const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
@@ -122,14 +116,6 @@ export default async function ProcurementListPage({
           options={TYPES.map((v) => ({ value: v, label: tType(v) }))}
           triggerClassName="w-40"
         />
-        <UrlFilterSelect
-          name="urgency"
-          label={t("filterUrgency")}
-          value={sp.urgency ?? ""}
-          anyLabel={t("filterAny")}
-          options={URGENCIES.map((v) => ({ value: v, label: tUrgency(v) }))}
-          triggerClassName="w-40"
-        />
       </div>
 
       <Card className="p-0">
@@ -144,7 +130,6 @@ export default async function ProcurementListPage({
                 <TableRow>
                   <TableHead className="px-4">{t("columns.item")}</TableHead>
                   <TableHead>{t("columns.type")}</TableHead>
-                  <TableHead>{t("columns.urgency")}</TableHead>
                   <TableHead>{t("columns.cost")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
                   <TableHead>{t("columns.requester")}</TableHead>
@@ -168,10 +153,7 @@ export default async function ProcurementListPage({
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {tType(r.type as "hardware" | "software")}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {tUrgency(r.urgency as "low" | "medium" | "high")}
+                      {tType(r.type as "hardware" | "software" | "other")}
                     </TableCell>
                     <TableCell className="text-sm">
                       {r.estimatedCost ?? ""}
@@ -202,7 +184,6 @@ export default async function ProcurementListPage({
                           itemName: r.itemName,
                           quantity: r.quantity,
                           type: r.type,
-                          urgency: r.urgency,
                           status: r.status,
                           estimatedCost: r.estimatedCost,
                           requestedByEmail: r.requestedByEmail,

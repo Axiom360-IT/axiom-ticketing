@@ -10,6 +10,9 @@ export type Target =
         id: string;
         assignedToId: string | null;
         customerId: string | null;
+        /** Additional collaborating technicians (Meeting-2, CR-11). A strict
+         *  technician who is a collaborator can act on the ticket too. */
+        assigneeIds?: string[];
       };
     }
   | {
@@ -119,9 +122,16 @@ export async function can(
     case "tickets.resolve":
     case "tickets.escalate":
     case "tickets.reopen":
+    // Meeting-2 CR-10: the owning technician can reassign their own ticket to
+    // a colleague (no handshake). Scoped so a strict tech can only assign a
+    // ticket currently assigned to them; elevated roles assign anything.
+    case "tickets.assign":
       if (target.type !== "ticket") return false;
       if (isStrictTechnician(user)) {
-        return target.ticket.assignedToId === user.id;
+        return (
+          target.ticket.assignedToId === user.id ||
+          (target.ticket.assigneeIds ?? []).includes(user.id)
+        );
       }
       if (isStrictCustomer(user)) {
         return target.ticket.customerId === user.id;

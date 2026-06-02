@@ -7,6 +7,13 @@ import PhoneInput from "react-phone-number-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useReauthGate } from "@/components/shared/use-reauth-gate";
 import { createUser } from "@/app/actions/users";
 import {
@@ -14,7 +21,15 @@ import {
   type RoleOption,
 } from "@/components/users/role-multi-select";
 
-export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
+const NO_ORG = "__none__";
+
+export function CreateUserForm({
+  roles,
+  organizations,
+}: {
+  roles: RoleOption[];
+  organizations: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const { runWithReauth, gate } = useReauthGate();
   const tFields = useTranslations("users.fields");
@@ -24,9 +39,9 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
   const [data, setData] = useState({
     name: "",
     email: "",
-    language: "en",
     phone: "",
   });
+  const [organizationId, setOrganizationId] = useState(NO_ORG);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +58,7 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
       () =>
         createUser({
           ...data,
+          organizationId: organizationId === NO_ORG ? undefined : organizationId,
           roleIds: selectedRoles,
         }),
       "superAdmin",
@@ -103,13 +119,25 @@ export function CreateUserForm({ roles }: { roles: RoleOption[] }) {
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="language">{tFields("language")}</Label>
-          <Input
-            id="language"
-            value={data.language}
-            onChange={(e) => update("language", e.target.value)}
-            maxLength={10}
-          />
+          <Label htmlFor="organization">{tFields("organization")}</Label>
+          <Select
+            value={organizationId}
+            onValueChange={(v) => setOrganizationId(v ?? NO_ORG)}
+          >
+            <SelectTrigger id="organization">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_ORG}>
+                {tFields("organizationNone")}
+              </SelectItem>
+              {organizations.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">

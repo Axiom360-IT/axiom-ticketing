@@ -59,8 +59,10 @@ export const ratelimits = {
   authInternalNote: makeLimiter(200, "1 h"),
   authEscalate: makeLimiter(50, "1 h"),
   authCreateProcurement: makeLimiter(50, "1 d"),
+  authLogWork: makeLimiter(200, "1 h"),
   authCreateUser: makeLimiter(50, "1 h"),
   authCreateRole: makeLimiter(20, "1 d"),
+  authManageOrganization: makeLimiter(100, "1 d"),
   authUpdateSetting: makeLimiter(100, "1 d"),
 
   // ── Customer portal ──────────────────────────────────────────

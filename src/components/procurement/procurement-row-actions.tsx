@@ -21,7 +21,6 @@ export type ProcurementRowSummary = {
   itemName: string;
   quantity: number;
   type: string;
-  urgency: string;
   status: string;
   estimatedCost: string | null;
   requestedByEmail: string | null;
@@ -39,7 +38,6 @@ export function ProcurementRowActions({ request }: Props) {
   const tDialog = useTranslations("procurement.rowActions");
   const tList = useTranslations("procurement.list");
   const tType = useTranslations("procurement.type");
-  const tUrgency = useTranslations("procurement.urgency");
   const formatter = useFormatter();
 
   const [viewOpen, setViewOpen] = useState(false);
@@ -70,11 +68,7 @@ export function ProcurementRowActions({ request }: Props) {
             <dt className="text-zinc-500 dark:text-zinc-400">
               {tList("columns.type")}
             </dt>
-            <dd>{tType(request.type as "hardware" | "software")}</dd>
-            <dt className="text-zinc-500 dark:text-zinc-400">
-              {tList("columns.urgency")}
-            </dt>
-            <dd>{tUrgency(request.urgency as "low" | "medium" | "high")}</dd>
+            <dd>{tType(request.type as "hardware" | "software" | "other")}</dd>
             {request.estimatedCost ? (
               <>
                 <dt className="text-zinc-500 dark:text-zinc-400">

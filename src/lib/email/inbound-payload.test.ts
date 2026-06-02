@@ -105,6 +105,22 @@ describe("extractTicketNumber", () => {
     ).toBe("AX-0042");
   });
 
+  it("finds the new org-prefixed number in a ticket+ address", () => {
+    expect(
+      extractTicketNumber(
+        fixture({ toEmails: ["ticket+KI-20260522-001@axiom360.it"] }),
+      ),
+    ).toBe("KI-20260522-001");
+  });
+
+  it("finds the new org-prefixed number in the subject line", () => {
+    expect(
+      extractTicketNumber(
+        fixture({ subject: "Re: [KI-20260522-007] still broken" }),
+      ),
+    ).toBe("KI-20260522-007");
+  });
+
   it("returns null when no marker is present anywhere", () => {
     expect(extractTicketNumber(fixture({}))).toBeNull();
   });

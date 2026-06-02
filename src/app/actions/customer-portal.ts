@@ -22,6 +22,10 @@ import {
 import { clientIp, getAppUrl } from "@/lib/request";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
+import {
+  resolveTicketOrgById,
+  resolveTicketOrgByName,
+} from "@/lib/tickets/org";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
@@ -158,6 +162,7 @@ export async function requestSignUpMagicLink(
   email: string,
   phone: string | undefined,
   password: string,
+  organization?: string,
 ): Promise<RequestSignUpResult> {
   const parsedName = nameSchema.safeParse(name);
   if (!parsedName.success) return { ok: false, error: "invalid_name" };
@@ -165,6 +170,9 @@ export async function requestSignUpMagicLink(
   if (!parsedEmail.success) return { ok: false, error: "invalid_email" };
   const parsedPhone = phoneSchema.safeParse(phone ?? "");
   if (!parsedPhone.success) return { ok: false, error: "invalid_phone" };
+  // Resolve the typed organization name to a registered org (CR-06); leaves
+  // it unset when it doesn't match — an admin can link it later.
+  const { organizationId } = await resolveTicketOrgByName(organization);
   // Empty string → null in the DB (no phone configured → no SMS).
   const normalizedPhone =
     parsedPhone.data && parsedPhone.data.length > 0 ? parsedPhone.data : null;
@@ -206,6 +214,7 @@ export async function requestSignUpMagicLink(
         password: normalizedPassword,
         name: parsedName.data,
         ...(normalizedPhone ? { phone: normalizedPhone } : {}),
+        ...(organizationId ? { organizationId } : {}),
       },
       headers: h,
     });
@@ -549,13 +558,6 @@ export async function guestReply(input: {
 
 // ── Customer-side new ticket ───────────────────────────────────────
 
-const TICKET_CATEGORIES = [
-  "hardware",
-  "software",
-  "network",
-  "access",
-  "other",
-] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 // Customer-portal ticket creation. Priority is deliberately not asked
@@ -569,7 +571,9 @@ const customerCreateSchema = z.object({
     .trim()
     .min(3, "Subject must be at least 3 characters")
     .max(150, "Subject must be at most 150 characters"),
-  category: z.enum(TICKET_CATEGORIES),
+  // Category removed from the customer form (Meeting-2, CR-03); defaults to
+  // "other" server-side. The org comes from the customer's account, not the
+  // form, so there is no org field here.
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   description: z
     .string()
@@ -682,13 +686,19 @@ export async function customerCreateTicket(
   }
 
   const [profile] = await db
-    .select({ name: users.name, email: users.email })
+    .select({
+      name: users.name,
+      email: users.email,
+      organizationId: users.organizationId,
+    })
     .from(users)
     .where(eq(users.id, user.id))
     .limit(1);
   if (!profile) throw new NotFoundError();
 
   const stream = await classifyStream(profile.email);
+  // The customer's organization comes from their account (CR-02/06/07).
+  const org = await resolveTicketOrgById(profile.organizationId);
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket(
     {
@@ -718,15 +728,18 @@ export async function customerCreateTicket(
     }
 
     ticketId = draft.id;
-    ticketNumber = draft.ticketNumber;
+    // Regenerate the number with the org prefix now the org is known (CR-07).
+    ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
 
     await transactional(async (tx) => {
       await tx
         .update(tickets)
         .set({
+          ticketNumber,
+          organizationId: org.organizationId,
           subject: data.subject,
           description: data.description,
-          category: data.category,
+          category: "other",
           priority: data.priority,
           status: "open",
           createdAt,
@@ -764,14 +777,15 @@ export async function customerCreateTicket(
         );
     });
   } else {
-    ticketNumber = await generateTicketNumber();
+    ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
     const [ticket] = await db
       .insert(tickets)
       .values({
         ticketNumber,
+        organizationId: org.organizationId,
         subject: data.subject,
         description: data.description,
-        category: data.category,
+        category: "other",
         priority: data.priority,
         status: "open",
         stream,
@@ -805,7 +819,8 @@ export async function customerCreateTicket(
     after: {
       ticketNumber,
       subject: data.subject,
-      category: data.category,
+      organizationId: org.organizationId,
+      category: "other",
       priority: data.priority,
       stream,
       origin: "portal",

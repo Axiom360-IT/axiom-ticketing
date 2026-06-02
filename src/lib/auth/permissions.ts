@@ -22,19 +22,23 @@ export const PERMISSIONS = [
   "tickets.delete",
   "tickets.export",
 
-  // Procurement
+  // Procurement (Meeting-2 CR-24: approval removed; coordinator actions the
+  // request through the 4 stages via procurement.manage)
   "procurement.view",
   "procurement.create",
   "procurement.update",
-  "procurement.approve",
-  "procurement.reject",
-  "procurement.mark_purchased",
-  "procurement.mark_delivered",
+  "procurement.manage",
   "procurement.export",
 
   // Reports
   "reports.view",
   "reports.export",
+
+  // Organizations (Meeting-2, CR-06)
+  "organizations.view",
+  "organizations.create",
+  "organizations.update",
+  "organizations.delete",
 
   // Users
   "users.view",
@@ -75,6 +79,7 @@ export const IT_DIRECTOR_PERMISSIONS: Permission[] = [
   "tickets.reply",
   "tickets.internal_note",
   "tickets.deescalate",
+  "organizations.view",
   "reports.view",
   "audit.view",
 ];
@@ -90,11 +95,11 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   "tickets.resolve_skip_note",
   "tickets.reopen",
   "tickets.deescalate",
+  "organizations.view",
+  "organizations.create",
+  "organizations.update",
   "procurement.view",
-  "procurement.approve",
-  "procurement.reject",
-  "procurement.mark_purchased",
-  "procurement.mark_delivered",
+  "procurement.manage",
   "users.view",
   "reports.view",
 ];
@@ -102,6 +107,7 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
 export const TECHNICIAN_PERMISSIONS: Permission[] = [
   "tickets.view",
   "tickets.update",
+  "tickets.assign",
   "tickets.reply",
   "tickets.internal_note",
   "tickets.resolve",

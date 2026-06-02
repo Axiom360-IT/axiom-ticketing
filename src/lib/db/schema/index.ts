@@ -3,7 +3,10 @@
 
 export * from "./auth";
 export * from "./rbac";
+export * from "./organizations";
 export * from "./tickets";
+export * from "./ticket-assignees";
+export * from "./work-logs";
 export * from "./messages";
 export * from "./attachments";
 export * from "./procurement";

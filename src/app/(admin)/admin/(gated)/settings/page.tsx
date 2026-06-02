@@ -320,6 +320,9 @@ export default async function SettingsPage({
                 hint={tFu("maxSizeHint")}
                 initial={num(v["file_upload.max_size_bytes"], 10_485_760)}
                 min={1}
+                step={1}
+                scale={1_048_576}
+                unitSuffix="MB"
               />
               <NumberSettingForm
                 settingKey="file_upload.max_files_per_message"

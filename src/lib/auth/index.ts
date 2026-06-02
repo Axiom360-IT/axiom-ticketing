@@ -159,6 +159,9 @@ export const auth = betterAuth({
       // means the user gets no SMS; the dispatcher already gates each
       // SMS leg on `r.phone` being truthy.
       phone: { type: "string", required: false },
+      // Organization the user belongs to (Meeting-2, CR-06). Set at sign-up
+      // (resolved from the typed org name) and by admins.
+      organizationId: { type: "string", required: false },
       // createdById, deactivatedAt, deactivatedById, lastLoginAt are
       // application-managed columns; Better Auth ignores them.
     },

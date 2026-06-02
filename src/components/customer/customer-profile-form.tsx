@@ -7,7 +7,7 @@ import PhoneInput from "react-phone-number-input";
 import { updateProfile } from "@/app/actions/profile";
 
 type Props = {
-  initial: { name: string; email: string; language: string; phone: string };
+  initial: { name: string; email: string; phone: string };
 };
 
 export function CustomerProfileForm({ initial }: Props) {
@@ -15,7 +15,6 @@ export function CustomerProfileForm({ initial }: Props) {
   const t = useTranslations("portal.profile");
 
   const [name, setName] = useState(initial.name);
-  const [language, setLanguage] = useState(initial.language);
   const [phone, setPhone] = useState(initial.phone);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +27,6 @@ export function CustomerProfileForm({ initial }: Props) {
     setSubmitting(true);
     const result = await updateProfile({
       name: name.trim(),
-      language,
       phone: phone.trim(),
     });
     setSubmitting(false);
@@ -97,22 +95,6 @@ export function CustomerProfileForm({ initial }: Props) {
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           {t("phoneHint")}
         </p>
-      </div>
-      <div>
-        <label
-          htmlFor="profile-language"
-          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
-        >
-          {t("languageLabel")}
-        </label>
-        <select
-          id="profile-language"
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="en">{t("languageOptions.en")}</option>
-        </select>
       </div>
 
       {error ? (

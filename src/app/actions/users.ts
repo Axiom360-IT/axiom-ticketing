@@ -111,7 +111,8 @@ export async function getDescendants(
 const createUserSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().toLowerCase().email().max(255),
-  language: z.string().trim().min(2).max(10).default("en"),
+  // Organization the user belongs to (Meeting-2, CR-06). Optional.
+  organizationId: z.string().uuid().optional(),
   // Optional E.164 phone for SMS notifications. Empty string is allowed
   // (means "no phone") and stored as null. The dispatch SMS leg won't
   // fire for users without a phone.
@@ -217,8 +218,8 @@ export async function createUser(
         // is now on globally and would otherwise block staff sign-in.
         emailVerified: true,
         name: data.name,
-        language: data.language,
         phone: phoneValue,
+        organizationId: data.organizationId ?? null,
         createdById: caller.id,
         isActive: true,
       });
@@ -283,7 +284,8 @@ export async function createUser(
 
 const updateUserSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
-  language: z.string().trim().min(2).max(10).optional(),
+  // Organization the user belongs to (Meeting-2, CR-06). null clears it.
+  organizationId: z.string().uuid().nullable().optional(),
   roleIds: z.array(z.string().uuid()).optional(),
 });
 
@@ -353,17 +355,19 @@ export async function updateUser(
   }
 
   const before = await db
-    .select({ name: users.name, language: users.language })
+    .select({ name: users.name, organizationId: users.organizationId })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
 
-  if (data.name || data.language) {
+  if (data.name || data.organizationId !== undefined) {
     await db
       .update(users)
       .set({
         ...(data.name ? { name: data.name } : {}),
-        ...(data.language ? { language: data.language } : {}),
+        ...(data.organizationId !== undefined
+          ? { organizationId: data.organizationId }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));

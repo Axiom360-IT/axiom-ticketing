@@ -58,14 +58,14 @@ async function getStats(perms: Set<Permission>) {
               ),
             )
         : Promise.resolve(null),
-      perms.has("procurement.approve")
+      perms.has("procurement.manage")
         ? db
             .select({ value: count() })
             .from(procurementRequests)
             .where(
               inArray(procurementRequests.status, [
-                "pending_coordinator_approval",
-                "pending_admin_approval",
+                "awaiting_customer_payment",
+                "order_pending",
               ]),
             )
         : Promise.resolve(null),
@@ -128,7 +128,7 @@ export default async function AdminLanding() {
         <StatCard
           label={t("statPendingProcurement")}
           value={stats.pendingProcurement}
-          href="/admin/procurement?status=pending_coordinator_approval"
+          href="/admin/procurement?status=awaiting_customer_payment"
           accent={
             stats.pendingProcurement !== null && stats.pendingProcurement > 0
               ? "warning"

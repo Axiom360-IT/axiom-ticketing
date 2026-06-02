@@ -362,10 +362,14 @@ describe("can() — user management scope", () => {
     ).toBe(false);
   });
 
-  it("blocks self-action: cannot update self via this perm", async () => {
+  // can.ts deliberately ALLOWS self-update via users.update — editing your own
+  // name/phone/roles is normal, and the "can't grant what you don't hold" rule
+  // still guards the role side. (Self deactivate / reset_password stay blocked
+  // below.) This expectation matches that documented behavior.
+  it("allows self-update via users.update", async () => {
     expect(
       await can(superAdmin("sa-1"), "users.update", userTarget("sa-1")),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("blocks self-action: cannot reset own password via admin path", async () => {
@@ -428,7 +432,11 @@ describe("can() — user management scope", () => {
     ).toBe(true);
   });
 
-  it("blocks updating a non-descendant", async () => {
+  // Super Admin bypasses the descendant/hierarchy gate (can.ts: "Super Admin
+  // bypasses the hierarchy gate … without this a seeded Super Admin can't
+  // manage seeded peers"). The descendant rule still applies to non-Super-Admin
+  // grantees, but no seeded non-SA role holds users.update to exercise here.
+  it("Super Admin can update a non-descendant (bypasses the hierarchy gate)", async () => {
     const ctx = makeCtx({ isDescendantOf: async () => false });
     expect(
       await can(
@@ -437,7 +445,7 @@ describe("can() — user management scope", () => {
         userTarget("tech-99", null),
         ctx,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

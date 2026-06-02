@@ -12,6 +12,7 @@ import { DeactivateModal } from "@/components/users/deactivate-modal";
 import { EditUserForm } from "@/components/users/edit-user-form";
 import { ImpersonateButton } from "@/components/users/impersonate-button";
 import { getDescendants, listAllRoles } from "@/app/actions/users";
+import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -34,7 +35,7 @@ export default async function EditUserPage({
       id: users.id,
       name: users.name,
       email: users.email,
-      language: users.language,
+      organizationId: users.organizationId,
       isActive: users.isActive,
       createdById: users.createdById,
       createdAt: users.createdAt,
@@ -113,6 +114,18 @@ export default async function EditUserPage({
     );
   });
 
+  // Org options for the org dropdown (CR-06), when the caller can read them.
+  const orgOptions = (await can(
+    caller,
+    "organizations.view",
+    { type: "global" },
+    productionContext,
+  ))
+    ? (await listActiveOrganizations()).map((o) => ({ id: o.id, name: o.name }))
+    : [];
+  const orgName =
+    orgOptions.find((o) => o.id === target.organizationId)?.name ?? null;
+
   const t = await getTranslations("users.edit");
   const formatter = await getFormatter();
 
@@ -185,16 +198,17 @@ export default async function EditUserPage({
               initial={{
                 name: target.name,
                 email: target.email,
-                language: target.language,
+                organizationId: target.organizationId,
                 roleIds: currentRoleRows.map((r) => r.roleId),
               }}
               roles={assignableRoles}
+              organizations={orgOptions}
               isActive={target.isActive}
             />
           ) : (
             <div className="text-sm text-zinc-500 dark:text-zinc-400 space-y-1">
               <div>{target.email}</div>
-              <div>{target.language}</div>
+              {orgName ? <div>{orgName}</div> : null}
             </div>
           )}
         </CardContent>

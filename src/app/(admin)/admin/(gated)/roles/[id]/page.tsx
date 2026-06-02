@@ -58,6 +58,7 @@ export default async function EditRolePage({
             callerPermissions={callerPermissions}
             callerHasAll={callerHasAll}
             canDelete={canDelete}
+            callerIsSuperAdmin={user.roleNames.has("Super Admin")}
           />
         </CardContent>
       </Card>

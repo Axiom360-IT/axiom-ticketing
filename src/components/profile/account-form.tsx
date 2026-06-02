@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { updateProfile } from "@/app/actions/profile";
 
 type Props = {
-  initial: { name: string; email: string; language: string; phone: string };
+  initial: { name: string; email: string; phone: string };
 };
 
 export function AccountForm({ initial }: Props) {
@@ -18,7 +18,6 @@ export function AccountForm({ initial }: Props) {
   const t = useTranslations("profile.account");
 
   const [name, setName] = useState(initial.name);
-  const [language, setLanguage] = useState(initial.language);
   const [phone, setPhone] = useState(initial.phone);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -29,7 +28,7 @@ export function AccountForm({ initial }: Props) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const res = await updateProfile({ name, language, phone: phone.trim() });
+      const res = await updateProfile({ name, phone: phone.trim() });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -82,15 +81,6 @@ export function AccountForm({ initial }: Props) {
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {t("phoneHint")}
           </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="profile-language">{t("language")}</Label>
-          <Input
-            id="profile-language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            maxLength={10}
-          />
         </div>
       </div>
       <div className="flex items-center gap-3 flex-wrap">

@@ -33,6 +33,11 @@ type ReplyComposerProps = {
   ticketId: string;
   /** Whether the current user holds tickets.internal_note for this ticket. */
   canInternalNote?: boolean;
+  /** Composer mode (Meeting-2, CR-08/09):
+   *  - "customer": always a reply to the customer (no internal toggle)
+   *  - "internal": always an internal note
+   *  - "toggle"  : legacy single composer with the internal-note checkbox */
+  mode?: "customer" | "internal" | "toggle";
   /** Admin-configured upload limits. Optional — fall back to defaults so
    *  this component can also render on pages that haven't yet been
    *  updated to fetch the setting. */
@@ -52,6 +57,7 @@ type Pending = {
 export function ReplyComposer({
   ticketId,
   canInternalNote = false,
+  mode = "toggle",
   maxFiles = DEFAULT_MAX_FILES_PER_MESSAGE,
   maxFileBytes = MAX_FILE_BYTES,
 }: ReplyComposerProps) {
@@ -67,7 +73,15 @@ export function ReplyComposer({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const internal = isInternal && canInternalNote;
+  // Whether this submission is an internal note. Fixed by `mode` except in
+  // the legacy "toggle" composer, where the checkbox decides.
+  const internal =
+    mode === "internal"
+      ? true
+      : mode === "customer"
+        ? false
+        : isInternal && canInternalNote;
+  const showToggle = mode === "toggle" && canInternalNote;
   const hasUploadingFile = pendingFiles.some(
     (p) => p.status === "uploading" || p.status === "confirming",
   );
@@ -327,7 +341,7 @@ export function ReplyComposer({
             onChange={handleFilePick}
           />
 
-          {canInternalNote ? (
+          {showToggle ? (
             <label className="inline-flex items-center gap-2 cursor-pointer select-none text-zinc-700 dark:text-zinc-300">
               <input
                 type="checkbox"
