@@ -46,12 +46,20 @@ export default async function PortalSignUpPage() {
       formTitle={t("title")}
       formSubtitle={t("subtitle")}
       footerSlot={
-        <p>
-          <span>{t("alreadyHave")} </span>
-          <Link href="/portal/sign-in" className={`font-medium ${link}`}>
-            {t("signInLink")}
-          </Link>
-        </p>
+        <div className="space-y-1.5 text-center">
+          <p>
+            <span>{t("alreadyHave")} </span>
+            <Link href="/portal/sign-in" className={`font-medium ${link}`}>
+              {t("signInLink")}
+            </Link>
+          </p>
+          <p>
+            <span>{t("guestSubmitPrefix")} </span>
+            <Link href="/portal/submit" className={`font-medium ${link}`}>
+              {t("guestSubmitLink")}
+            </Link>
+          </p>
+        </div>
       }
     >
       <Suspense>

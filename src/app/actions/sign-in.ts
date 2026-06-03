@@ -76,6 +76,9 @@ function stripAuthCookies(h: Headers): Headers {
 export async function signInWithLockout(
   rawEmail: string,
   rawPassword: string,
+  // When false, Better Auth issues a NON-persistent session (cleared when the
+  // browser closes). Defaults to true to preserve the prior behaviour.
+  rememberMe = true,
 ): Promise<SignInResult> {
   const parsed = schema.safeParse({ email: rawEmail, password: rawPassword });
   if (!parsed.success) {
@@ -100,7 +103,7 @@ export async function signInWithLockout(
   let unverified = false;
   try {
     await auth.api.signInEmail({
-      body: { email, password },
+      body: { email, password, rememberMe },
       // Strip any stale Better Auth cookie so an old session can't poison
       // the sign-in (see `stripAuthCookies`).
       headers: stripAuthCookies(await headers()),

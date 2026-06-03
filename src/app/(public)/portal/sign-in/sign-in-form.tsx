@@ -19,6 +19,7 @@ export function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(
     errorParam === "expired"
@@ -66,7 +67,11 @@ export function SignInForm() {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await signInWithLockout(email.trim(), password.trim());
+      const result = await signInWithLockout(
+        email.trim(),
+        password.trim(),
+        rememberMe,
+      );
       if (!result.ok) {
         if ("locked" in result && result.locked) {
           setError(result.error);
@@ -151,6 +156,15 @@ export function SignInForm() {
               )}
             </button>
           </div>
+          <label className="mt-3 inline-flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
+            />
+            {t("rememberMe")}
+          </label>
         </div>
       ) : null}
 

@@ -38,6 +38,9 @@ export type WorkLogRow = {
   ticketId: string;
   ticketNumber: string;
   ticketSubject: string;
+  /** Current primary assignee — used to decide whether the viewer may still
+   *  edit/delete their entry (they can't once the ticket is reassigned away). */
+  ticketAssignedToId: string | null;
   organizationName: string | null;
   billable: string | null;
 };
@@ -97,6 +100,7 @@ export async function listWorkLogs(
       ticketId: workLogs.ticketId,
       ticketNumber: tickets.ticketNumber,
       ticketSubject: tickets.subject,
+      ticketAssignedToId: tickets.assignedToId,
       organizationName: organizations.name,
       billable: tickets.billable,
     })
@@ -153,6 +157,18 @@ export async function listLoggableTickets(
     ticketNumber,
     subject,
   }));
+}
+
+/** Ticket ids the user currently collaborates on (additional assignee). Used
+ *  to decide which of their own timesheet entries they may still edit. */
+export async function listUserCollaboratorTicketIds(
+  userId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ ticketId: ticketAssignees.ticketId })
+    .from(ticketAssignees)
+    .where(eq(ticketAssignees.userId, userId));
+  return rows.map((r) => r.ticketId);
 }
 
 /** Organizations for the timesheet filter dropdown. */

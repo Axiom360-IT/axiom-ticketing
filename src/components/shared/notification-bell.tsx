@@ -174,8 +174,15 @@ function NotificationRow({
   const content = (
     <div className="flex items-start justify-between gap-2 w-full">
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{title}</p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">
+        {/* Full text wraps (no clamp) so the whole notification is readable;
+            the title attribute gives a hover tooltip as well. */}
+        <p className="font-medium break-words" title={title}>
+          {title}
+        </p>
+        <p
+          className="text-xs text-zinc-500 dark:text-zinc-400 break-words"
+          title={body}
+        >
           {body}
         </p>
       </div>

@@ -5,6 +5,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
 import PhoneInput from "react-phone-number-input";
 import { requestSignUpMagicLink } from "@/app/actions/customer-portal";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const MIN_PASSWORD = 12;
 
@@ -12,6 +13,7 @@ export function SignUpForm() {
   const router = useRouter();
   const t = useTranslations("portal.signUp");
   const tSignIn = useTranslations("portal.signIn");
+  const tCommon = useTranslations("common");
 
   const [name, setName] = useState("");
   const [organization, setOrganization] = useState("");
@@ -168,10 +170,9 @@ export function SignUpForm() {
         >
           {t("passwordLabel")}
         </label>
-        <input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD}
@@ -179,7 +180,8 @@ export function SignUpForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={t("passwordPlaceholder")}
-          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           {t("passwordHint", { min: MIN_PASSWORD })}
@@ -193,10 +195,9 @@ export function SignUpForm() {
         >
           {t("confirmPasswordLabel")}
         </label>
-        <input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD}
@@ -204,7 +205,8 @@ export function SignUpForm() {
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           placeholder={t("confirmPasswordPlaceholder")}
-          className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
       </div>
 

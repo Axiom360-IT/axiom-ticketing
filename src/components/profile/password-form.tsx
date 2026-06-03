@@ -4,13 +4,14 @@ import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { changePassword } from "@/app/actions/profile";
 
 export function PasswordForm() {
   const router = useRouter();
   const t = useTranslations("profile.password");
+  const tCommon = useTranslations("common");
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -50,25 +51,27 @@ export function PasswordForm() {
     <form onSubmit={handleSubmit} className="space-y-4 max-w-md" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="pw-current">{t("currentPassword")}</Label>
-        <Input
+        <PasswordInput
           id="pw-current"
-          type="password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
           required
           autoComplete="current-password"
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="pw-new">{t("newPassword")}</Label>
-        <Input
+        <PasswordInput
           id="pw-new"
-          type="password"
           minLength={12}
           value={next}
           onChange={(e) => setNext(e.target.value)}
           required
           autoComplete="new-password"
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           {t("passwordHint")}
@@ -76,14 +79,15 @@ export function PasswordForm() {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="pw-confirm">{t("confirmPassword")}</Label>
-        <Input
+        <PasswordInput
           id="pw-confirm"
-          type="password"
           minLength={12}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
           autoComplete="new-password"
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
       </div>
       <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">

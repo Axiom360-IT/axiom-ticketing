@@ -1112,7 +1112,8 @@ export async function replyToTicket(
     action: "ticket.reply",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { length: parsed.data.body.length },
+    // Capture the reply text (plain) so the audit detail shows what was sent.
+    after: { reply: htmlToPlainText(cleanBody) },
   });
 
   // Notify the customer — through the dispatcher (email + SMS + bell
@@ -1277,7 +1278,8 @@ export async function addInternalNote(
     action: "ticket.internal_note",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { length: parsed.data.body.length },
+    // Capture the note text (plain) so the audit detail shows what was written.
+    after: { note: htmlToPlainText(cleanBody) },
   });
 
   // Notification fan-out (assigned tech, coordinators) lands with M11.

@@ -21,6 +21,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -32,7 +33,11 @@ export function LoginForm() {
     // Trim defensively — autofill / paste often introduces stray whitespace.
     // The lockout action does the actual sign-in via Better Auth and sets
     // the session cookie via the nextCookies() plugin.
-    const result = await signInWithLockout(email.trim(), password.trim());
+    const result = await signInWithLockout(
+      email.trim(),
+      password.trim(),
+      rememberMe,
+    );
 
     setLoading(false);
 
@@ -109,6 +114,16 @@ export function LoginForm() {
           </button>
         </div>
       </div>
+
+      <label className="inline-flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={rememberMe}
+          onChange={(e) => setRememberMe(e.target.checked)}
+          className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
+        />
+        {t("rememberMe")}
+      </label>
 
       {error && (
         <div

@@ -31,7 +31,15 @@ type Entry = {
   ticketNumber: string;
 };
 
-export function TimesheetRowActions({ entry }: { entry: Entry }) {
+export function TimesheetRowActions({
+  entry,
+  canManage = true,
+}: {
+  entry: Entry;
+  /** When false, the entry is read-only here (e.g. the ticket was reassigned
+   *  away from this technician) — no edit/delete affordance is shown. */
+  canManage?: boolean;
+}) {
   const router = useRouter();
   const t = useTranslations("timesheet.rowActions");
   const tWorkLog = useTranslations("tickets.workLog");
@@ -93,6 +101,9 @@ export function TimesheetRowActions({ entry }: { entry: Entry }) {
       router.refresh();
     });
   }
+
+  // Read-only entry (ticket reassigned away) — no edit/delete affordance.
+  if (!canManage) return null;
 
   return (
     <>

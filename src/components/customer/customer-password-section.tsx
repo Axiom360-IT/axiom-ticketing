@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Lock } from "lucide-react";
 import { changePassword, setPassword } from "@/app/actions/profile";
+import { PasswordInput } from "@/components/ui/password-input";
 
 // Renders one of two flows:
 //   - hasPassword = false → "Set a password" (new only, no current). For
@@ -20,6 +21,7 @@ const MIN_LENGTH = 12;
 
 export function CustomerPasswordSection({ hasPassword }: Props) {
   const t = useTranslations("portal.profile.password");
+  const tCommon = useTranslations("common");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -86,15 +88,15 @@ export function CustomerPasswordSection({ hasPassword }: Props) {
             >
               {t("currentLabel")}
             </label>
-            <input
+            <PasswordInput
               id="currentPassword"
               name="currentPassword"
-              type="password"
               autoComplete="current-password"
               required
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              showLabel={tCommon("showPassword")}
+              hideLabel={tCommon("hidePassword")}
             />
           </div>
         ) : null}
@@ -106,16 +108,16 @@ export function CustomerPasswordSection({ hasPassword }: Props) {
           >
             {t("newLabel")}
           </label>
-          <input
+          <PasswordInput
             id="newPassword"
             name="newPassword"
-            type="password"
             autoComplete="new-password"
             required
             minLength={MIN_LENGTH}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            showLabel={tCommon("showPassword")}
+            hideLabel={tCommon("hidePassword")}
           />
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
             {t("hint", { min: MIN_LENGTH })}
@@ -129,15 +131,15 @@ export function CustomerPasswordSection({ hasPassword }: Props) {
           >
             {t("confirmLabel")}
           </label>
-          <input
+          <PasswordInput
             id="confirmPassword"
             name="confirmPassword"
-            type="password"
             autoComplete="new-password"
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            showLabel={tCommon("showPassword")}
+            hideLabel={tCommon("hidePassword")}
           />
         </div>
 

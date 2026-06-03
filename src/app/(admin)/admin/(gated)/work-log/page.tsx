@@ -29,6 +29,7 @@ import { listAssignableTechnicians } from "@/lib/tickets/load";
 import {
   listLoggableTickets,
   listOrganizationsForFilter,
+  listUserCollaboratorTicketIds,
   listWorkLogs,
 } from "@/lib/work-logs/queries";
 
@@ -96,26 +97,45 @@ export default async function WorkLogPage({
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
 
-  const [{ rows: rawRows, totalMinutes }, technicians, organizations, loggable] =
-    await Promise.all([
-      listWorkLogs(
-        user,
-        {
-          technicianId: filters.technician || undefined,
-          organizationId: filters.organization || undefined,
-          serviceType: filters.service || undefined,
-          billable: filters.billable || undefined,
-          from: filters.from || undefined,
-          to: filters.to || undefined,
-        },
-        { limit, offset },
-      ),
-      canViewAll ? listAssignableTechnicians() : Promise.resolve([]),
-      listOrganizationsForFilter(),
-      listLoggableTickets(user.id),
-    ]);
+  const [
+    { rows: rawRows, totalMinutes },
+    technicians,
+    organizations,
+    loggable,
+    collaboratorTicketIds,
+  ] = await Promise.all([
+    listWorkLogs(
+      user,
+      {
+        technicianId: filters.technician || undefined,
+        organizationId: filters.organization || undefined,
+        serviceType: filters.service || undefined,
+        billable: filters.billable || undefined,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+      },
+      { limit, offset },
+    ),
+    canViewAll ? listAssignableTechnicians() : Promise.resolve([]),
+    listOrganizationsForFilter(),
+    listLoggableTickets(user.id),
+    canViewAll
+      ? Promise.resolve<string[]>([])
+      : listUserCollaboratorTicketIds(user.id),
+  ]);
 
   const { items: rows, hasMore } = takePage(rawRows, pageSize);
+
+  // A technician can edit/delete an entry only while they still own the
+  // ticket (current assignee or a collaborator). Once it's reassigned away,
+  // their entry becomes read-only here — matching the server-side gate. Users
+  // with worklog.view_all (Super Admin) can manage any entry.
+  const collaboratorSet = new Set(collaboratorTicketIds);
+  const viewerId = user.id;
+  function canManageRow(assignedToId: string | null, ticketId: string): boolean {
+    if (canViewAll) return true;
+    return assignedToId === viewerId || collaboratorSet.has(ticketId);
+  }
 
   function billableLabel(value: string | null): string {
     if (!value) return "—";
@@ -252,6 +272,10 @@ export default async function WorkLogPage({
                       </TableCell>
                       <StickyActionsCell>
                         <TimesheetRowActions
+                          canManage={canManageRow(
+                            row.ticketAssignedToId,
+                            row.ticketId,
+                          )}
                           entry={{
                             id: row.id,
                             description: row.description,

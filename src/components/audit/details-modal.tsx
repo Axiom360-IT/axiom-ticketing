@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
   type AuditEntryDetail,
   getAuditEntry,
 } from "@/app/actions/audit";
+import { auditActionLabel, humanizeFieldKey } from "@/lib/audit/action-label";
 
 type Props = {
   entryId: string;
@@ -64,7 +65,11 @@ export function AuditDetailsButton({ entryId }: Props) {
             />
             <Row
               label={t("columns.action")}
-              value={<code className="font-mono text-xs">{detail.action}</code>}
+              value={
+                <span title={detail.action}>
+                  {auditActionLabel(detail.action)}
+                </span>
+              }
             />
             <Row
               label={t("details.actorLabel")}
@@ -113,12 +118,12 @@ export function AuditDetailsButton({ entryId }: Props) {
                 value={<code className="font-mono text-xs">{detail.requestId}</code>}
               />
             ) : null}
-            <JsonBlock
+            <FieldsBlock
               label={t("details.beforeLabel")}
               empty={t("details.noBefore")}
               value={detail.beforeValue}
             />
-            <JsonBlock
+            <FieldsBlock
               label={t("details.afterLabel")}
               empty={t("details.noAfter")}
               value={detail.afterValue}
@@ -141,7 +146,16 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function JsonBlock({
+function formatFieldValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return JSON.stringify(v);
+}
+
+/** Render a before/after snapshot as readable "Field: value" rows (instead of
+ *  raw JSON). Falls back to JSON for arrays/nested non-object values. */
+function FieldsBlock({
   label,
   empty,
   value,
@@ -154,11 +168,28 @@ function JsonBlock({
     value === null ||
     value === undefined ||
     (typeof value === "object" && Object.keys(value as object).length === 0);
+  const isPlainObject =
+    typeof value === "object" && value !== null && !Array.isArray(value);
   return (
-    <div className="space-y-1">
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+        {label}
+      </p>
       {isEmpty ? (
         <p className="text-xs text-zinc-400">{empty}</p>
+      ) : isPlainObject ? (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-2 text-xs">
+          {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+            <Fragment key={k}>
+              <dt className="text-zinc-500 dark:text-zinc-400">
+                {humanizeFieldKey(k)}
+              </dt>
+              <dd className="break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
+                {formatFieldValue(v)}
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
       ) : (
         <pre className="text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-2 overflow-x-auto whitespace-pre-wrap">
           {JSON.stringify(value, null, 2)}

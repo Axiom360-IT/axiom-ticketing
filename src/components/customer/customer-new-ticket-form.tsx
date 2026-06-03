@@ -39,14 +39,14 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
 
   const [draftTicketId, setDraftTicketId] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [draftPending, setDraftPending] = useState(false);
 
+  // Create the draft ticket on demand the first time a file is picked. The
+  // AttachmentPicker calls this from its file-pick handler, so the native
+  // dialog still opens on a single click.
   async function ensureDraft(): Promise<string | null> {
     if (draftTicketId) return draftTicketId;
     setDraftError(null);
-    setDraftPending(true);
     const res = await prepareCustomerTicketDraft();
-    setDraftPending(false);
     if (!res.ok) {
       setDraftError(res.error);
       return null;
@@ -145,23 +145,18 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
         <p className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
           {tAtt("label")}
         </p>
-        {draftTicketId ? (
-          <AttachmentPicker
-            mode={{ kind: "authed", ticketId: draftTicketId }}
-            disabled={submitting}
-            maxFiles={maxFiles}
-            maxFileBytes={maxFileBytes}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => void ensureDraft()}
-            disabled={draftPending || submitting}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50"
-          >
-            {draftPending ? tAtt("uploadingShort") : tAtt("uploadButton")}
-          </button>
-        )}
+        <AttachmentPicker
+          mode={
+            draftTicketId ? { kind: "authed", ticketId: draftTicketId } : undefined
+          }
+          prepare={async () => {
+            const id = await ensureDraft();
+            return id ? { kind: "authed", ticketId: id } : null;
+          }}
+          disabled={submitting}
+          maxFiles={maxFiles}
+          maxFileBytes={maxFileBytes}
+        />
         {draftError ? (
           <p role="alert" className="mt-1.5 text-xs text-red-600 dark:text-red-400">
             {draftError}

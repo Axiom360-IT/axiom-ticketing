@@ -54,7 +54,15 @@ type Pending = {
 };
 
 type Props = {
-  mode: AttachmentPickerMode;
+  /** The upload target, when it's already known (e.g. an existing ticket). */
+  mode?: AttachmentPickerMode;
+  /** Lazily resolve the upload target the FIRST time a file is picked. Used by
+   *  new-ticket forms that create a draft ticket on demand: it lets the picker
+   *  open the native file dialog on a SINGLE click (synchronously, inside the
+   *  gesture) and defer draft creation until files are actually chosen.
+   *  Returns null when the draft can't be created yet (e.g. required fields
+   *  above aren't filled). Provide exactly one of `mode` or `prepare`. */
+  prepare?: () => Promise<AttachmentPickerMode | null>;
   /** Disable the picker (e.g., while the parent form is submitting). */
   disabled?: boolean;
   onReadyIdsChange?: (ids: string[]) => void;
@@ -68,6 +76,7 @@ type Props = {
 
 export function AttachmentPicker({
   mode,
+  prepare,
   disabled = false,
   onReadyIdsChange,
   maxFiles = DEFAULT_MAX_FILES_PER_MESSAGE,
@@ -77,6 +86,30 @@ export function AttachmentPicker({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<Pending[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Resolved upload target. With `mode` it's known up front; with `prepare`
+  // it's created lazily and cached here. The in-flight ref dedupes the
+  // concurrent `prepare()` calls that a multi-file pick would otherwise make.
+  const resolvedModeRef = useRef<AttachmentPickerMode | null>(mode ?? null);
+  const prepareInFlightRef = useRef<Promise<AttachmentPickerMode | null> | null>(
+    null,
+  );
+
+  async function resolveMode(): Promise<AttachmentPickerMode | null> {
+    if (mode) return mode;
+    if (resolvedModeRef.current) return resolvedModeRef.current;
+    if (!prepare) return null;
+    if (!prepareInFlightRef.current) {
+      prepareInFlightRef.current = prepare()
+        .then((m) => {
+          if (m) resolvedModeRef.current = m;
+          return m;
+        })
+        .finally(() => {
+          prepareInFlightRef.current = null;
+        });
+    }
+    return prepareInFlightRef.current;
+  }
 
   function emitReadyIds(next: Pending[]) {
     onReadyIdsChange?.(
@@ -103,30 +136,35 @@ export function AttachmentPicker({
   }
 
   async function uploadOne(p: Pending) {
+    // Resolve (or lazily create) the upload target now that a file is chosen.
+    const m = await resolveMode();
+    if (!m) {
+      markFailed(p.key, t("prepareFailed"));
+      return;
+    }
+
     update((prev) =>
       prev.map((x) => (x.key === p.key ? { ...x, status: "uploading" } : x)),
     );
 
     try {
       const presign =
-        mode.kind === "authed"
+        m.kind === "authed"
           ? await generateUploadUrl({
-              ticketId: mode.ticketId,
+              ticketId: m.ticketId,
               fileName: p.file.name,
               mimeType: p.file.type,
               sizeBytes: p.file.size,
             })
           : await guestGenerateUploadUrl({
-              ticketId: mode.ticketId,
+              ticketId: m.ticketId,
               fileName: p.file.name,
               mimeType: p.file.type,
               sizeBytes: p.file.size,
-              draftToken: mode.kind === "draft" ? mode.draftToken : undefined,
-              guestToken: mode.kind === "guest" ? mode.guestToken : undefined,
-              ticketNumber:
-                mode.kind === "guest" ? mode.ticketNumber : undefined,
-              customerEmail:
-                mode.kind === "guest" ? mode.customerEmail : undefined,
+              draftToken: m.kind === "draft" ? m.draftToken : undefined,
+              guestToken: m.kind === "guest" ? m.guestToken : undefined,
+              ticketNumber: m.kind === "guest" ? m.ticketNumber : undefined,
+              customerEmail: m.kind === "guest" ? m.customerEmail : undefined,
             });
 
       if (!presign.ok) {
@@ -153,16 +191,14 @@ export function AttachmentPicker({
       );
 
       const confirm =
-        mode.kind === "authed"
+        m.kind === "authed"
           ? await confirmUpload({ attachmentId: presign.attachmentId })
           : await guestConfirmUpload({
               attachmentId: presign.attachmentId,
-              draftToken: mode.kind === "draft" ? mode.draftToken : undefined,
-              guestToken: mode.kind === "guest" ? mode.guestToken : undefined,
-              ticketNumber:
-                mode.kind === "guest" ? mode.ticketNumber : undefined,
-              customerEmail:
-                mode.kind === "guest" ? mode.customerEmail : undefined,
+              draftToken: m.kind === "draft" ? m.draftToken : undefined,
+              guestToken: m.kind === "guest" ? m.guestToken : undefined,
+              ticketNumber: m.kind === "guest" ? m.ticketNumber : undefined,
+              customerEmail: m.kind === "guest" ? m.customerEmail : undefined,
             });
 
       if (!confirm.ok) {

@@ -13,6 +13,7 @@ import {
   listAuditEntries,
   type AuditFilters,
 } from "@/app/actions/audit";
+import { auditActionLabel } from "@/lib/audit/action-label";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -142,7 +143,7 @@ export default async function AuditPage({
             <option value="">{t("filters.actionAll")}</option>
             {actions.map((a) => (
               <option key={a} value={a}>
-                {a}
+                {auditActionLabel(a)}
               </option>
             ))}
           </select>
@@ -211,8 +212,10 @@ export default async function AuditPage({
                           <span className="text-zinc-400">—</span>
                         )}
                       </td>
-                      <td className="py-2 pr-4 font-mono text-xs">
-                        {row.action}
+                      <td className="py-2 pr-4 text-xs">
+                        <span title={row.action}>
+                          {auditActionLabel(row.action)}
+                        </span>
                       </td>
                       <td className="py-2 pr-4 text-xs">
                         {row.targetType ? (

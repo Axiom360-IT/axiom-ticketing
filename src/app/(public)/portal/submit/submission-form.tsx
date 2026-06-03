@@ -100,8 +100,10 @@ export function SubmissionForm({
   const [draftTicketId, setDraftTicketId] = useState<string | null>(null);
   const [draftUploadToken, setDraftUploadToken] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [draftPending, setDraftPending] = useState(false);
 
+  // Create the upload draft on demand the first time a file is picked (needs
+  // name + email + captcha). The AttachmentPicker calls this from its file-pick
+  // handler so the native dialog still opens on a single click.
   async function ensureDraft(): Promise<
     { id: string; token: string } | null
   > {
@@ -117,13 +119,11 @@ export function SubmissionForm({
       return null;
     }
     setDraftError(null);
-    setDraftPending(true);
     const res = await prepareGuestTicketDraft({
       customerName: formData.customerName,
       customerEmail: formData.customerEmail,
       turnstileToken,
     });
-    setDraftPending(false);
     if (!res.ok) {
       setDraftError(res.error);
       // The captcha token gets consumed by the prepare call, so reset it.
@@ -384,29 +384,26 @@ export function SubmissionForm({
 
         <div className="space-y-1.5">
           <Label>{tSubmit("attachmentsLabel")}</Label>
-          {draftTicketId && draftUploadToken ? (
-            <AttachmentPicker
-              mode={{
-                kind: "draft",
-                ticketId: draftTicketId,
-                draftToken: draftUploadToken,
-              }}
-              disabled={submitting}
-              maxFiles={maxFiles}
-              maxFileBytes={maxFileBytes}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => void ensureDraft()}
-              disabled={draftPending || submitting}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50"
-            >
-              {draftPending
-                ? tSubmit("draftPreparing")
-                : tSubmit("attachmentsAddButton")}
-            </button>
-          )}
+          <AttachmentPicker
+            mode={
+              draftTicketId && draftUploadToken
+                ? {
+                    kind: "draft",
+                    ticketId: draftTicketId,
+                    draftToken: draftUploadToken,
+                  }
+                : undefined
+            }
+            prepare={async () => {
+              const d = await ensureDraft();
+              return d
+                ? { kind: "draft", ticketId: d.id, draftToken: d.token }
+                : null;
+            }}
+            disabled={submitting}
+            maxFiles={maxFiles}
+            maxFileBytes={maxFileBytes}
+          />
           {draftError ? (
             <p role="alert" className="text-xs text-red-600 dark:text-red-400">
               {draftError}

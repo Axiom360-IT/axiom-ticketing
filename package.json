@@ -24,6 +24,7 @@
     "db:seed-demo": "tsx --env-file=.env.local src/lib/db/seed-demo.ts",
     "db:backfill-customers": "tsx --env-file=.env.local src/lib/db/backfill-customer-ids.ts",
     "db:backfill-org-domains": "tsx --env-file=.env.local src/lib/db/backfill-org-domains.ts",
+    "db:backfill-category-prefix": "tsx --env-file=.env.local src/lib/db/backfill-category-prefix.ts",
     "db:reset-keep-superadmin": "tsx src/lib/db/reset-keep-superadmin.ts",
     "db:list-users": "tsx src/lib/db/list-users.ts"
   },

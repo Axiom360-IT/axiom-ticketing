@@ -11,8 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { verifyReauth } from "@/app/actions/reauth";
 
 // Generic password-confirmation modal used by sensitive Server Actions
@@ -33,6 +33,7 @@ export function ReauthModal({
   reasonKey = "default",
 }: Props) {
   const t = useTranslations("reauth");
+  const tCommon = useTranslations("common");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -64,14 +65,15 @@ export function ReauthModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="reauth-password">{t("passwordLabel")}</Label>
-            <Input
+            <PasswordInput
               id="reauth-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoFocus
+              showLabel={tCommon("showPassword")}
+              hideLabel={tCommon("hidePassword")}
             />
           </div>
           {error ? (

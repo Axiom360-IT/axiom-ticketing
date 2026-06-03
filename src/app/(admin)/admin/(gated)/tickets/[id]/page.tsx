@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoHint } from "@/components/ui/info-hint";
 import { Separator } from "@/components/ui/separator";
 import {
   AssignControl,
@@ -388,7 +389,11 @@ export default async function TicketDetailPage({
               <CardTitle>{t("conversationTitle")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <MessageThread messages={thread} />
+              {/* Long threads scroll internally instead of stretching the
+                  whole page; -mr-2/pr-2 keeps the scrollbar off the content. */}
+              <div className="max-h-[34rem] overflow-y-auto -mr-2 pr-2">
+                <MessageThread messages={thread} />
+              </div>
             </CardContent>
           </Card>
 
@@ -527,7 +532,10 @@ export default async function TicketDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">{t("assigneeTitle")}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {t("assigneeTitle")}
+                <InfoHint label={t("assigneeHelp")} />
+              </CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-2">
               {canAssign ? (
@@ -571,7 +579,10 @@ export default async function TicketDetailPage({
               by anyone who can update it. */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">{tBillable("title")}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {tBillable("title")}
+                <InfoHint label={tBillable("help")} />
+              </CardTitle>
             </CardHeader>
             <CardContent className="text-sm">
               {canUpdate ? (
