@@ -43,8 +43,16 @@ export function AssignControl({
     setError(null);
     startTransition(async () => {
       try {
-        await assignTicket(ticketId, next);
-        router.refresh();
+        const res = await assignTicket(ticketId, next);
+        if (res.retainsView) {
+          router.refresh();
+        } else {
+          // Reassigned away and the viewer no longer has access — go to the
+          // queue with a confirmation instead of bouncing through a 404.
+          router.push(
+            `/admin/tickets?reassigned=${encodeURIComponent(res.assigneeName)}`,
+          );
+        }
       } catch (err) {
         setValue(previous);
         setError(err instanceof Error ? err.message : t("genericError"));

@@ -330,9 +330,17 @@ export function SubmissionForm({
             placeholder={tFields("organizationPlaceholder")}
             aria-invalid={fieldErrors.organization ? true : undefined}
             aria-describedby={
-              fieldErrors.organization ? "organization-error" : undefined
+              fieldErrors.organization
+                ? "organization-error organization-hint"
+                : "organization-hint"
             }
           />
+          <p
+            id="organization-hint"
+            className="text-xs text-zinc-500 dark:text-zinc-400"
+          >
+            {tFields("organizationHint")}
+          </p>
           <FieldError id="organization-error" message={fieldErrors.organization} />
         </div>
 

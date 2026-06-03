@@ -359,6 +359,8 @@
   "tickets": {
     "queue": {
       "title": "Tickets",
+      "reassignedNotice": "Ticket reassigned to {name}.",
+      "reassignedDismiss": "Dismiss",
       "count": "{count, plural, =0 {No tickets} =1 {# ticket} other {# tickets}}",
       "countMatching": "{count, plural, =0 {No tickets} =1 {# ticket} other {# tickets}} matching \"{query}\"",
       "search": "Search by ticket #, subject, or customer email",
@@ -393,6 +395,8 @@
       "internalNotesTitle": "Internal Notes",
       "actionsTitle": "Actions",
       "customerTitle": "Customer",
+      "companyLabel": "Company (as entered)",
+      "orgUnverified": "Organization unverified",
       "assigneeTitle": "Assignee",
       "escalationTitle": "Escalation",
       "streamTitle": "Stream",
@@ -470,6 +474,7 @@
         "customerEmail": "Customer email",
         "organization": "Organization",
         "organizationPlaceholder": "Name of your organization",
+        "organizationHint": "We use your email address to match your organization automatically.",
         "organizationNone": "No organization (external)",
         "optional": "(optional)",
         "subject": "Subject",
@@ -909,6 +914,8 @@
       "name": "Organization name",
       "abbreviation": "Code",
       "abbreviationHint": "2–5 letters or digits used as the ticket-number prefix (e.g. KI → KI-20260522-001).",
+      "emailDomains": "Email domains",
+      "emailDomainsHint": "One per line. Guests whose email matches a domain here are linked to this organization automatically (e.g. kingsmill.com).",
       "isMonthlyPlan": "On a monthly support plan",
       "monthlyHoursIncluded": "Hours included per month",
       "monthlyHoursBalance": "Hours remaining (balance)",
@@ -1289,6 +1296,24 @@
       "noAfter": "(none)"
     }
   },
+  "orgTriage": {
+    "title": "Organization triage",
+    "subtitle": "Tickets whose typed company couldn't be confirmed by email domain. Link each to the right organization, or create a new one.",
+    "empty": "Nothing to triage — every ticket's organization is confirmed.",
+    "selectOrg": "Select organization…",
+    "link": "Link",
+    "linking": "Linking…",
+    "createNew": "Create new",
+    "banner": "{count, plural, =1 {# ticket needs an organization} other {# tickets need an organization}}.",
+    "bannerCta": "Review",
+    "columns": {
+      "ticket": "Ticket",
+      "customer": "Customer",
+      "claimed": "Company (as entered)",
+      "date": "Submitted",
+      "action": "Organization"
+    }
+  },
   "reports": {
     "page": {
       "title": "Reports",
@@ -1537,6 +1562,9 @@
   "sms": {
     "ticketAssigned": {
       "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
+    },
+    "ticketEscalated": {
+      "body": "{ticketNumber}: Ticket escalated — needs your attention. {ticketUrl}"
     },
     "customerReplied": {
       "body": "{ticketNumber}: Customer replied to your ticket. {ticketUrl}"

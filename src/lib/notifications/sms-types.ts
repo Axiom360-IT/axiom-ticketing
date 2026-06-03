@@ -11,6 +11,7 @@ export type SmsTemplateData = {
 export type SmsTemplate =
   // Staff-facing
   | { template: "ticket_assigned"; data: SmsTemplateData }
+  | { template: "ticket_escalated"; data: SmsTemplateData }
   | { template: "customer_replied"; data: SmsTemplateData }
   | { template: "csat_unsatisfied_staff"; data: SmsTemplateData }
   | { template: "sla_warning_80"; data: SmsTemplateData }

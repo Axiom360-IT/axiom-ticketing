@@ -11,7 +11,11 @@ export async function generateMetadata() {
   return { title: t("title") };
 }
 
-export default async function NewOrganizationPage() {
+export default async function NewOrganizationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ name?: string }>;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
   if (
@@ -20,6 +24,7 @@ export default async function NewOrganizationPage() {
     redirect("/admin/organizations");
   }
 
+  const { name } = await searchParams;
   const t = await getTranslations("organizations.create");
 
   return (
@@ -35,7 +40,7 @@ export default async function NewOrganizationPage() {
           <CardTitle>{t("cardTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrganizationForm mode="create" />
+          <OrganizationForm mode="create" defaultName={name?.trim() || undefined} />
         </CardContent>
       </Card>
     </div>

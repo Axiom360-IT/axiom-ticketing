@@ -37,6 +37,19 @@ export const tickets = pgTable(
     }),
     customerEmail: text("customer_email").notNull(),
     customerName: text("customer_name").notNull(),
+    // Raw organization name the submitter typed (guest path). Kept verbatim
+    // even when it doesn't match a registered org so a coordinator can
+    // reconcile it later from the triage queue — previously this was discarded.
+    customerCompany: text("customer_company"),
+    // How the ticket's organization was determined:
+    //   account    – from an authenticated customer's account org (trusted)
+    //   domain     – matched by the submitter's email domain
+    //   staff      – manually linked/confirmed by a coordinator
+    //   unverified – a company was claimed but not confirmed (organizationId NULL)
+    //   none       – no organization information at all
+    // Only account/domain/staff set organizationId, so only those deduct from
+    // a Monthly-Plan balance. 'unverified' rows are the triage queue.
+    orgMatchStatus: text("org_match_status").notNull().default("none"),
     // Billing categorization (Meeting-2, CR-16). NULL until triaged; one of
     // yes | no | monthly_plan | project | rework. When 'monthly_plan', logged
     // work-log minutes are deducted from the org's monthly balance.
@@ -130,6 +143,10 @@ export const tickets = pgTable(
     check(
       "tickets_billable_check",
       sql`${t.billable} IS NULL OR ${t.billable} IN ('yes','no','monthly_plan','project','rework')`,
+    ),
+    check(
+      "tickets_org_match_status_check",
+      sql`${t.orgMatchStatus} IN ('account','domain','staff','unverified','none')`,
     ),
     check("tickets_stream_check", sql`${t.stream} IN ('internal','external')`),
     check(

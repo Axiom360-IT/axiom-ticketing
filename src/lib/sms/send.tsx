@@ -13,6 +13,7 @@ export type { SmsTemplate } from "../notifications/sms-types";
 const TEMPLATE_NAMESPACE = {
   // Staff-facing
   ticket_assigned: "sms.ticketAssigned",
+  ticket_escalated: "sms.ticketEscalated",
   customer_replied: "sms.customerReplied",
   csat_unsatisfied_staff: "sms.csatUnsatisfiedStaff",
   sla_warning_80: "sms.slaWarning80",

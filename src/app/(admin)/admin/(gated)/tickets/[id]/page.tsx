@@ -39,7 +39,9 @@ import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
+import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { tickets } from "@/lib/db/schema/tickets";
+import { workLogs } from "@/lib/db/schema/work-logs";
 
 const ORIGIN_KEYS: Record<string, "originWebForm" | "originEmail" | "originPortal"> = {
   web_form: "originWebForm",
@@ -84,12 +86,34 @@ export default async function TicketDetailPage({
     .limit(1);
   if (!ticket) notFound();
 
+  // Collaborators (so a strict-tech collaborator isn't 404'd here) and whether
+  // the viewer has logged work on this ticket (grants read-only carry-over
+  // access after the ticket is reassigned away from them).
+  const [scopeCollaborators, viewerWorklog] = await Promise.all([
+    db
+      .select({ userId: ticketAssignees.userId })
+      .from(ticketAssignees)
+      .where(eq(ticketAssignees.ticketId, ticket.id)),
+    db
+      .select({ id: workLogs.id })
+      .from(workLogs)
+      .where(
+        and(
+          eq(workLogs.ticketId, ticket.id),
+          eq(workLogs.technicianId, user.id),
+        ),
+      )
+      .limit(1),
+  ]);
+
   const ticketScope = {
     type: "ticket" as const,
     ticket: {
       id: ticket.id,
       assignedToId: ticket.assignedToId,
       customerId: ticket.customerId,
+      assigneeIds: scopeCollaborators.map((c) => c.userId),
+      viewerHasWorklog: viewerWorklog.length > 0,
     },
   };
 
@@ -485,6 +509,19 @@ export default async function TicketDetailPage({
               <div className="text-zinc-500 dark:text-zinc-400">
                 {ticket.customerEmail}
               </div>
+              {ticket.customerCompany ? (
+                <div className="pt-1 text-zinc-500 dark:text-zinc-400">
+                  {t("companyLabel")}:{" "}
+                  <span className="text-zinc-700 dark:text-zinc-300">
+                    {ticket.customerCompany}
+                  </span>
+                </div>
+              ) : null}
+              {ticket.orgMatchStatus === "unverified" ? (
+                <p className="mt-1 inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                  {t("orgUnverified")}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 

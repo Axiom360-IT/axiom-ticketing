@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth";
@@ -58,6 +59,38 @@ export const organizations = pgTable(
     check(
       "organizations_abbreviation_format_check",
       sql`${t.abbreviation} ~ '^[A-Z0-9]{2,5}$'`,
+    ),
+  ],
+);
+
+// ── Organization email domains (org-matching) ─────────────────────────
+//
+// The primary, verifiable signal for attributing a guest ticket to an org:
+// the submitter's email domain. A domain maps to AT MOST ONE org (unique
+// index) so resolution is never ambiguous, and that's what lets a guest's
+// ticket be auto-linked to its organization (and count toward billing)
+// without exposing the client list or trusting a typed name.
+// ──────────────────────────────────────────────────────────────────────
+export const organizationDomains = pgTable(
+  "organization_domains",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    // Lower-cased bare email domain, e.g. "kingsmill.com".
+    domain: text("domain").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    // One org per domain — guest tickets resolve unambiguously.
+    uniqueIndex("organization_domains_domain_key").on(t.domain),
+    index("organization_domains_org_id_idx").on(t.organizationId),
+    check(
+      "organization_domains_format_check",
+      sql`${t.domain} ~ '^[a-z0-9.-]+\.[a-z]{2,}$'`,
     ),
   ],
 );

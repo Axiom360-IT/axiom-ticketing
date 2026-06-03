@@ -16,7 +16,10 @@ import {
   StickyActionsHead,
 } from "@/components/ui/row-actions";
 import { OrgRowActions } from "@/components/organizations/org-row-actions";
-import { listOrganizationsForAdmin } from "@/app/actions/organizations";
+import {
+  countUnverifiedOrgTickets,
+  listOrganizationsForAdmin,
+} from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -36,13 +39,16 @@ export default async function OrganizationsListPage() {
     redirect("/admin");
   }
 
-  const [rows, canCreate, canEdit, canDelete] = await Promise.all([
-    listOrganizationsForAdmin(),
-    can(user, "organizations.create", { type: "global" }, productionContext),
-    can(user, "organizations.update", { type: "global" }, productionContext),
-    can(user, "organizations.delete", { type: "global" }, productionContext),
-  ]);
+  const [rows, canCreate, canEdit, canDelete, unverifiedCount] =
+    await Promise.all([
+      listOrganizationsForAdmin(),
+      can(user, "organizations.create", { type: "global" }, productionContext),
+      can(user, "organizations.update", { type: "global" }, productionContext),
+      can(user, "organizations.delete", { type: "global" }, productionContext),
+      countUnverifiedOrgTickets(),
+    ]);
   const t = await getTranslations("organizations.list");
+  const tTriage = await getTranslations("orgTriage");
   const tCommon = await getTranslations("common");
 
   return (
@@ -63,6 +69,16 @@ export default async function OrganizationsListPage() {
           </Button>
         ) : null}
       </div>
+
+      {canEdit && unverifiedCount > 0 ? (
+        <Link
+          href="/admin/org-triage"
+          className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
+        >
+          <span>{tTriage("banner", { count: unverifiedCount })}</span>
+          <span className="font-medium underline">{tTriage("bannerCta")}</span>
+        </Link>
+      ) : null}
 
       <Card className="p-0">
         <CardContent className="p-0">

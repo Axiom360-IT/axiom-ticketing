@@ -5,14 +5,16 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
-import { can } from "@/lib/auth/can";
+import { can, isStrictTechnician } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
+import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { tickets } from "@/lib/db/schema/tickets";
+import { workLogs } from "@/lib/db/schema/work-logs";
 import { sendEmail } from "@/lib/email/send";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { checkRateLimit, enforceUserRateLimit } from "@/lib/ratelimit";
@@ -21,7 +23,7 @@ import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
   resolveTicketOrgById,
-  resolveTicketOrgByName,
+  resolveTicketOrgForGuest,
 } from "@/lib/tickets/org";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 import {
@@ -261,9 +263,14 @@ export async function createTicket(
   // otherwise it falls back to the `internal_email_domains` allowlist.
   const stream = await classifyStream(data.customerEmail);
 
-  // 6b. Resolve the organization the customer typed → FK link (when it
-  // matches a registered org) + the ticket-number prefix (CR-02/06/07).
-  const org = await resolveTicketOrgByName(data.organization);
+  // 6b. Resolve the organization. We auto-link ONLY on an email-domain match
+  // (the verifiable signal); a typed company that doesn't match is recorded as
+  // `unverified` for coordinator triage and never silently drives billing.
+  const org = await resolveTicketOrgForGuest(
+    data.customerEmail,
+    data.organization,
+  );
+  const customerCompany = data.organization?.trim() || null;
 
   // 7. Compute SLA deadlines (number is generated per-branch below).
   const createdAt = new Date();
@@ -309,6 +316,8 @@ export async function createTicket(
         .set({
           ticketNumber,
           organizationId: org.organizationId,
+          customerCompany,
+          orgMatchStatus: org.matchStatus,
           subject: data.subject,
           description: data.description,
           category: "other",
@@ -356,6 +365,8 @@ export async function createTicket(
         .values({
           ticketNumber,
           organizationId: org.organizationId,
+          customerCompany,
+          orgMatchStatus: org.matchStatus,
           subject: data.subject,
           description: data.description,
           category: "other",
@@ -480,6 +491,10 @@ export async function createTicketOnBehalf(
 
   const stream = await classifyStream(data.customerEmail);
   const org = await resolveTicketOrgById(data.organizationId ?? null);
+  // A staff member explicitly picked the org from the registry, so it's a
+  // confirmed link ("staff") rather than the "account" default the resolver
+  // returns for the customer-self path.
+  const orgMatchStatus = org.organizationId ? "staff" : "none";
 
   const ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
   const createdAt = new Date();
@@ -494,6 +509,7 @@ export async function createTicketOnBehalf(
       .values({
         ticketNumber,
         organizationId: org.organizationId,
+        orgMatchStatus,
         subject: data.subject,
         description: data.description,
         category: data.category,
@@ -567,7 +583,7 @@ export async function createTicketOnBehalf(
 export async function assignTicket(
   ticketId: string,
   techId: string,
-): Promise<void> {
+): Promise<{ retainsView: boolean; assigneeName: string }> {
   const user = await requireSessionUser();
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) throw new NotFoundError();
@@ -746,6 +762,42 @@ export async function assignTicket(
 
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${ticketId}`);
+
+  // Tell the caller whether THEY can still see this ticket afterwards, so the
+  // UI can redirect cleanly instead of bouncing through a 404. A strict tech
+  // who reassigned the ticket away keeps view access only if they remain a
+  // collaborator or have logged work on it (read-only carry-over); everyone
+  // else (elevated roles, or assigning to oneself) retains access.
+  let retainsView = true;
+  if (isStrictTechnician(user) && techId !== user.id) {
+    const [stillCollaborator] = await db
+      .select({ userId: ticketAssignees.userId })
+      .from(ticketAssignees)
+      .where(
+        and(
+          eq(ticketAssignees.ticketId, ticket.id),
+          eq(ticketAssignees.userId, user.id),
+        ),
+      )
+      .limit(1);
+    if (stillCollaborator) {
+      retainsView = true;
+    } else {
+      const [hasWorklog] = await db
+        .select({ id: workLogs.id })
+        .from(workLogs)
+        .where(
+          and(
+            eq(workLogs.ticketId, ticket.id),
+            eq(workLogs.technicianId, user.id),
+          ),
+        )
+        .limit(1);
+      retainsView = Boolean(hasWorklog);
+    }
+  }
+
+  return { retainsView, assigneeName: tech.name };
 }
 
 // ── Soft delete ─────────────────────────────────────────────────────
@@ -1811,6 +1863,12 @@ export async function escalateTicket(
             },
           },
           ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "ticket_escalated",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+          },
         },
         inApp: {
           titleArgs: { ticketNumber: ticket.ticketNumber },

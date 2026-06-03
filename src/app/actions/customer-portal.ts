@@ -24,7 +24,7 @@ import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import {
   resolveTicketOrgById,
-  resolveTicketOrgByName,
+  resolveTicketOrgForGuest,
 } from "@/lib/tickets/org";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
@@ -170,9 +170,10 @@ export async function requestSignUpMagicLink(
   if (!parsedEmail.success) return { ok: false, error: "invalid_email" };
   const parsedPhone = phoneSchema.safeParse(phone ?? "");
   if (!parsedPhone.success) return { ok: false, error: "invalid_phone" };
-  // Resolve the typed organization name to a registered org (CR-06); leaves
-  // it unset when it doesn't match — an admin can link it later.
-  const { organizationId } = await resolveTicketOrgByName(organization);
+  // Link the account to a registered org by EMAIL DOMAIN (the verifiable
+  // signal); leaves it unset when the domain doesn't match — an admin can
+  // link it later. A typed name alone never auto-links.
+  const { organizationId } = await resolveTicketOrgForGuest(email, organization);
   // Empty string → null in the DB (no phone configured → no SMS).
   const normalizedPhone =
     parsedPhone.data && parsedPhone.data.length > 0 ? parsedPhone.data : null;
@@ -371,12 +372,36 @@ export async function customerReply(
   // assignee, broadcast to Coordinators so the reply doesn't sit silently
   // until someone happens to look at the queue.
   try {
+    const appUrl = getAppUrl();
+    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     await inngest.send({
       name: "notification/dispatch",
       data: {
         type: "ticket.customer_replied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
         recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reply",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: profile.name,
+              subject: ticket.subject,
+              agentName: profile.name,
+              body: htmlToPlainText(cleanBody),
+              trackingUrl: ticketUrl,
+            },
+          },
+          ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "customer_replied",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+          },
+        },
         inApp: {
           titleArgs: { ticketNumber: ticket.ticketNumber },
           bodyArgs: { customerName: profile.name },
@@ -460,6 +485,7 @@ export async function guestReply(input: {
     .select({
       id: tickets.id,
       ticketNumber: tickets.ticketNumber,
+      subject: tickets.subject,
       customerEmail: tickets.customerEmail,
       customerName: tickets.customerName,
       status: tickets.status,
@@ -534,12 +560,36 @@ export async function guestReply(input: {
   });
 
   try {
+    const appUrl = getAppUrl();
+    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     await inngest.send({
       name: "notification/dispatch",
       data: {
         type: "ticket.customer_replied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
         recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reply",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              agentName: ticket.customerName,
+              body: htmlToPlainText(cleanBody),
+              trackingUrl: ticketUrl,
+            },
+          },
+          ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "customer_replied",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+          },
+        },
         inApp: {
           titleArgs: { ticketNumber: ticket.ticketNumber },
           bodyArgs: { customerName: ticket.customerName },
@@ -739,6 +789,7 @@ export async function customerCreateTicket(
         .set({
           ticketNumber,
           organizationId: org.organizationId,
+          orgMatchStatus: org.matchStatus,
           subject: data.subject,
           description: data.description,
           category: "other",
@@ -785,6 +836,7 @@ export async function customerCreateTicket(
       .values({
         ticketNumber,
         organizationId: org.organizationId,
+        orgMatchStatus: org.matchStatus,
         subject: data.subject,
         description: data.description,
         category: "other",

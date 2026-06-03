@@ -287,6 +287,43 @@ describe("can() — ticket scope", () => {
     ).toBe(false);
   });
 
+  it("strict Technician keeps READ-ONLY access to a reassigned ticket they worked on", async () => {
+    // Ticket now assigned to another tech, but tech-1 logged work on it.
+    const workedTarget: Target = {
+      type: "ticket",
+      ticket: {
+        id: "t-1",
+        assignedToId: "tech-2",
+        customerId: null,
+        viewerHasWorklog: true,
+      },
+    };
+    // View is allowed (carry-over)...
+    expect(
+      await can(technician("tech-1"), "tickets.view", workedTarget),
+    ).toBe(true);
+    // ...but no write actions.
+    expect(
+      await can(technician("tech-1"), "tickets.update", workedTarget),
+    ).toBe(false);
+    expect(
+      await can(technician("tech-1"), "tickets.reply", workedTarget),
+    ).toBe(false);
+    expect(
+      await can(technician("tech-1"), "tickets.assign", workedTarget),
+    ).toBe(false);
+  });
+
+  it("strict Technician without a worklog CANNOT view a ticket assigned to another tech", async () => {
+    expect(
+      await can(
+        technician("tech-1"),
+        "tickets.view",
+        ticketTarget("tech-2"),
+      ),
+    ).toBe(false);
+  });
+
   it("strict Technician CANNOT act on an unassigned ticket", async () => {
     expect(
       await can(

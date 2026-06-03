@@ -1,17 +1,21 @@
 "use server";
-import { and, count, eq, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-import { organizations } from "@/lib/db/schema/organizations";
+import {
+  organizationDomains,
+  organizations,
+} from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
+import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 
 // Abbreviation: 2–5 upper-case alphanumerics. Used as the ticket-number prefix
 // (e.g. "KI" → KI-20260522-001), so it is normalised before validation.
@@ -30,6 +34,51 @@ function hoursToMinutes(hours: number | null | undefined): number | null {
   return Math.round(hours * 60);
 }
 
+// Bare email domain, e.g. "kingsmill.com" (matches the DB CHECK on
+// organization_domains.domain).
+const DOMAIN_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/;
+
+/**
+ * Normalise free-text domain entries (one per line / comma separated, possibly
+ * pasted as "@kingsmill.com", "https://kingsmill.com", or an email) down to
+ * unique, lower-cased bare domains. Throws a friendly Error on a bad entry.
+ */
+function normalizeDomains(input: string[] | undefined): string[] {
+  if (!input) return [];
+  const out = new Set<string>();
+  for (const raw of input) {
+    let d = raw.trim().toLowerCase();
+    if (!d) continue;
+    if (d.includes("@")) d = d.slice(d.lastIndexOf("@") + 1); // strip email/local
+    d = d.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^@/, "");
+    if (!DOMAIN_RE.test(d)) {
+      throw new Error(`"${raw.trim()}" is not a valid email domain.`);
+    }
+    out.add(d);
+  }
+  return [...out];
+}
+
+/** Domains in `domains` already owned by a DIFFERENT org (would be ambiguous). */
+async function conflictingDomains(
+  domains: string[],
+  excludeOrgId?: string,
+): Promise<string[]> {
+  if (domains.length === 0) return [];
+  const rows = await db
+    .select({ domain: organizationDomains.domain })
+    .from(organizationDomains)
+    .where(
+      excludeOrgId
+        ? and(
+            inArray(organizationDomains.domain, domains),
+            ne(organizationDomains.organizationId, excludeOrgId),
+          )
+        : inArray(organizationDomains.domain, domains),
+    );
+  return rows.map((r) => r.domain);
+}
+
 const baseSchema = z.object({
   name: z.string().trim().min(1).max(160),
   abbreviation: z.string().trim().min(1).max(20),
@@ -38,6 +87,8 @@ const baseSchema = z.object({
   monthlyHoursIncluded: z.number().min(0).max(100000).nullable().optional(),
   monthlyHoursBalance: z.number().min(0).max(100000).nullable().optional(),
   contractNotes: z.string().trim().max(2000).optional(),
+  // Email domains that identify this org's people (the guest-ticket matcher).
+  emailDomains: z.array(z.string()).max(50).optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -115,6 +166,20 @@ export async function createOrganization(
     ? (hoursToMinutes(data.monthlyHoursBalance) ?? minutesIncluded)
     : null;
 
+  let domains: string[];
+  try {
+    domains = normalizeDomains(data.emailDomains);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Invalid domain." };
+  }
+  const clash = await conflictingDomains(domains);
+  if (clash.length > 0) {
+    return {
+      ok: false,
+      error: `${clash.join(", ")} already linked to another organization.`,
+    };
+  }
+
   const [row] = await db
     .insert(organizations)
     .values({
@@ -128,6 +193,12 @@ export async function createOrganization(
       createdById: caller.id,
     })
     .returning({ id: organizations.id });
+
+  if (domains.length > 0) {
+    await db
+      .insert(organizationDomains)
+      .values(domains.map((domain) => ({ organizationId: row.id, domain })));
+  }
 
   await audit({
     actorId: caller.id,
@@ -208,7 +279,38 @@ export async function updateOrganization(
   if (data.contractNotes !== undefined) set.contractNotes = data.contractNotes || null;
   if (data.isActive !== undefined) set.isActive = data.isActive;
 
-  await db.update(organizations).set(set).where(eq(organizations.id, organizationId));
+  // Resolve the new domain set (when the form sent one) before any writes, so
+  // a bad/clashing domain fails the whole update cleanly.
+  let domains: string[] | null = null;
+  if (data.emailDomains !== undefined) {
+    try {
+      domains = normalizeDomains(data.emailDomains);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Invalid domain." };
+    }
+    const clash = await conflictingDomains(domains, organizationId);
+    if (clash.length > 0) {
+      return {
+        ok: false,
+        error: `${clash.join(", ")} already linked to another organization.`,
+      };
+    }
+  }
+
+  await transactional(async (tx) => {
+    await tx.update(organizations).set(set).where(eq(organizations.id, organizationId));
+    if (domains !== null) {
+      // Replace the org's domain set atomically.
+      await tx
+        .delete(organizationDomains)
+        .where(eq(organizationDomains.organizationId, organizationId));
+      if (domains.length > 0) {
+        await tx
+          .insert(organizationDomains)
+          .values(domains.map((domain) => ({ organizationId, domain })));
+      }
+    }
+  });
 
   await audit({
     actorId: caller.id,
@@ -314,7 +416,13 @@ export async function getOrganizationDetail(organizationId: string) {
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
-  return org ?? null;
+  if (!org) return null;
+  const domainRows = await db
+    .select({ domain: organizationDomains.domain })
+    .from(organizationDomains)
+    .where(eq(organizationDomains.organizationId, organizationId))
+    .orderBy(organizationDomains.domain);
+  return { ...org, emailDomains: domainRows.map((d) => d.domain) };
 }
 
 /** Active organizations for staff dropdowns (e.g. create-on-behalf). */
@@ -334,4 +442,126 @@ export async function listActiveOrganizations() {
     .from(organizations)
     .where(eq(organizations.isActive, true))
     .orderBy(organizations.name);
+}
+
+// ── Organization triage (unverified org claims) ────────────────────
+//
+// Tickets whose submitter typed a company we couldn't confirm by email domain
+// land here (org_match_status = 'unverified', organizationId NULL) so a
+// coordinator can link them to the right org — or create a new one.
+
+/** Gate for triage actions: managing org attribution is a coordinator+ task. */
+async function requireOrgTriage() {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(
+      caller,
+      "organizations.update",
+      { type: "global" },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  return caller;
+}
+
+export async function listUnverifiedOrgTickets() {
+  await requireOrgTriage();
+  return db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      subject: tickets.subject,
+      customerName: tickets.customerName,
+      customerEmail: tickets.customerEmail,
+      customerCompany: tickets.customerCompany,
+      createdAt: tickets.createdAt,
+    })
+    .from(tickets)
+    .where(
+      and(eq(tickets.orgMatchStatus, "unverified"), isNull(tickets.deletedAt)),
+    )
+    .orderBy(desc(tickets.createdAt))
+    .limit(200);
+}
+
+/** Count of tickets awaiting organization triage (for the list-page banner). */
+export async function countUnverifiedOrgTickets(): Promise<number> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(
+      caller,
+      "organizations.update",
+      { type: "global" },
+      productionContext,
+    ))
+  ) {
+    return 0;
+  }
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(tickets)
+    .where(
+      and(eq(tickets.orgMatchStatus, "unverified"), isNull(tickets.deletedAt)),
+    );
+  return value;
+}
+
+/** Link a triaged ticket to a confirmed organization (status → 'staff') and
+ *  re-sync any Monthly-Plan deduction now the org is known. The ticket NUMBER
+ *  is left immutable — the FK is the source of truth for billing/reporting. */
+export async function linkTicketOrganization(
+  ticketId: string,
+  organizationId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireOrgTriage();
+
+  const [org] = await db
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (!org) return { ok: false, error: "Organization not found." };
+
+  const [ticket] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      customerCompany: tickets.customerCompany,
+    })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  if (!ticket) return { ok: false, error: "Ticket not found." };
+
+  await transactional(async (tx) => {
+    await tx
+      .update(tickets)
+      .set({
+        organizationId,
+        orgMatchStatus: "staff",
+        updatedAt: new Date(),
+      })
+      .where(eq(tickets.id, ticketId));
+    // Now the ticket has a confirmed org, apply any Monthly-Plan deduction.
+    await syncMonthlyPlanDeduction(tx, ticketId);
+  });
+
+  await audit({
+    actorId: caller.id,
+    action: "ticket.link_organization",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: {
+      organizationId,
+      organizationName: org.name,
+      claimedCompany: ticket.customerCompany,
+    },
+  });
+
+  revalidatePath("/admin/org-triage");
+  revalidatePath("/admin/organizations");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
 }

@@ -13,6 +13,11 @@ export type Target =
         /** Additional collaborating technicians (Meeting-2, CR-11). A strict
          *  technician who is a collaborator can act on the ticket too. */
         assigneeIds?: string[];
+        /** Whether the viewer has logged work on this ticket. Grants a strict
+         *  technician READ-ONLY access (tickets.view) to a ticket they worked
+         *  on even after it's reassigned away from them — so they keep sight
+         *  of the history and their logged time. Does NOT grant edit/reply. */
+        viewerHasWorklog?: boolean;
       };
     }
   | {
@@ -128,10 +133,17 @@ export async function can(
     case "tickets.assign":
       if (target.type !== "ticket") return false;
       if (isStrictTechnician(user)) {
-        return (
+        const isAssigneeOrCollaborator =
           target.ticket.assignedToId === user.id ||
-          (target.ticket.assigneeIds ?? []).includes(user.id)
-        );
+          (target.ticket.assigneeIds ?? []).includes(user.id);
+        // Read-only carry-over: a strict tech who logged work on the ticket
+        // keeps VIEW access after it's reassigned away (so their history and
+        // hours stay visible), but no write action — those still require being
+        // the current assignee or a collaborator.
+        if (action === "tickets.view") {
+          return isAssigneeOrCollaborator || !!target.ticket.viewerHasWorklog;
+        }
+        return isAssigneeOrCollaborator;
       }
       if (isStrictCustomer(user)) {
         return target.ticket.customerId === user.id;

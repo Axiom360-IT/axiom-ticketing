@@ -20,12 +20,16 @@ export type OrganizationFormInitial = {
   monthlyHoursIncluded: string;
   monthlyHoursBalance: string;
   contractNotes: string;
+  /** Registered email domains, one per line. */
+  emailDomains: string;
   isActive: boolean;
 };
 
 type Props = {
   mode: "create" | "edit";
   initial?: OrganizationFormInitial;
+  /** Prefill the name in create mode (e.g. from a triaged ticket's claim). */
+  defaultName?: string;
 };
 
 function parseHours(v: string): number | null {
@@ -35,13 +39,13 @@ function parseHours(v: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export function OrganizationForm({ mode, initial }: Props) {
+export function OrganizationForm({ mode, initial, defaultName }: Props) {
   const router = useRouter();
   const tFields = useTranslations("organizations.fields");
   const tForm = useTranslations("organizations.form");
   const tCommon = useTranslations("common");
 
-  const [name, setName] = useState(initial?.name ?? "");
+  const [name, setName] = useState(initial?.name ?? defaultName ?? "");
   const [abbreviation, setAbbreviation] = useState(initial?.abbreviation ?? "");
   const [isMonthlyPlan, setIsMonthlyPlan] = useState(
     initial?.isMonthlyPlan ?? false,
@@ -54,6 +58,9 @@ export function OrganizationForm({ mode, initial }: Props) {
   );
   const [contractNotes, setContractNotes] = useState(
     initial?.contractNotes ?? "",
+  );
+  const [emailDomains, setEmailDomains] = useState(
+    initial?.emailDomains ?? "",
   );
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +77,10 @@ export function OrganizationForm({ mode, initial }: Props) {
       monthlyHoursIncluded: isMonthlyPlan ? parseHours(hoursIncluded) : null,
       monthlyHoursBalance: isMonthlyPlan ? parseHours(hoursBalance) : null,
       contractNotes,
+      emailDomains: emailDomains
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
       isActive,
     };
     const res =
@@ -114,6 +125,25 @@ export function OrganizationForm({ mode, initial }: Props) {
           className="text-xs text-zinc-500 dark:text-zinc-400"
         >
           {tFields("abbreviationHint")}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="org-email-domains">{tFields("emailDomains")}</Label>
+        <Textarea
+          id="org-email-domains"
+          value={emailDomains}
+          onChange={(e) => setEmailDomains(e.target.value)}
+          rows={3}
+          placeholder={"kingsmill.com\nkingsmillfoods.com"}
+          className="font-mono text-sm"
+          aria-describedby="org-email-domains-hint"
+        />
+        <p
+          id="org-email-domains-hint"
+          className="text-xs text-zinc-500 dark:text-zinc-400"
+        >
+          {tFields("emailDomainsHint")}
         </p>
       </div>
 

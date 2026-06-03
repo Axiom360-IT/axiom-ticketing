@@ -41,6 +41,7 @@ import {
   StatusBadge,
 } from "@/components/tickets/badges";
 import { TicketFilters } from "@/components/tickets/ticket-filters";
+import { ReassignedNotice } from "@/components/tickets/reassigned-notice";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { TicketRowActions } from "@/components/tickets/ticket-row-actions";
 import { can } from "@/lib/auth/can";
@@ -73,6 +74,8 @@ type SearchParams = Promise<{
   to?: string;
   page?: string;
   pageSize?: string;
+  /** Set after a reassign that cost the viewer access — shows a confirmation. */
+  reassigned?: string;
 }>;
 
 const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
@@ -218,6 +221,7 @@ export default async function TicketsPage({
 
   return (
     <div className="space-y-4">
+      {sp.reassigned ? <ReassignedNotice name={sp.reassigned} /> : null}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{t("title")}</h1>

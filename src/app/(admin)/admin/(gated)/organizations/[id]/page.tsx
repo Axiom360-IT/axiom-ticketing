@@ -69,6 +69,7 @@ export default async function EditOrganizationPage({
                   org.monthlyMinutesBalance,
                 ),
                 contractNotes: org.contractNotes ?? "",
+                emailDomains: org.emailDomains.join("\n"),
                 isActive: org.isActive,
               }}
             />
