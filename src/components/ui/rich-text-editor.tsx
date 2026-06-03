@@ -2,7 +2,12 @@
 
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import {
+  useEditor,
+  useEditorState,
+  EditorContent,
+  type Editor,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import {
@@ -103,6 +108,16 @@ export function RichTextEditor({
     editor?.setEditable(!disabled);
   }, [disabled, editor]);
 
+  // TipTap v3's `useEditor` does NOT re-render this component on every
+  // transaction (a deliberate perf change from v2). Reading `editor.isEmpty`
+  // straight in render would therefore go stale — the placeholder would keep
+  // showing while you type, overlapping the text. `useEditorState` subscribes
+  // to the editor and re-renders only when the selected value flips.
+  const isEmpty = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isEmpty ?? true,
+  });
+
   return (
     <div
       className={cn(
@@ -120,7 +135,7 @@ export function RichTextEditor({
           editor={editor}
           className="text-sm text-zinc-900 dark:text-zinc-50"
         />
-        {placeholder && editor && editor.isEmpty ? (
+        {placeholder && editor && isEmpty ? (
           <div
             className="pointer-events-none absolute left-0 top-0 px-3 py-2.5 text-sm text-zinc-400 dark:text-zinc-500"
             aria-hidden="true"
@@ -135,18 +150,31 @@ export function RichTextEditor({
 
 function Toolbar({ editor }: { editor: Editor | null }) {
   const t = useTranslations("common.richText");
+  // Subscribe to the active marks/nodes so the buttons' pressed state stays in
+  // sync even when a toggle doesn't change the serialized HTML (e.g. toggling
+  // bold on an empty selection) — the same v3 non-rerender caveat as above.
+  const active = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      bold: editor?.isActive("bold") ?? false,
+      italic: editor?.isActive("italic") ?? false,
+      bulletList: editor?.isActive("bulletList") ?? false,
+      orderedList: editor?.isActive("orderedList") ?? false,
+      link: editor?.isActive("link") ?? false,
+    }),
+  });
   if (!editor) return null;
   return (
     <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-800">
       <ToolbarButton
-        active={editor.isActive("bold")}
+        active={active?.bold ?? false}
         onClick={() => editor.chain().focus().toggleBold().run()}
         label={t("bold")}
       >
         <Bold className="h-4 w-4" aria-hidden="true" />
       </ToolbarButton>
       <ToolbarButton
-        active={editor.isActive("italic")}
+        active={active?.italic ?? false}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         label={t("italic")}
       >
@@ -154,14 +182,14 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
       <ToolbarButton
-        active={editor.isActive("bulletList")}
+        active={active?.bulletList ?? false}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         label={t("bulletList")}
       >
         <List className="h-4 w-4" aria-hidden="true" />
       </ToolbarButton>
       <ToolbarButton
-        active={editor.isActive("orderedList")}
+        active={active?.orderedList ?? false}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         label={t("orderedList")}
       >
@@ -169,7 +197,7 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
       <ToolbarButton
-        active={editor.isActive("link")}
+        active={active?.link ?? false}
         onClick={() => insertOrToggleLink(editor, t("linkPrompt"))}
         label={t("link")}
       >
