@@ -57,6 +57,7 @@ export function StatusControl({
         {tCtl("label")}
       </span>
       <Select
+        items={Object.fromEntries(WORKING_STATUSES.map((s) => [s, t(s)]))}
         value={value}
         onValueChange={(v) => handleChange(v ?? "")}
         disabled={pending}

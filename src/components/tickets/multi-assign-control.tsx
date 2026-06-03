@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -85,7 +85,8 @@ export function MultiAssignControl({
 
       {candidates.length > 0 ? (
         <Select value="" onValueChange={(v) => add(v ?? "")} disabled={pending}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full justify-start gap-2 text-zinc-500 dark:text-zinc-400">
+            <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
             <SelectValue placeholder={t("addPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -96,6 +97,10 @@ export function MultiAssignControl({
             ))}
           </SelectContent>
         </Select>
+      ) : collaborators.length > 0 ? (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          {t("allAssigned")}
+        </p>
       ) : null}
 
       {error ? (

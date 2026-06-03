@@ -59,6 +59,10 @@ export function BillableControl({
   return (
     <div className="space-y-1">
       <Select
+        items={{
+          [UNSET]: t("unset"),
+          ...Object.fromEntries(BILLABLE_VALUES.map((v) => [v, t(v)])),
+        }}
         value={value}
         onValueChange={(v) => handleChange(v ?? UNSET)}
         disabled={pending}

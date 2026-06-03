@@ -575,11 +575,13 @@ const customerCreateSchema = z.object({
   // "other" server-side. The org comes from the customer's account, not the
   // form, so there is no org field here.
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
+  // Description optional (Meeting-2, CR-03/Q2).
   description: z
     .string()
     .trim()
-    .min(20, "Description must be at least 20 characters")
-    .max(5000, "Description must be at most 5000 characters"),
+    .max(5000, "Description must be at most 5000 characters")
+    .optional()
+    .default(""),
   // Optional ID of a draft ticket created via `prepareCustomerTicketDraft`.
   // When present, the action UPDATES the draft to `open` instead of
   // inserting a new ticket — so pre-uploaded attachments already linked

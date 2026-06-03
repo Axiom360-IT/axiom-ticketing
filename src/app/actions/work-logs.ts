@@ -1,5 +1,5 @@
 "use server";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -27,7 +27,11 @@ const addSchema = z.object({
   serviceType: z.enum(SERVICE_TYPES),
 });
 
+// Edit shares the same field rules as add.
+const updateSchema = addSchema;
+
 export type AddWorkLogInput = z.infer<typeof addSchema>;
+export type UpdateWorkLogInput = z.infer<typeof updateSchema>;
 export type WorkLogResult = { ok: true } | { ok: false; error: string };
 
 export async function addWorkLogEntry(
@@ -81,6 +85,79 @@ export async function addWorkLogEntry(
   });
 
   revalidatePath(`/admin/tickets/${ticketId}`);
+  revalidatePath("/admin/work-log");
+  return { ok: true };
+}
+
+/**
+ * Edit an existing work-log entry's description, duration, or service type.
+ * Scoped exactly like add/delete: the caller must be able to act on the
+ * underlying ticket (`tickets.update`), which confines a strict technician
+ * to their own assigned/collaborated tickets while letting elevated roles
+ * (and Super Admin) correct any entry.
+ */
+export async function updateWorkLogEntry(
+  workLogId: string,
+  input: UpdateWorkLogInput,
+): Promise<WorkLogResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const data = parsed.data;
+
+  const user = await requireSessionUser();
+  await enforceUserRateLimit("authLogWork", user.id);
+
+  const [entry] = await db
+    .select({
+      id: workLogs.id,
+      ticketId: workLogs.ticketId,
+      minutes: workLogs.minutes,
+    })
+    .from(workLogs)
+    .where(eq(workLogs.id, workLogId))
+    .limit(1);
+  if (!entry) throw new NotFoundError();
+
+  const ticket = await loadTicketScope(entry.ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  await transactional(async (tx) => {
+    await tx
+      .update(workLogs)
+      .set({
+        description: data.description,
+        minutes: data.minutes,
+        serviceType: data.serviceType,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(workLogs.id, workLogId));
+    // Minutes may have changed — keep any Monthly-Plan deduction in sync.
+    await syncMonthlyPlanDeduction(tx, entry.ticketId);
+  });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.update_work_log",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { minutes: entry.minutes },
+    after: { minutes: data.minutes, serviceType: data.serviceType },
+  });
+
+  revalidatePath(`/admin/tickets/${ticket.id}`);
+  revalidatePath("/admin/work-log");
   return { ok: true };
 }
 
@@ -127,6 +204,7 @@ export async function deleteWorkLogEntry(
   });
 
   revalidatePath(`/admin/tickets/${ticket.id}`);
+  revalidatePath("/admin/work-log");
   return { ok: true };
 }
 

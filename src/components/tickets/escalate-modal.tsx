@@ -137,6 +137,9 @@ export function EscalateModal({
               {tModal("reasonLabel")}
             </label>
             <Select
+              items={Object.fromEntries(
+                ESCALATION_REASONS.map((r) => [r, tReason(r)]),
+              )}
               value={reason}
               onValueChange={(v) => setReason((v ?? "") as EscalationReason | "")}
               disabled={isPending}

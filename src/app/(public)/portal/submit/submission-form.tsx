@@ -18,6 +18,27 @@ import { AttachmentPicker } from "@/components/customer/attachment-picker";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Red asterisk marking a required field. */
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="text-red-500">
+      {" *"}
+    </span>
+  );
+}
+
+/** Inline per-field validation message, shown directly under the input. */
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="text-xs text-red-600 dark:text-red-400">
+      {message}
+    </p>
+  );
+}
+
 declare global {
   interface Window {
     turnstile?: {
@@ -69,6 +90,9 @@ export function SubmissionForm({
   const [turnstileToken, setTurnstileToken] = useState<string>("");
   const [honeypot, setHoneypot] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<keyof typeof formData, string>>
+  >({});
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-submission draft, used so the visitor can attach a screenshot
@@ -146,11 +170,48 @@ export function SubmissionForm({
     value: (typeof formData)[K],
   ) {
     setFormData((d) => ({ ...d, [key]: value }));
+    // Clear this field's error the moment the user edits it.
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function validateForm(): Partial<Record<keyof typeof formData, string>> {
+    const errs: Partial<Record<keyof typeof formData, string>> = {};
+    if (!formData.customerName.trim()) {
+      errs.customerName = tSubmit("validation.nameRequired");
+    }
+    const email = formData.customerEmail.trim();
+    if (!email) {
+      errs.customerEmail = tSubmit("validation.emailRequired");
+    } else if (!EMAIL_RE.test(email)) {
+      errs.customerEmail = tSubmit("validation.emailInvalid");
+    }
+    if (!formData.organization.trim()) {
+      errs.organization = tSubmit("validation.organizationRequired");
+    }
+    if (formData.subject.trim().length < 3) {
+      errs.subject = tSubmit("validation.subjectShort");
+    }
+    // Description is optional (CR-03/Q2) — no requirement.
+    return errs;
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+
+    // Validate client-side first so a filled field can never trip a
+    // server-side "required" error; messages render inline under each field.
+    const errs = validateForm();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
 
     setSubmitting(true);
     const result = await createTicket({
@@ -209,7 +270,10 @@ export function SubmissionForm({
 
         <div className="grid sm:grid-cols-2 gap-5">
           <div className="space-y-1.5">
-            <Label htmlFor="customerName">{tFields("yourName")}</Label>
+            <Label htmlFor="customerName">
+              {tFields("yourName")}
+              <RequiredMark />
+            </Label>
             <Input
               id="customerName"
               required
@@ -217,10 +281,21 @@ export function SubmissionForm({
               value={formData.customerName}
               onChange={(e) => update("customerName", e.target.value)}
               maxLength={120}
+              aria-invalid={fieldErrors.customerName ? true : undefined}
+              aria-describedby={
+                fieldErrors.customerName ? "customerName-error" : undefined
+              }
+            />
+            <FieldError
+              id="customerName-error"
+              message={fieldErrors.customerName}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="customerEmail">{tFields("email")}</Label>
+            <Label htmlFor="customerEmail">
+              {tFields("email")}
+              <RequiredMark />
+            </Label>
             <Input
               id="customerEmail"
               type="email"
@@ -228,12 +303,23 @@ export function SubmissionForm({
               autoComplete="email"
               value={formData.customerEmail}
               onChange={(e) => update("customerEmail", e.target.value)}
+              aria-invalid={fieldErrors.customerEmail ? true : undefined}
+              aria-describedby={
+                fieldErrors.customerEmail ? "customerEmail-error" : undefined
+              }
+            />
+            <FieldError
+              id="customerEmail-error"
+              message={fieldErrors.customerEmail}
             />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="organization">{tFields("organization")}</Label>
+          <Label htmlFor="organization">
+            {tFields("organization")}
+            <RequiredMark />
+          </Label>
           <Input
             id="organization"
             required
@@ -242,11 +328,19 @@ export function SubmissionForm({
             onChange={(e) => update("organization", e.target.value)}
             maxLength={160}
             placeholder={tFields("organizationPlaceholder")}
+            aria-invalid={fieldErrors.organization ? true : undefined}
+            aria-describedby={
+              fieldErrors.organization ? "organization-error" : undefined
+            }
           />
+          <FieldError id="organization-error" message={fieldErrors.organization} />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="subject">{tFields("subject")}</Label>
+          <Label htmlFor="subject">
+            {tFields("subject")}
+            <RequiredMark />
+          </Label>
           <Input
             id="subject"
             required
@@ -254,22 +348,28 @@ export function SubmissionForm({
             onChange={(e) => update("subject", e.target.value)}
             maxLength={150}
             placeholder={tFields("subjectPlaceholder")}
+            aria-invalid={fieldErrors.subject ? true : undefined}
+            aria-describedby={fieldErrors.subject ? "subject-error" : undefined}
           />
+          <FieldError id="subject-error" message={fieldErrors.subject} />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="description">{tFields("description")}</Label>
+          <Label htmlFor="description">
+            {tFields("description")}
+            <span className="ml-1 text-xs font-normal text-zinc-500">
+              {tFields("optional")}
+            </span>
+          </Label>
           <Textarea
             id="description"
-            required
             value={formData.description}
             onChange={(e) => update("description", e.target.value)}
-            minLength={20}
             maxLength={5000}
             rows={6}
             placeholder={tFields("descriptionPlaceholder")}
           />
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-500 text-right">
             {formData.description.length}/5000
           </p>
         </div>

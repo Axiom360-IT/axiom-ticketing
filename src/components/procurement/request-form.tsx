@@ -74,7 +74,11 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="proc-type">{tForm("type")}</Label>
-        <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+        <Select
+          items={Object.fromEntries(TYPES.map((v) => [v, tType(v)]))}
+          value={type}
+          onValueChange={(v) => setType(v as typeof type)}
+        >
           <SelectTrigger id="proc-type">
             <SelectValue />
           </SelectTrigger>

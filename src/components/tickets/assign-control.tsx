@@ -52,9 +52,20 @@ export function AssignControl({
     });
   }
 
+  // base-ui Select needs `items` (value→label) to render the chosen label in
+  // the trigger; without it the trigger shows the raw value (the UUID).
+  const itemLabels = Object.fromEntries(
+    technicians.map((tech) => [tech.id, tech.name]),
+  );
+
   return (
     <div className="space-y-1.5">
-      <Select value={value} onValueChange={handleChange} disabled={isPending}>
+      <Select
+        items={itemLabels}
+        value={value}
+        onValueChange={handleChange}
+        disabled={isPending}
+      >
         <SelectTrigger className="w-full">
           <SelectValue placeholder={t("unassigned")} />
         </SelectTrigger>

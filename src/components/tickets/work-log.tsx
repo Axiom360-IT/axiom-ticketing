@@ -172,34 +172,45 @@ export function WorkLog({
               placeholder={t("descriptionPlaceholder")}
             />
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="wl-hours">{t("hoursLabel")}</Label>
-              <Input
-                id="wl-hours"
-                type="number"
-                min={0}
-                max={24}
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                className="w-24"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wl-minutes">{t("minutesLabel")}</Label>
-              <Input
-                id="wl-minutes"
-                type="number"
-                min={0}
-                max={59}
-                value={minutes}
-                onChange={(e) => setMinutes(e.target.value)}
-                className="w-24"
-              />
+              <Label htmlFor="wl-hours">{t("timeLabel")}</Label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  id="wl-hours"
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  className="w-14 text-center tabular-nums"
+                  aria-label={t("hoursLabel")}
+                />
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {t("hoursShort")}
+                </span>
+                <Input
+                  id="wl-minutes"
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={minutes}
+                  onChange={(e) => setMinutes(e.target.value)}
+                  className="w-14 text-center tabular-nums"
+                  aria-label={t("minutesLabel")}
+                />
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {t("minutesShort")}
+                </span>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="wl-service">{t("serviceTypeLabel")}</Label>
               <Select
+                items={{
+                  remote: t("serviceRemote"),
+                  onsite: t("serviceOnsite"),
+                }}
                 value={serviceType}
                 onValueChange={(v) => setServiceType(v ?? "remote")}
               >
@@ -212,7 +223,7 @@ export function WorkLog({
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting} className="ml-auto">
               {submitting ? t("adding") : t("addButton")}
             </Button>
           </div>

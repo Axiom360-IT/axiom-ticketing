@@ -34,6 +34,11 @@ export const PERMISSIONS = [
   "reports.view",
   "reports.export",
 
+  // Work log (Meeting-2 follow-up): every technician can view/manage their
+  // OWN time entries on the timesheet page; this permission additionally
+  // unlocks seeing EVERYONE's entries (granted to Super Admin by default).
+  "worklog.view_all",
+
   // Organizations (Meeting-2, CR-06)
   "organizations.view",
   "organizations.create",

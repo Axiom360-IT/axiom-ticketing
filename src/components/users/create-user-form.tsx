@@ -121,6 +121,10 @@ export function CreateUserForm({
         <div className="space-y-1.5">
           <Label htmlFor="organization">{tFields("organization")}</Label>
           <Select
+            items={{
+              [NO_ORG]: tFields("organizationNone"),
+              ...Object.fromEntries(organizations.map((o) => [o.id, o.name])),
+            }}
             value={organizationId}
             onValueChange={(v) => setOrganizationId(v ?? NO_ORG)}
           >

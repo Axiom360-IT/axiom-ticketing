@@ -33,6 +33,7 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
 
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [subjectError, setSubjectError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +58,12 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    // Inline validation: subject required (≥3 chars); description optional.
+    if (subject.trim().length < 3) {
+      setSubjectError(t("subjectShort"));
+      return;
+    }
+    setSubjectError(null);
     setSubmitting(true);
     const result = await customerCreateTicket({
       subject: subject.trim(),
@@ -80,6 +87,9 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
           className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
         >
           {t("subjectLabel")}
+          <span aria-hidden="true" className="text-red-500">
+            {" *"}
+          </span>
         </label>
         <input
           id="subject"
@@ -89,10 +99,24 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
           minLength={3}
           maxLength={150}
           value={subject}
-          onChange={(e) => setSubject(e.target.value)}
+          onChange={(e) => {
+            setSubject(e.target.value);
+            if (subjectError) setSubjectError(null);
+          }}
           placeholder={t("subjectPlaceholder")}
+          aria-invalid={subjectError ? true : undefined}
+          aria-describedby={subjectError ? "subject-error" : undefined}
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+        {subjectError ? (
+          <p
+            id="subject-error"
+            role="alert"
+            className="mt-1.5 text-xs text-red-600 dark:text-red-400"
+          >
+            {subjectError}
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -101,12 +125,13 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
           className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
         >
           {t("descriptionLabel")}
+          <span className="ml-1 text-xs font-normal text-zinc-500">
+            {t("optional")}
+          </span>
         </label>
         <textarea
           id="description"
           name="description"
-          required
-          minLength={20}
           maxLength={5000}
           rows={6}
           value={description}

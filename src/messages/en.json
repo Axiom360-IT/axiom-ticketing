@@ -88,6 +88,8 @@
       "submitMagic": "Email me a sign-in link",
       "submittingMagic": "Sending…",
       "usePassword": "Use a password instead",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
       "useMagic": "Use a sign-in link instead",
       "forgotPassword": "Forgot password?",
       "passwordLabel": "Password",
@@ -214,6 +216,8 @@
         "priorityPlaceholder": "Select priority",
         "descriptionLabel": "Description",
         "descriptionPlaceholder": "What happened? What did you expect to happen? Anything you've tried?",
+        "optional": "(optional)",
+        "subjectShort": "Subject must be at least 3 characters.",
         "submit": "Submit ticket",
         "submitting": "Submitting…",
         "errors": {
@@ -467,6 +471,7 @@
         "organization": "Organization",
         "organizationPlaceholder": "Name of your organization",
         "organizationNone": "No organization (external)",
+        "optional": "(optional)",
         "subject": "Subject",
         "subjectPlaceholder": "Brief summary of the problem",
         "subjectAgentPlaceholder": "Short summary as the customer described it",
@@ -493,6 +498,14 @@
       "chooseCategoryPriority": "Please choose a category and priority.",
       "chooseCategory": "Please choose a category.",
       "describeOther": "Please describe what 'Other' refers to.",
+      "validation": {
+        "nameRequired": "Please enter your name.",
+        "emailRequired": "Please enter your email.",
+        "emailInvalid": "Enter a valid email address.",
+        "organizationRequired": "Please enter your organization.",
+        "subjectShort": "Subject must be at least 3 characters.",
+        "descriptionShort": "Description must be at least 20 characters."
+      },
       "errors": {
         "tooManyByIp": "Too many submissions from your network. Try again in an hour.",
         "tooManyByEmail": "Too many submissions from this email today. Try again tomorrow.",
@@ -530,7 +543,8 @@
       "collaboratorsLabel": "Also working on this",
       "addPlaceholder": "Add a technician…",
       "removeLabel": "Remove {name}",
-      "empty": "No additional technicians."
+      "empty": "No additional technicians.",
+      "allAssigned": "All available technicians are already assigned."
     },
     "billable": {
       "title": "Billable",
@@ -550,8 +564,11 @@
       "empty": "No work logged yet.",
       "descriptionLabel": "What did you do?",
       "descriptionPlaceholder": "e.g. Replaced failed RAM module and ran diagnostics",
+      "timeLabel": "Time spent",
       "hoursLabel": "Hours",
       "minutesLabel": "Minutes",
+      "hoursShort": "h",
+      "minutesShort": "m",
       "serviceTypeLabel": "Service type",
       "serviceOnsite": "On-site",
       "serviceRemote": "Remote",
@@ -1320,6 +1337,53 @@
       "external": "External"
     }
   },
+  "timesheet": {
+    "title": "Work Log",
+    "subtitleAll": "Time logged across all tickets and technicians.",
+    "subtitleOwn": "Time you've logged across your tickets.",
+    "totalLabel": "Total time",
+    "empty": "No work logged for these filters yet.",
+    "columns": {
+      "ticket": "Ticket",
+      "technician": "Technician",
+      "description": "Work done",
+      "time": "Time",
+      "service": "Service",
+      "billable": "Billable",
+      "date": "Date"
+    },
+    "filters": {
+      "technician": "Technician",
+      "organization": "Organization",
+      "service": "Service type",
+      "billable": "Billable",
+      "from": "From",
+      "to": "To",
+      "clear": "Clear",
+      "any": "Any"
+    },
+    "addModal": {
+      "trigger": "Log time",
+      "title": "Log time",
+      "description": "Record time you spent working on a ticket.",
+      "ticketLabel": "Ticket",
+      "ticketPlaceholder": "Select a ticket…",
+      "ticketRequired": "Select a ticket to log time against.",
+      "noTickets": "You have no open tickets to log time against. Open a ticket you're assigned to and log work from there.",
+      "submit": "Log time",
+      "submitting": "Logging…"
+    },
+    "rowActions": {
+      "editTitle": "Edit entry — {ticket}",
+      "editDescription": "Update the work description, time spent, or service type.",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "deleteTitle": "Delete entry?",
+      "deleteDescription": "This removes the logged time from {ticket}. This can't be undone.",
+      "deleteConfirm": "Delete",
+      "deleting": "Deleting…"
+    }
+  },
   "profile": {
     "page": {
       "title": "My profile",
@@ -1510,6 +1574,7 @@
       "buildLine": "v0.1.0 · MVP build",
       "mainNavLabel": "Main",
       "navTickets": "Tickets",
+      "navWorkLog": "Work Log",
       "navProcurement": "Procurement",
       "navOrganizations": "Organizations",
       "navUsers": "Users",

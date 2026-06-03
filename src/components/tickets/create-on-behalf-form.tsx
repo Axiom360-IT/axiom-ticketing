@@ -122,6 +122,10 @@ export function CreateOnBehalfForm({
         <div className="space-y-1.5">
           <Label htmlFor="organization">{tFields("organization")}</Label>
           <Select
+            items={{
+              [NO_ORG]: tFields("organizationNone"),
+              ...Object.fromEntries(organizations.map((o) => [o.id, o.name])),
+            }}
             value={data.organizationId}
             onValueChange={(v) => update("organizationId", v ?? NO_ORG)}
           >
@@ -156,6 +160,9 @@ export function CreateOnBehalfForm({
         <div className="space-y-1.5">
           <Label htmlFor="category">{tFields("category")}</Label>
           <Select
+            items={Object.fromEntries(
+              CATEGORY_OPTIONS.map((v) => [v, tCategory(v)]),
+            )}
             value={data.category}
             onValueChange={(v) => update("category", v as typeof data.category)}
           >
@@ -174,6 +181,9 @@ export function CreateOnBehalfForm({
         <div className="space-y-1.5">
           <Label htmlFor="priority">{tFields("priority")}</Label>
           <Select
+            items={Object.fromEntries(
+              PRIORITY_OPTIONS.map((v) => [v, tPriority(v)]),
+            )}
             value={data.priority}
             onValueChange={(v) => update("priority", v as typeof data.priority)}
           >

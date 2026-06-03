@@ -78,6 +78,13 @@
       "when": 1780408969871,
       "tag": "0010_procurement_stages",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780500000000,
+      "tag": "0011_worklog_view_all_permission",
+      "breakpoints": true
     }
   ]
 }

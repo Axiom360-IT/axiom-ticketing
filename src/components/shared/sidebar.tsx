@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import {
   Building2,
   ClipboardList,
+  Clock,
   GitBranch,
   History,
   Settings,
@@ -23,6 +24,7 @@ type NavItem = {
   href: string;
   labelKey:
     | "navTickets"
+    | "navWorkLog"
     | "navProcurement"
     | "navReports"
     | "navOrganizations"
@@ -41,6 +43,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket, requires: "tickets.view" },
+  { href: "/admin/work-log", labelKey: "navWorkLog", icon: Clock, requires: "tickets.update" },
   { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart, requires: "procurement.view" },
   { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList, requires: "reports.view" },
   { href: "/admin/organizations", labelKey: "navOrganizations", icon: Building2, requires: "organizations.view" },

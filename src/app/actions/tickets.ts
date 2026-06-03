@@ -80,11 +80,14 @@ const createTicketSchema = z.object({
     .min(1, "Organization is required")
     .max(160, "Organization must be at most 160 characters"),
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
+  // Description is optional (Meeting-2, CR-03/Q2 — the boss chose to keep it
+  // optional and observe usage before forcing it).
   description: z
     .string()
     .trim()
-    .min(20, "Description must be at least 20 characters")
-    .max(5000, "Description must be at most 5000 characters"),
+    .max(5000, "Description must be at most 5000 characters")
+    .optional()
+    .default(""),
   // Anti-abuse — invisible to humans
   turnstileToken: z.string().optional(),
   honeypot: z.string().optional(),

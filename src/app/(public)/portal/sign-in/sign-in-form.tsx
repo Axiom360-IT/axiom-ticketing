@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
+import { Eye, EyeOff } from "lucide-react";
 import { signInWithLockout } from "@/app/actions/sign-in";
 import { requestMagicLink } from "@/app/actions/customer-portal";
 
@@ -17,6 +18,7 @@ export function SignInForm() {
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(
     errorParam === "expired"
@@ -121,17 +123,34 @@ export function SignInForm() {
           >
             {t("passwordLabel")}
           </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            minLength={12}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              autoComplete="current-password"
+              minLength={12}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2.5 pr-10 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-label={
+                showPassword ? t("hidePassword") : t("showPassword")
+              }
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 focus:outline-none focus-visible:text-blue-600"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </div>
       ) : null}
 

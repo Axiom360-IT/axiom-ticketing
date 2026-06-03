@@ -74,8 +74,13 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: cn(
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none px-3 py-2.5 min-h-[var(--rt-min-h)]",
+          "prose prose-sm dark:prose-invert max-w-none focus:outline-none px-3 py-2.5",
         ),
+        // Inline min-height (not a Tailwind CSS-variable utility) so the
+        // editable area can never collapse to zero — a collapsed editor let
+        // its absolutely-positioned placeholder overflow onto the elements
+        // below it (the attachment picker).
+        style: `min-height: ${minHeight}px`,
         "aria-label": ariaLabel ?? "Rich text editor",
       },
     },
@@ -101,31 +106,29 @@ export function RichTextEditor({
   return (
     <div
       className={cn(
-        // `relative` is required so the absolutely-positioned empty-state
-        // placeholder below anchors INSIDE this box. Without it the
-        // placeholder escapes to the nearest positioned ancestor and
-        // overlaps whatever is rendered near the editor.
-        "relative rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent",
+        "rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent",
         disabled && "opacity-60 pointer-events-none",
         className,
       )}
-      style={{ ["--rt-min-h" as string]: `${minHeight}px` }}
     >
       <Toolbar editor={editor} />
-      <EditorContent
-        editor={editor}
-        className="text-sm text-zinc-900 dark:text-zinc-50"
-      />
-      {/* Empty-state placeholder. Tiptap has a Placeholder extension but
-          this keeps the bundle smaller — we just style it via CSS. */}
-      {placeholder && editor && editor.isEmpty ? (
-        <div
-          className="pointer-events-none absolute mt-[44px] px-3 py-2.5 text-sm text-zinc-400 dark:text-zinc-500"
-          aria-hidden="true"
-        >
-          {placeholder}
-        </div>
-      ) : null}
+      {/* The content area is the positioning context for the empty-state
+          placeholder, which is anchored to its TOP-LEFT so it sits exactly
+          where typed text begins (and never overflows the editor). */}
+      <div className="relative">
+        <EditorContent
+          editor={editor}
+          className="text-sm text-zinc-900 dark:text-zinc-50"
+        />
+        {placeholder && editor && editor.isEmpty ? (
+          <div
+            className="pointer-events-none absolute left-0 top-0 px-3 py-2.5 text-sm text-zinc-400 dark:text-zinc-500"
+            aria-hidden="true"
+          >
+            {placeholder}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
