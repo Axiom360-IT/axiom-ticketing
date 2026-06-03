@@ -61,9 +61,14 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Default to a conventional dropdown that opens BELOW the trigger. base-ui's
+  // built-in default (true) is the macOS "item-aligned" popup, which renders
+  // the option list ON TOP of the trigger — confusing in forms/dialogs (it
+  // looks like the field itself is showing all the options). Callers can still
+  // opt back in per-instance.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

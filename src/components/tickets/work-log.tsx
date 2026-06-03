@@ -172,9 +172,13 @@ export function WorkLog({
               placeholder={t("descriptionPlaceholder")}
             />
           </div>
-          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-            <div className="space-y-1.5">
+          <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+            {/* Labels share row 1, controls share row 2 — keeps the two field
+                groups aligned regardless of their individual heights. */}
+            <div className="grid w-fit grid-cols-[auto_auto] items-end gap-x-5 gap-y-1.5">
               <Label htmlFor="wl-hours">{t("timeLabel")}</Label>
+              <Label htmlFor="wl-service">{t("serviceTypeLabel")}</Label>
+
               <div className="flex items-center gap-1.5">
                 <Input
                   id="wl-hours"
@@ -203,9 +207,7 @@ export function WorkLog({
                   {t("minutesShort")}
                 </span>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wl-service">{t("serviceTypeLabel")}</Label>
+
               <Select
                 items={{
                   remote: t("serviceRemote"),
@@ -223,7 +225,8 @@ export function WorkLog({
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={submitting} className="ml-auto">
+
+            <Button type="submit" disabled={submitting}>
               {submitting ? t("adding") : t("addButton")}
             </Button>
           </div>

@@ -10,6 +10,8 @@ import { users } from "@/lib/db/schema/auth";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { loadTicketScope } from "@/lib/tickets/load";
+import { inngest } from "@/inngest/client";
+import { getAppUrl } from "@/lib/request";
 
 export type CollaboratorResult = { ok: true } | { ok: false; error: string };
 
@@ -45,7 +47,7 @@ export async function addTicketCollaborator(
     return { ok: false, error: "That technician is already the primary assignee." };
   }
   const [target] = await db
-    .select({ id: users.id, isActive: users.isActive })
+    .select({ id: users.id, name: users.name, isActive: users.isActive })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -54,10 +56,20 @@ export async function addTicketCollaborator(
     return { ok: false, error: "Cannot assign a deactivated user." };
   }
 
-  await db
+  // `returning()` tells us whether a row was actually inserted — an empty
+  // result means they were already a collaborator (ON CONFLICT DO NOTHING),
+  // so we skip the audit + notification for that no-op re-add.
+  const inserted = await db
     .insert(ticketAssignees)
     .values({ ticketId, userId, assignedById: user.id })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ userId: ticketAssignees.userId });
+
+  if (inserted.length === 0) {
+    // Already collaborating — idempotent success, nothing changed.
+    revalidatePath(`/admin/tickets/${ticketId}`);
+    return { ok: true };
+  }
 
   await audit({
     actorId: user.id,
@@ -66,6 +78,56 @@ export async function addTicketCollaborator(
     targetId: ticket.ticketNumber,
     after: { collaboratorId: userId },
   });
+
+  // Notify the newly-added collaborator the same way the primary assignee is
+  // notified in `assignTicket` — one dispatch event; the dispatcher gates
+  // email/SMS by the recipient's notification preferences and always inserts
+  // an in-app (bell) notification. Wrapped so a notification failure never
+  // rolls back the assignment.
+  try {
+    const appUrl = getAppUrl();
+    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+    await inngest.send({
+      name: "notification/dispatch",
+      data: {
+        type: "ticket.assigned",
+        recipientUserIds: [userId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "new_assignment",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              technicianName: target.name,
+              subject: ticket.subject,
+              priority: ticket.priority as
+                | "low"
+                | "medium"
+                | "high"
+                | "critical",
+              customerName: ticket.customerName,
+              ticketUrl,
+            },
+          },
+          ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "ticket_assigned",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { subject: ticket.subject },
+          linkUrl: `/admin/tickets/${ticket.id}`,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[addTicketCollaborator] dispatch failed:", err);
+  }
 
   revalidatePath(`/admin/tickets/${ticketId}`);
   return { ok: true };
