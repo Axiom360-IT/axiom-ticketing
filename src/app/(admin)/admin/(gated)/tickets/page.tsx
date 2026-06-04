@@ -50,6 +50,7 @@ import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
 
@@ -202,6 +203,10 @@ export default async function TicketsPage({
       isEscalated: tickets.isEscalated,
       customerName: tickets.customerName,
       customerEmail: tickets.customerEmail,
+      // Registered org (verified via FK) + the raw company the submitter
+      // typed (an unverified claim we fall back to when nothing matched).
+      organizationName: organizations.name,
+      customerCompany: tickets.customerCompany,
       assignedToId: tickets.assignedToId,
       assignedToName: users.name,
       createdAt: tickets.createdAt,
@@ -209,6 +214,7 @@ export default async function TicketsPage({
     })
     .from(tickets)
     .leftJoin(users, eq(users.id, tickets.assignedToId))
+    .leftJoin(organizations, eq(organizations.id, tickets.organizationId))
     .where(where)
     .orderBy(desc(tickets.createdAt))
     .limit(limit)
@@ -279,6 +285,7 @@ export default async function TicketsPage({
                   <TableHead>{t("columns.priority")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
                   <TableHead>{t("columns.customer")}</TableHead>
+                  <TableHead>{t("columns.organization")}</TableHead>
                   <TableHead>{t("columns.assignee")}</TableHead>
                   <TableHead>{t("columns.created")}</TableHead>
                   <TableHead>{t("columns.updated")}</TableHead>
@@ -316,6 +323,22 @@ export default async function TicketsPage({
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">
                         {row.customerEmail}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {/* Verified org (FK match) wins; otherwise the typed
+                          company shown muted + tagged unverified; else —. */}
+                      {row.organizationName ? (
+                        row.organizationName
+                      ) : row.customerCompany ? (
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {row.customerCompany}
+                          <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                            {t("orgUnverified")}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">
                       {row.assignedToName ?? (

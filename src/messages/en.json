@@ -379,10 +379,12 @@
         "status": "Status",
         "priority": "Priority",
         "customer": "Customer",
+        "organization": "Organization",
         "assignee": "Assignee",
         "created": "Created",
         "updated": "Updated"
       },
+      "orgUnverified": "Unverified",
       "unassigned": "Unassigned",
       "relativeTime": {
         "justNow": "just now",
