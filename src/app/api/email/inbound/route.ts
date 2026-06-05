@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { processedWebhookEvents } from "@/lib/db/schema/webhooks";
+import { fetchResendInboundContent } from "@/lib/email/fetch-inbound";
 import {
   normalizeResendInbound,
   type ResendInboundPayload,
@@ -88,6 +89,36 @@ export async function POST(request: NextRequest): Promise<Response> {
   } catch (err) {
     console.error("[email/inbound] body is not valid JSON", err);
     return new Response("Bad payload", { status: 200 });
+  }
+
+  // Resend's `email.received` webhook is metadata-only — the body, headers and
+  // attachments are NOT in the payload and must be fetched from the Receiving
+  // API by id. Without this the message body is empty and every reply is
+  // dropped as "empty-body". The fetched headers also restore the sender-auth
+  // (DMARC/DKIM/SPF) verdict used for anti-spoofing.
+  const emailId = payload.data?.email_id ?? payload.data?.id;
+  if (emailId) {
+    const content = await fetchResendInboundContent(emailId);
+    if (!content) {
+      // Couldn't retrieve the body — roll back the idempotency marker and 500
+      // so Resend retries this delivery rather than losing the reply (req 5.1).
+      await db
+        .delete(processedWebhookEvents)
+        .where(
+          and(
+            eq(processedWebhookEvents.provider, PROVIDER),
+            eq(processedWebhookEvents.eventId, id),
+          ),
+        )
+        .catch(() => {});
+      return new Response("Content fetch failed", { status: 500 });
+    }
+    payload.data = {
+      ...payload.data,
+      text: content.text,
+      html: content.html,
+      headers: content.headers,
+    };
   }
 
   const normalized = normalizeResendInbound(payload);

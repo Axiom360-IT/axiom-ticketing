@@ -122,11 +122,13 @@ export function AuditDetailsButton({ entryId }: Props) {
               label={t("details.beforeLabel")}
               empty={t("details.noBefore")}
               value={detail.beforeValue}
+              userNames={detail.userNames}
             />
             <FieldsBlock
               label={t("details.afterLabel")}
               empty={t("details.noAfter")}
               value={detail.afterValue}
+              userNames={detail.userNames}
             />
           </div>
         )}
@@ -153,16 +155,30 @@ function formatFieldValue(v: unknown): string {
   return JSON.stringify(v);
 }
 
+/** Render a field value, swapping a user-id UUID for the user's name (keeping
+ *  the raw id as a hover tooltip) so the snapshot reads "Jane Doe" not a UUID. */
+function renderFieldValue(
+  v: unknown,
+  userNames: Record<string, string>,
+): React.ReactNode {
+  if (typeof v === "string" && userNames[v]) {
+    return <span title={v}>{userNames[v]}</span>;
+  }
+  return formatFieldValue(v);
+}
+
 /** Render a before/after snapshot as readable "Field: value" rows (instead of
  *  raw JSON). Falls back to JSON for arrays/nested non-object values. */
 function FieldsBlock({
   label,
   empty,
   value,
+  userNames,
 }: {
   label: string;
   empty: string;
   value: unknown;
+  userNames: Record<string, string>;
 }) {
   const isEmpty =
     value === null ||
@@ -185,7 +201,7 @@ function FieldsBlock({
                 {humanizeFieldKey(k)}
               </dt>
               <dd className="break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
-                {formatFieldValue(v)}
+                {renderFieldValue(v, userNames)}
               </dd>
             </Fragment>
           ))}

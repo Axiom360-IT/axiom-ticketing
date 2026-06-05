@@ -37,6 +37,9 @@ export type ResendInboundPayload = {
   type?: string;
   data?: {
     id?: string;
+    /** Resend email object id — used to fetch the body/headers via the
+     *  Receiving API (the webhook itself is metadata-only). */
+    email_id?: string;
     from?: { email?: string; name?: string } | string;
     to?:
       | Array<{ email?: string; name?: string } | string>

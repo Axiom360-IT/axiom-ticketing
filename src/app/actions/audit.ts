@@ -4,6 +4,7 @@ import {
   and,
   eq,
   gte,
+  inArray,
   isNotNull,
   lt,
   lte,
@@ -59,7 +60,26 @@ export type AuditEntryDetail = AuditEntryRow & {
   afterValue: unknown;
   userAgent: string | null;
   requestId: string | null;
+  /** Resolved names for any user-id UUIDs that appear in before/after, so the
+   *  detail view can show "Jane Doe" instead of a raw id (e.g. `assignedToId`). */
+  userNames: Record<string, string>;
 };
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Recursively collect UUID-shaped string values from an arbitrary JSON value
+ *  (before/after snapshots). Used to resolve user ids to names. */
+function collectUuids(value: unknown, acc: Set<string> = new Set()): string[] {
+  if (typeof value === "string") {
+    if (UUID_RE.test(value)) acc.add(value);
+  } else if (Array.isArray(value)) {
+    for (const v of value) collectUuids(v, acc);
+  } else if (value && typeof value === "object") {
+    for (const v of Object.values(value)) collectUuids(v, acc);
+  }
+  return [...acc];
+}
 
 export type ListAuditResult = {
   rows: AuditEntryRow[];
@@ -177,17 +197,23 @@ export async function listAuditEntries(opts: {
     target_type: string | null;
     target_id: string | null;
     ip_address: string | null;
+  // NOTE: audit_log is referenced UNALIASED here on purpose. `buildWhere`
+  // produces drizzle column refs qualified with the real table name
+  // ("audit_log"."actor_id" …); aliasing the table as `a` would hide that
+  // name and make every filtered query (e.g. a strict technician's forced
+  // actor_id scope) throw "invalid reference to FROM-clause entry".
   }>(sql`
-    SELECT a.id, a.timestamp, a.actor_id, a.actor_role_snapshot,
-           a.impersonator_id, a.action, a.target_type, a.target_id,
-           a.ip_address,
+    SELECT audit_log.id, audit_log.timestamp, audit_log.actor_id,
+           audit_log.actor_role_snapshot, audit_log.impersonator_id,
+           audit_log.action, audit_log.target_type, audit_log.target_id,
+           audit_log.ip_address,
            ua.email AS actor_email, ua.name AS actor_name,
            ui.email AS impersonator_email, ui.name AS impersonator_name
-    FROM audit_log a
-    LEFT JOIN users ua ON ua.id = a.actor_id
-    LEFT JOIN users ui ON ui.id = a.impersonator_id
+    FROM audit_log
+    LEFT JOIN users ua ON ua.id = audit_log.actor_id
+    LEFT JOIN users ui ON ui.id = audit_log.impersonator_id
     ${where ? sql`WHERE ${where}` : sql``}
-    ORDER BY a.timestamp DESC, a.id DESC
+    ORDER BY audit_log.timestamp DESC, audit_log.id DESC
     LIMIT ${pageSize + 1}
   `);
   const rows = result.rows;
@@ -299,7 +325,25 @@ export async function getAuditEntry(
   // Req 7.1 — a strict technician may only open their own entries; deny
   // (as not-found) anything actioned by someone else, even by direct id.
   if (isStrictTechnician(caller) && r.actor_id !== caller.id) return null;
+
+  // Resolve any user-id UUIDs in the before/after snapshots to display names
+  // so the detail view shows "Jane Doe" rather than a raw id (e.g. a ticket
+  // assignment records `assignedToId`). Non-user UUIDs (org/ticket ids) simply
+  // won't match a users row and fall back to the raw value in the UI.
+  const ids = collectUuids([r.before_value, r.after_value]);
+  const userNames: Record<string, string> = {};
+  if (ids.length > 0) {
+    const nameRows = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, ids));
+    for (const u of nameRows) {
+      if (u.name) userNames[u.id] = u.name;
+    }
+  }
+
   return {
+    userNames,
     id: r.id,
     timestamp: new Date(r.timestamp),
     actorId: r.actor_id,
