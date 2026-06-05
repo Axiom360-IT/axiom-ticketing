@@ -589,6 +589,21 @@ describe("can() — non-scoped actions", () => {
   it("IT Director can view audit log", async () => {
     expect(await can(itDirector(), "audit.view")).toBe(true);
   });
+  // Req 7.2 — audit logs are visible to everyone (staff) by default.
+  it("Technician can view audit log by default (req 7.2)", async () => {
+    expect(await can(technician(), "audit.view")).toBe(true);
+  });
+  it("Coordinator can view audit log by default (req 7.2)", async () => {
+    expect(await can(coordinator(), "audit.view")).toBe(true);
+  });
+  // Req 7.2 — but only WITH the permission: revoking it denies the view.
+  it("Technician without audit.view is denied (req 7.2)", async () => {
+    const tech = makeUser({
+      permissions: TECHNICIAN_PERMISSIONS.filter((p) => p !== "audit.view"),
+      roleNames: ["Technician"],
+    });
+    expect(await can(tech, "audit.view")).toBe(false);
+  });
   it("Customer cannot view audit log (lacks permission)", async () => {
     expect(await can(customer(), "audit.view")).toBe(false);
   });

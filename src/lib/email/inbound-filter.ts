@@ -32,7 +32,10 @@ export type FilterReason =
 const BOUNCE_SUBJECT =
   /^(undeliverable|mail delivery|delivery status|failure notice|returned mail|mail returned)/i;
 
-export function shouldAcceptInbound(email: ParsedInbound): FilterDecision {
+export function shouldAcceptInbound(
+  email: ParsedInbound,
+  opts?: { isReply?: boolean },
+): FilterDecision {
   const headers = email.headers;
 
   // 1. Auto-replies. RFC 3834 says `Auto-Submitted: no` (or absent) means a
@@ -71,11 +74,20 @@ export function shouldAcceptInbound(email: ParsedInbound): FilterDecision {
     return { accept: false, reason: "precedence-bulk" };
   }
 
-  // 5. Empty body after stripping quotes/signatures. A trailing
-  //    "Sent from my iPhone" by itself shouldn't open an empty message.
-  const stripped = stripQuotesAndSignatures(email.text ?? "");
-  if (stripped.trim().length === 0) {
-    return { accept: false, reason: "empty-body" };
+  // 5. Empty body. For a NEW ticket we require non-trivial content after
+  //    stripping quotes/signatures (a lone "Sent from my iPhone" shouldn't
+  //    open a ticket). For a REPLY to an existing ticket, we keep even a
+  //    quote-only body — the processor stores the raw text and threads it, so
+  //    over-stripping must NOT silently drop a genuine reply (req 5.1). Only a
+  //    truly empty reply (no text at all) is dropped.
+  const raw = email.text ?? "";
+  if (opts?.isReply) {
+    if (raw.trim().length === 0) return { accept: false, reason: "empty-body" };
+  } else {
+    const stripped = stripQuotesAndSignatures(raw);
+    if (stripped.trim().length === 0) {
+      return { accept: false, reason: "empty-body" };
+    }
   }
 
   return { accept: true };

@@ -6,6 +6,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organizations";
 import { getSetting } from "@/lib/settings";
+import { emailDomain } from "@/lib/email/email-domain";
 
 // ── Organization resolution for ticket creation (Meeting-2, CR-02/06/07) ─
 //
@@ -49,15 +50,30 @@ function deriveAbbrev(name: string): string {
   return cleaned.slice(0, 2) || "AX";
 }
 
-/** Bare, lower-cased email domain (e.g. "kingsmill.com"), or null if the
- *  address is malformed. */
-export function emailDomain(email: string | null | undefined): string | null {
-  const normalized = (email ?? "").trim().toLowerCase();
-  const at = normalized.lastIndexOf("@");
-  if (at < 0) return null;
-  const domain = normalized.slice(at + 1).trim();
-  if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
-  return domain;
+// Pure email-domain extraction lives in a server-only-free module so email
+// parsing/auth helpers and unit tests can use it; re-exported for the many
+// existing `@/lib/tickets/org` importers.
+export { emailDomain };
+
+/**
+ * Whether two tickets belong to the SAME organization, for the merge-candidate
+ * filter (req 4.3). Precedence (kept identical in the listMergeCandidates SQL):
+ *   - If the source is linked to an org, candidates must share that exact
+ *     organizationId.
+ *   - Otherwise (guest/unlinked source) candidates must ALSO be unlinked and
+ *     share the source's email domain (e.g. both kingsmill.com).
+ * Never returns true across different organizations.
+ */
+export function ticketsShareOrg(
+  source: { organizationId: string | null; customerEmail: string },
+  candidate: { organizationId: string | null; customerEmail: string },
+): boolean {
+  if (source.organizationId) {
+    return candidate.organizationId === source.organizationId;
+  }
+  if (candidate.organizationId) return false;
+  const sourceDomain = emailDomain(source.customerEmail);
+  return sourceDomain != null && sourceDomain === emailDomain(candidate.customerEmail);
 }
 
 /**
@@ -105,11 +121,16 @@ export async function resolveTicketOrgForGuest(
     }
   }
 
-  if (company) {
-    // Claimed but unverifiable — keep the prefix readable, link nothing.
+  // No confirmed match. If we have ANYTHING to triage by — a valid email
+  // domain (the usual guest case now that the company field is gone) or a typed
+  // company — flag it `unverified` so it lands in the coordinator triage queue,
+  // where they can link/create the org by the submitter's email (or dismiss it
+  // as a genuine no-org submission). Only when there's truly nothing (no valid
+  // email and no company) do we record `none`.
+  if (domain || company) {
     return {
       organizationId: null,
-      prefix: deriveAbbrev(company),
+      prefix: deriveAbbrev(company || (domain ?? "")),
       timeZone,
       matchStatus: "unverified",
     };

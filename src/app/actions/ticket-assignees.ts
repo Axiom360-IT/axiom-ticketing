@@ -2,165 +2,140 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
-import { can, isStrictTechnician } from "@/lib/auth/can";
+import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
-import { db } from "@/lib/db/client";
+import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
+import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { loadTicketScope } from "@/lib/tickets/load";
-import { inngest } from "@/inngest/client";
-import { getAppUrl } from "@/lib/request";
 
 export type CollaboratorResult = { ok: true } | { ok: false; error: string };
 
-// Multi-technician assignment (Meeting-2, CR-11). Adding/removing collaborating
-// technicians is for elevated roles (admin / coordinator); a plain technician
-// does single reassignment via `assignTicket`. Gate: tickets.assign + NOT a
-// strict technician.
-async function requireElevatedAssigner(ticketId: string) {
+// ── Merged-ticket co-assignees (req 4.4/4.5) ──────────────────────────
+//
+// Every ticket has ONE primary technician (tickets.assigned_to_id), assigned
+// via assignTicket. The ONLY way a ticket gains a second technician is a merge:
+// mergeTickets records the source ticket's tech here as a co-assignee. The
+// Superadmin can then remove either technician — removing the primary promotes
+// the co-assignee to sole owner (req 4.5). There is no general "add a
+// collaborator to any ticket" action — that violated the single-technician
+// rule (req 3.1) and was removed.
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Remove a technician from a MERGED ticket (req 4.5). Superadmin-only
+ * (tickets.merge). Removing a co-assignee leaves the primary solely
+ * responsible; removing the primary promotes a co-assignee to sole primary.
+ * The removed technician's work-log entries are never touched — they stay
+ * preserved and (per the frozen-history rule) read-only (req 4.6).
+ */
+export async function removeMergedTechnician(
+  ticketId: string,
+  userId: string,
+): Promise<CollaboratorResult> {
   const user = await requireSessionUser();
   const ticket = await loadTicketScope(ticketId);
   if (!ticket) throw new NotFoundError();
   if (
     !(await can(
       user,
-      "tickets.assign",
+      "tickets.merge",
       { type: "ticket", ticket },
       productionContext,
-    )) ||
-    isStrictTechnician(user)
+    ))
   ) {
     throw new ForbiddenError();
   }
-  return { user, ticket };
-}
 
-export async function addTicketCollaborator(
-  ticketId: string,
-  userId: string,
-): Promise<CollaboratorResult> {
-  const { user, ticket } = await requireElevatedAssigner(ticketId);
+  const coAssignees = await db
+    .select({ userId: ticketAssignees.userId, isActive: users.isActive })
+    .from(ticketAssignees)
+    .innerJoin(users, eq(users.id, ticketAssignees.userId))
+    .where(eq(ticketAssignees.ticketId, ticket.id));
 
-  if (userId === ticket.assignedToId) {
-    return { ok: false, error: "That technician is already the primary assignee." };
-  }
-  const [target] = await db
-    .select({ id: users.id, name: users.name, isActive: users.isActive })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!target) throw new NotFoundError();
-  if (!target.isActive) {
-    return { ok: false, error: "Cannot assign a deactivated user." };
+  // This control exists only for merged tickets (a primary PLUS at least one
+  // merge co-assignee). Refuse to strip a single-tech ticket down to none —
+  // reassign it instead.
+  if (coAssignees.length === 0) {
+    return {
+      ok: false,
+      error: "This ticket has a single technician — reassign it instead.",
+    };
   }
 
-  // `returning()` tells us whether a row was actually inserted — an empty
-  // result means they were already a collaborator (ON CONFLICT DO NOTHING),
-  // so we skip the audit + notification for that no-op re-add.
-  const inserted = await db
-    .insert(ticketAssignees)
-    .values({ ticketId, userId, assignedById: user.id })
-    .onConflictDoNothing()
-    .returning({ userId: ticketAssignees.userId });
-
-  if (inserted.length === 0) {
-    // Already collaborating — idempotent success, nothing changed.
-    revalidatePath(`/admin/tickets/${ticketId}`);
-    return { ok: true };
+  const isPrimary = ticket.assignedToId === userId;
+  const isCoAssignee = coAssignees.some((c) => c.userId === userId);
+  if (!isPrimary && !isCoAssignee) {
+    return { ok: false, error: "That technician isn't assigned to this ticket." };
   }
 
-  await audit({
-    actorId: user.id,
-    action: "ticket.add_collaborator",
-    targetType: "ticket",
-    targetId: ticket.ticketNumber,
-    after: { collaboratorId: userId },
+  // When removing the PRIMARY, work out who to promote BEFORE the transaction:
+  // an ACTIVE co-assignee (excluding the one being removed). Never promote a
+  // deactivated user — assignTicket forbids assigning to one.
+  let promotedTechId: string | null = null;
+  if (isPrimary) {
+    const promote = coAssignees.find(
+      (c) => c.userId !== userId && c.isActive,
+    )?.userId;
+    if (!promote) {
+      return {
+        ok: false,
+        error:
+          "The remaining technician is deactivated — reassign the ticket to an active technician instead.",
+      };
+    }
+    promotedTechId = promote;
+  }
+
+  await transactional(async (tx) => {
+    if (promotedTechId) {
+      await tx
+        .update(tickets)
+        .set({
+          assignedToId: promotedTechId,
+          assignedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(tickets.id, ticket.id));
+      await tx
+        .delete(ticketAssignees)
+        .where(
+          and(
+            eq(ticketAssignees.ticketId, ticket.id),
+            eq(ticketAssignees.userId, promotedTechId),
+          ),
+        );
+    } else {
+      // Remove the co-assignee row; the primary becomes solely responsible.
+      await tx
+        .delete(ticketAssignees)
+        .where(
+          and(
+            eq(ticketAssignees.ticketId, ticket.id),
+            eq(ticketAssignees.userId, userId),
+          ),
+        );
+    }
   });
-
-  // Notify the newly-added collaborator the same way the primary assignee is
-  // notified in `assignTicket` — one dispatch event; the dispatcher gates
-  // email/SMS by the recipient's notification preferences and always inserts
-  // an in-app (bell) notification. Wrapped so a notification failure never
-  // rolls back the assignment.
-  try {
-    const appUrl = getAppUrl();
-    const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.assigned",
-        recipientUserIds: [userId],
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "new_assignment",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              technicianName: target.name,
-              subject: ticket.subject,
-              priority: ticket.priority as
-                | "low"
-                | "medium"
-                | "high"
-                | "critical",
-              customerName: ticket.customerName,
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
-        },
-        sms: {
-          template: {
-            template: "ticket_assigned",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { subject: ticket.subject },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
-      },
-    });
-  } catch (err) {
-    console.error("[addTicketCollaborator] dispatch failed:", err);
-  }
-
-  revalidatePath(`/admin/tickets/${ticketId}`);
-  return { ok: true };
-}
-
-export async function removeTicketCollaborator(
-  ticketId: string,
-  userId: string,
-): Promise<CollaboratorResult> {
-  const { user, ticket } = await requireElevatedAssigner(ticketId);
-
-  await db
-    .delete(ticketAssignees)
-    .where(
-      and(
-        eq(ticketAssignees.ticketId, ticketId),
-        eq(ticketAssignees.userId, userId),
-      ),
-    );
 
   await audit({
     actorId: user.id,
     action: "ticket.remove_collaborator",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    before: { collaboratorId: userId },
+    before: { removedTechId: userId },
+    after: { promotedTechId },
   });
 
+  revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${ticketId}`);
   return { ok: true };
 }
 
-/** Collaborating technicians on a ticket (excludes the primary assignee). */
+/** Co-assignee technicians on a (merged) ticket — excludes the primary. */
 export async function listTicketCollaborators(ticketId: string) {
   return db
     .select({

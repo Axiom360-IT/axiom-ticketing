@@ -86,6 +86,13 @@ export function AttachmentPicker({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<Pending[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const hasUploading = pendingFiles.some(
+    (p) => p.status === "uploading" || p.status === "confirming",
+  );
+  const uploadDisabled =
+    disabled || hasUploading || pendingFiles.length >= maxFiles;
   // Resolved upload target. With `mode` it's known up front; with `prepare`
   // it's created lazily and cached here. The in-flight ref dedupes the
   // concurrent `prepare()` calls that a multi-file pick would otherwise make.
@@ -213,9 +220,9 @@ export function AttachmentPicker({
     }
   }
 
-  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  /** Validate + enqueue a batch of files (shared by click-to-browse and
+   *  drag-and-drop), then kick off each upload. */
+  function addFiles(files: File[]) {
     if (files.length === 0) return;
 
     const room = maxFiles - pendingFiles.length;
@@ -258,13 +265,22 @@ export function AttachmentPicker({
     }
   }
 
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    addFiles(files);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (uploadDisabled) return;
+    addFiles(Array.from(e.dataTransfer.files));
+  }
+
   function removePending(key: string) {
     update((prev) => prev.filter((p) => p.key !== key));
   }
-
-  const hasUploading = pendingFiles.some(
-    (p) => p.status === "uploading" || p.status === "confirming",
-  );
 
   return (
     <div className="space-y-2">
@@ -315,11 +331,29 @@ export function AttachmentPicker({
         </p>
       ) : null}
 
-      <div>
+      {/* Drop zone — drag files anywhere onto it, or use the button to browse.
+          Drag-and-drop is a pointer-only enhancement; the focusable button
+          below is the accessible (keyboard) path, so the dropzone needs no role. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!uploadDisabled) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={cn(
+          "flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed px-3 py-2.5 transition-colors",
+          dragOver && !uploadDisabled
+            ? "border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-950/30"
+            : "border-zinc-300 dark:border-zinc-700",
+          uploadDisabled && "opacity-60",
+        )}
+      >
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || hasUploading || pendingFiles.length >= maxFiles}
+          disabled={uploadDisabled}
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Paperclip className="size-3.5" aria-hidden="true" />
@@ -328,6 +362,9 @@ export function AttachmentPicker({
             {pendingFiles.length}/{maxFiles}
           </span>
         </button>
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">
+          {t("dropHint")}
+        </span>
         <input
           ref={fileInputRef}
           type="file"

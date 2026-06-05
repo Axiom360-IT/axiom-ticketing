@@ -8,9 +8,21 @@ export type SmsTemplateData = {
   ticketUrl: string;
 };
 
+// Accountant over-plan alert (req 8.6) — not ticket-scoped.
+export type AccountantBalanceSmsData = {
+  orgName: string;
+  overHours: string;
+};
+
 export type SmsTemplate =
+  // Accountant-facing (configured contacts, not app users)
+  | {
+      template: "accountant_negative_balance";
+      data: AccountantBalanceSmsData;
+    }
   // Staff-facing
   | { template: "ticket_assigned"; data: SmsTemplateData }
+  | { template: "ticket_reassigned"; data: SmsTemplateData }
   | { template: "ticket_escalated"; data: SmsTemplateData }
   | { template: "customer_replied"; data: SmsTemplateData }
   | { template: "csat_unsatisfied_staff"; data: SmsTemplateData }

@@ -18,10 +18,14 @@ import { workLogs } from "@/lib/db/schema/work-logs";
 // together.
 // ──────────────────────────────────────────────────────────────────────
 
+// Returns the organization id whose Monthly-Plan balance was changed (so the
+// caller can emit `billing/balance.changed` AFTER the transaction commits — the
+// balance monitor must read the committed value, req 8.6), or null when nothing
+// changed / the ticket has no org.
 export async function syncMonthlyPlanDeduction(
   tx: Tx,
   ticketId: string,
-): Promise<void> {
+): Promise<string | null> {
   const [t] = await tx
     .select({
       billable: tickets.billable,
@@ -31,7 +35,7 @@ export async function syncMonthlyPlanDeduction(
     .from(tickets)
     .where(eq(tickets.id, ticketId))
     .limit(1);
-  if (!t) return;
+  if (!t) return null;
 
   let orgIsMonthlyPlan = false;
   if (t.organizationId) {
@@ -58,7 +62,12 @@ export async function syncMonthlyPlanDeduction(
       ? Number(total)
       : 0;
   const delta = shouldDeduct - t.deducted;
-  if (delta === 0) return;
+  if (delta === 0) return null;
+
+  await tx
+    .update(tickets)
+    .set({ monthlyPlanDeductedMinutes: shouldDeduct })
+    .where(eq(tickets.id, ticketId));
 
   if (t.organizationId) {
     await tx
@@ -68,10 +77,8 @@ export async function syncMonthlyPlanDeduction(
         updatedAt: new Date(),
       })
       .where(eq(organizations.id, t.organizationId));
+    return t.organizationId;
   }
 
-  await tx
-    .update(tickets)
-    .set({ monthlyPlanDeductedMinutes: shouldDeduct })
-    .where(eq(tickets.id, ticketId));
+  return null;
 }

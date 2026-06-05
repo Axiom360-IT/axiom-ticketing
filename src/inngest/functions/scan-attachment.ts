@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { eventType } from "inngest";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
 import { tickets } from "@/lib/db/schema/tickets";
+import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
 import { deleteObject, fetchObject } from "@/lib/storage/signed-urls";
 import { scanBytes } from "@/lib/storage/virus-scan";
@@ -98,10 +98,14 @@ export const scanAttachment = inngest.createFunction(
         after: { result: "quarantined", signature: result.signature },
       });
 
-      // Notify the uploader (if it was a known user) and the assigned
-      // tech via the dispatch fan-out. Customers who uploaded via the
-      // inbound-email path don't have a user account, so we just skip
-      // them — the audit row records the event.
+      // Notify two audiences with DIFFERENT messages (req 6.3). Staff (the
+      // assigned tech, plus a staff uploader) get the internal notice: the
+      // matched virus signature and an /admin link. The CUSTOMER must never
+      // get that one — the signature is internal detail and /admin is a route
+      // they can't open — so a customer uploader gets a separate, portal-safe
+      // email instead. If no staff is attributable (unassigned ticket,
+      // customer/guest uploader), fall back to the Coordinator queue so an
+      // infected file is never silently invisible.
       try {
         const [ticket] = await db
           .select({
@@ -109,55 +113,77 @@ export const scanAttachment = inngest.createFunction(
             ticketNumber: tickets.ticketNumber,
             subject: tickets.subject,
             assignedToId: tickets.assignedToId,
+            customerId: tickets.customerId,
+            customerEmail: tickets.customerEmail,
+            customerName: tickets.customerName,
           })
           .from(tickets)
           .where(eq(tickets.id, row.ticketId))
           .limit(1);
         if (ticket) {
-          let uploaderName: string | null = null;
-          if (row.uploadedById) {
-            const [u] = await db
-              .select({ name: users.name })
-              .from(users)
-              .where(eq(users.id, row.uploadedById))
-              .limit(1);
-            uploaderName = u?.name ?? null;
-          }
-          const recipientUserIds = new Set<string>();
-          if (row.uploadedById) recipientUserIds.add(row.uploadedById);
-          if (ticket.assignedToId) recipientUserIds.add(ticket.assignedToId);
+          const appUrl = getAppUrl();
+          const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+          const uploaderIsCustomer =
+            !!row.uploadedById && row.uploadedById === ticket.customerId;
 
-          if (recipientUserIds.size > 0) {
-            const appUrl = getAppUrl();
-            const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-            await inngest.send({
-              name: "notification/dispatch",
-              data: {
-                type: "attachment.quarantined",
-                recipientUserIds: [...recipientUserIds],
-                email: {
-                  template: {
-                    template: "attachment_quarantined",
-                    data: {
-                      recipientName: uploaderName ?? "Team",
-                      ticketNumber: ticket.ticketNumber,
-                      ticketSubject: ticket.subject,
-                      fileName: row.fileName,
-                      signature: result.signature,
-                      ticketUrl,
-                    },
-                  },
-                  ticketNumber: ticket.ticketNumber,
-                },
-                inApp: {
-                  titleArgs: { ticketNumber: ticket.ticketNumber },
-                  bodyArgs: {
+          // Staff recipients: the assignee, plus the uploader only when the
+          // uploader is staff (never the customer).
+          const staffRecipients = new Set<string>();
+          if (ticket.assignedToId) staffRecipients.add(ticket.assignedToId);
+          if (row.uploadedById && !uploaderIsCustomer) {
+            staffRecipients.add(row.uploadedById);
+          }
+          const hasStaff = staffRecipients.size > 0;
+
+          await inngest.send({
+            name: "notification/dispatch",
+            data: {
+              type: "attachment.quarantined",
+              recipientUserIds: hasStaff ? [...staffRecipients] : undefined,
+              recipientRoles: hasStaff ? undefined : ["Coordinator"],
+              email: {
+                template: {
+                  template: "attachment_quarantined",
+                  // Shared across staff recipients, so address them
+                  // generically rather than by the uploader's name.
+                  data: {
+                    recipientName: "Team",
+                    ticketNumber: ticket.ticketNumber,
+                    ticketSubject: ticket.subject,
                     fileName: row.fileName,
                     signature: result.signature,
+                    ticketUrl,
                   },
-                  linkUrl: `/admin/tickets/${ticket.id}`,
+                },
+                ticketNumber: ticket.ticketNumber,
+              },
+              inApp: {
+                titleArgs: { ticketNumber: ticket.ticketNumber },
+                bodyArgs: {
+                  fileName: row.fileName,
+                  signature: result.signature,
+                },
+                linkUrl: `/admin/tickets/${ticket.id}`,
+              },
+            },
+          });
+
+          // Customer uploader: a plain, portal-safe heads-up — no signature,
+          // no /admin link. Direct email (transactional notice, like the
+          // ticket-created confirmation) rather than the staff bell event.
+          if (uploaderIsCustomer && ticket.customerEmail) {
+            await sendEmail({
+              to: ticket.customerEmail,
+              template: {
+                template: "attachment_removed_customer",
+                data: {
+                  customerName: ticket.customerName,
+                  ticketNumber: ticket.ticketNumber,
+                  fileName: row.fileName,
+                  portalUrl: `${appUrl}/portal/tickets/${ticket.ticketNumber}`,
                 },
               },
+              ticketNumber: ticket.ticketNumber,
             });
           }
         }

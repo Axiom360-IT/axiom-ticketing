@@ -1,16 +1,22 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Check, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  checkOrgCode,
   createOrganization,
+  suggestOrgCode,
   updateOrganization,
 } from "@/app/actions/organizations";
+import { cn } from "@/lib/utils";
+
+type CodeState = "idle" | "checking" | "ok" | "taken" | "invalid";
 
 export type OrganizationFormInitial = {
   id: string;
@@ -53,9 +59,11 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
   const [hoursIncluded, setHoursIncluded] = useState(
     initial?.monthlyHoursIncluded ?? "",
   );
-  const [hoursBalance, setHoursBalance] = useState(
-    initial?.monthlyHoursBalance ?? "",
-  );
+  // "Hours remaining" (balance) is READ-ONLY (req 8.1). It changes only through
+  // logged work, the automatic monthly reset, and the admin "Add hours" control
+  // on the organization page — never by typing here. Shown for reference in
+  // edit mode; never part of the submitted payload.
+  const hoursBalance = initial?.monthlyHoursBalance ?? "";
   const [contractNotes, setContractNotes] = useState(
     initial?.contractNotes ?? "",
   );
@@ -66,6 +74,59 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Organization code (abbreviation) generation + live validation.
+  const [codeState, setCodeState] = useState<CodeState>(
+    initial?.abbreviation ? "ok" : "idle",
+  );
+  const [generating, setGenerating] = useState(false);
+  // `true` once the code is user-controlled, which stops auto-generating it
+  // from the name. Edit mode starts locked so we never clobber an existing code.
+  const codeTouchedRef = useRef(mode === "edit");
+
+  // Live availability/format check on every code change (debounced). All state
+  // updates happen inside the timeout so nothing runs synchronously in the
+  // effect body.
+  useEffect(() => {
+    const code = abbreviation.trim();
+    const handle = setTimeout(async () => {
+      if (!code) {
+        setCodeState("idle");
+        return;
+      }
+      setCodeState("checking");
+      try {
+        const res = await checkOrgCode(code, initial?.id);
+        setCodeState(!res.valid ? "invalid" : res.available ? "ok" : "taken");
+      } catch {
+        setCodeState("idle");
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [abbreviation, initial?.id]);
+
+  /** Derive a unique code from the name (only while the code is still auto). */
+  async function autofillCodeFromName(nm: string) {
+    if (codeTouchedRef.current || !nm.trim()) return;
+    const res = await suggestOrgCode(nm);
+    if (res.ok && !codeTouchedRef.current) setAbbreviation(res.code);
+  }
+
+  /** "Generate Code" button — request a fresh unique code, different from the
+   *  current one, and lock it (so typing the name won't overwrite it). */
+  async function handleGenerateCode() {
+    if (!name.trim()) return;
+    setGenerating(true);
+    const res = await suggestOrgCode(
+      name,
+      abbreviation.trim() ? [abbreviation.trim()] : [],
+    );
+    setGenerating(false);
+    if (res.ok) {
+      setAbbreviation(res.code);
+      codeTouchedRef.current = true;
+    }
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -75,7 +136,6 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
       abbreviation,
       isMonthlyPlan,
       monthlyHoursIncluded: isMonthlyPlan ? parseHours(hoursIncluded) : null,
-      monthlyHoursBalance: isMonthlyPlan ? parseHours(hoursBalance) : null,
       contractNotes,
       emailDomains: emailDomains
         .split(/[\n,]+/)
@@ -105,27 +165,69 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onBlur={(e) => void autofillCodeFromName(e.target.value)}
           maxLength={160}
         />
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="org-abbreviation">{tFields("abbreviation")}</Label>
-        <Input
-          id="org-abbreviation"
-          required
-          value={abbreviation}
-          onChange={(e) => setAbbreviation(e.target.value.toUpperCase())}
-          maxLength={5}
-          className="uppercase font-mono w-32"
-          aria-describedby="org-abbreviation-hint"
-        />
-        <p
-          id="org-abbreviation-hint"
-          className="text-xs text-zinc-500 dark:text-zinc-400"
-        >
-          {tFields("abbreviationHint")}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="org-abbreviation"
+            required
+            value={abbreviation}
+            onChange={(e) => {
+              setAbbreviation(e.target.value.toUpperCase());
+              codeTouchedRef.current = true;
+            }}
+            maxLength={5}
+            className="uppercase font-mono w-28"
+            aria-describedby="org-abbreviation-hint"
+            aria-invalid={
+              codeState === "taken" || codeState === "invalid" ? true : undefined
+            }
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleGenerateCode()}
+            disabled={generating || !name.trim()}
+          >
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", generating && "animate-spin")}
+              aria-hidden="true"
+            />
+            {tFields("generateCode")}
+          </Button>
+          {codeState === "checking" ? (
+            <span className="text-xs text-zinc-400">
+              {tFields("codeChecking")}
+            </span>
+          ) : codeState === "ok" ? (
+            <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              {tFields("codeAvailable")}
+            </span>
+          ) : null}
+        </div>
+        {codeState === "taken" ? (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+            {tFields("codeTaken")}
+          </p>
+        ) : codeState === "invalid" ? (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+            {tFields("codeInvalid")}
+          </p>
+        ) : (
+          <p
+            id="org-abbreviation-hint"
+            className="text-xs text-zinc-500 dark:text-zinc-400"
+          >
+            {tFields("abbreviationHint")}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -171,30 +273,31 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
               type="number"
               min={0}
               step="0.25"
+              required
               value={hoursIncluded}
               onChange={(e) => setHoursIncluded(e.target.value)}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="org-hours-balance">
-              {tFields("monthlyHoursBalance")}
-            </Label>
-            <Input
-              id="org-hours-balance"
-              type="number"
-              min={0}
-              step="0.25"
-              value={hoursBalance}
-              onChange={(e) => setHoursBalance(e.target.value)}
-              aria-describedby="org-hours-balance-hint"
-            />
-            <p
-              id="org-hours-balance-hint"
-              className="text-xs text-zinc-500 dark:text-zinc-400"
-            >
-              {tFields("monthlyHoursBalanceHint")}
-            </p>
-          </div>
+          {mode === "edit" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="org-hours-balance">
+                {tFields("monthlyHoursBalance")}
+              </Label>
+              {/* Read-only (req 8.1) — not an input. */}
+              <output
+                id="org-hours-balance"
+                className="flex h-9 items-center rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm tabular-nums text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                {hoursBalance === "" ? "—" : hoursBalance}
+              </output>
+              <p
+                id="org-hours-balance-hint"
+                className="text-xs text-zinc-500 dark:text-zinc-400"
+              >
+                {tFields("monthlyHoursBalanceReadonlyHint")}
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -239,7 +342,7 @@ export function OrganizationForm({ mode, initial, defaultName }: Props) {
         >
           {tCommon("cancel")}
         </Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || codeState !== "ok"}>
           {submitting
             ? tForm("saving")
             : mode === "create"

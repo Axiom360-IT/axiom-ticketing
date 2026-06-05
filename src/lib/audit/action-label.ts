@@ -17,6 +17,7 @@ const ACTION_LABELS: Record<string, string> = {
   "organization.create": "Created an organization",
   "organization.update": "Updated an organization",
   "organization.delete": "Deleted an organization",
+  "organization.add_hours": "Added plan hours",
   // Procurement
   "procurement.create": "Created a procurement request",
   "procurement.approve": "Approved a procurement request",
@@ -53,6 +54,8 @@ const ACTION_LABELS: Record<string, string> = {
   "ticket.auto_close": "Auto-closed the ticket",
   "ticket.merge": "Merged the ticket",
   "ticket.link_organization": "Linked the ticket to an organization",
+  "ticket.dismiss_organization": "Marked the ticket as having no organization",
+  "ticket.moderate_message": "Moderated a held inbound message",
   "ticket.delete": "Deleted the ticket",
   "ticket.sla_breach": "SLA breached",
   // Users

@@ -33,6 +33,10 @@ export const workLogs = pgTable(
     technicianId: uuid("technician_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Denormalized author-name snapshot captured at insert time, so a removed
+    // or hard-deleted technician's entries stay attributable (read-only) after
+    // technician_id is nulled — e.g. after reassignment or merge-removal.
+    technicianName: text("technician_name"),
     description: text("description").notNull(),
     // Duration in minutes (e.g. 90 = 1h30m). Always > 0 (CHECK below).
     minutes: integer("minutes").notNull(),

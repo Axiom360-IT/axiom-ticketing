@@ -9,10 +9,13 @@
 //   - retention-* / other cleanup-* (M21)
 
 import { autoCloseResolvedTickets } from "./auto-close-resolved";
+import { billingBalanceMonitor } from "./billing-balance-monitor";
 import { cleanupOldNotifications } from "./cleanup-old-notifications";
 import { cleanupStaleDrafts } from "./cleanup-stale-drafts";
 import { cleanupStaleLockouts } from "./cleanup-stale-lockouts";
 import { dispatchNotification } from "./dispatch-notification";
+import { monthlyPlanReset } from "./monthly-plan-reset";
+import { notifyAccountantResolved } from "./notify-accountant-resolved";
 import { processInboundEmail } from "./process-inbound-email";
 import { scanAttachment } from "./scan-attachment";
 import { sendEmailNotification } from "./send-email-notification";
@@ -32,4 +35,8 @@ export const functions = [
   cleanupOldNotifications,
   cleanupStaleDrafts,
   cleanupStaleLockouts,
+  // Billing / support plans (reqs 8.2/8.6/8.9)
+  monthlyPlanReset,
+  billingBalanceMonitor,
+  notifyAccountantResolved,
 ];

@@ -42,6 +42,7 @@ const AUTH_RATE_LIMITS = [
 const SETTINGS_TABS = [
   "operations",
   "tickets",
+  "billing",
   "email",
   "security",
   "branding",
@@ -107,6 +108,7 @@ export default async function SettingsPage({
   const tFu = await getTranslations("settings.fileUpload");
   const tVs = await getTranslations("settings.virusScan");
   const tRl = await getTranslations("settings.rateLimits");
+  const tBill = await getTranslations("settings.billing");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -123,6 +125,7 @@ export default async function SettingsPage({
       >
         <SettingsTabLink tab="operations" active={tab === "operations"} label={t("tabOperations")} />
         <SettingsTabLink tab="tickets" active={tab === "tickets"} label={t("tabTickets")} />
+        <SettingsTabLink tab="billing" active={tab === "billing"} label={t("tabBilling")} />
         <SettingsTabLink tab="email" active={tab === "email"} label={t("tabEmail")} />
         <SettingsTabLink tab="security" active={tab === "security"} label={t("tabSecurity")} />
         <SettingsTabLink tab="branding" active={tab === "branding"} label={t("tabBranding")} />
@@ -252,6 +255,48 @@ export default async function SettingsPage({
             </CardContent>
           </Card>
         </>
+      ) : null}
+
+      {/* ── Billing / accountants ──────────────────────────────────── */}
+      {tab === "billing" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{tBill("title")}</CardTitle>
+            <CardDescription>{tBill("subtitle")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <p className="mb-1.5 text-sm font-medium">{tBill("emailsTitle")}</p>
+              <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                {tBill("emailsHint")}
+              </p>
+              <StringListForm
+                settingKey="billing.accountant_emails"
+                initial={strArr(v["billing.accountant_emails"])}
+                i18nNamespace="settings.accountantEmails"
+              />
+            </div>
+            <div>
+              <p className="mb-1.5 text-sm font-medium">{tBill("phonesTitle")}</p>
+              <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                {tBill("phonesHint")}
+              </p>
+              <StringListForm
+                settingKey="billing.accountant_phones"
+                initial={strArr(v["billing.accountant_phones"])}
+                i18nNamespace="settings.accountantPhones"
+              />
+            </div>
+            <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <BooleanSettingForm
+                settingKey="billing.superadmin_receive_copy"
+                label={tBill("superadminLabel")}
+                description={tBill("superadminHint")}
+                initial={bool(v["billing.superadmin_receive_copy"], false)}
+              />
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ── Email ──────────────────────────────────────────────────── */}

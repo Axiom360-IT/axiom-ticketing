@@ -297,7 +297,7 @@
         "emailColumn": "Email",
         "smsColumn": "SMS",
         "events": {
-          "ticket__assigned": "When my ticket is assigned",
+          "ticket__assigned_customer": "When my ticket is assigned",
           "ticket__agent_replied": "When the team replies on my ticket",
           "ticket__resolved": "When my ticket is marked resolved",
           "ticket__reopened": "When my ticket is reopened",
@@ -461,8 +461,11 @@
       "merge": "Merge into another ticket",
       "mergePending": "Merging…",
       "mergeTitle": "Merge {source} into another ticket",
-      "mergeDescription": "Enter the target ticket number (e.g. AX-0042). All messages and attachments from {source} will move to the target, and {source} will be closed as a duplicate.",
+      "mergeDescription": "Search for the ticket to merge {source} into (only tickets from the same organization are shown). All messages, attachments, and logged time from {source} move to it, both technicians are carried over, and {source} is closed as a duplicate.",
       "mergeTargetLabel": "Target ticket number",
+      "mergeSearchPlaceholder": "Search by ticket name or ID…",
+      "mergeSearching": "Searching…",
+      "mergeNoResults": "No matching tickets in this organization.",
       "mergeConfirm": "Merge tickets",
       "mergeError": "Failed to merge.",
       "mergedBannerLabel": "This ticket was merged into",
@@ -552,12 +555,11 @@
       "skipReasonMinError": "Skip reason must be at least 10 characters.",
       "genericError": "Failed to resolve ticket."
     },
-    "multiAssign": {
-      "collaboratorsLabel": "Also working on this",
-      "addPlaceholder": "Add a technician…",
-      "removeLabel": "Remove {name}",
-      "empty": "No additional technicians.",
-      "allAssigned": "All available technicians are already assigned."
+    "mergedTechs": {
+      "label": "Technicians on this merged ticket",
+      "primary": "Primary",
+      "merged": "Merged",
+      "removeLabel": "Remove {name}"
     },
     "billable": {
       "title": "Billable",
@@ -568,6 +570,11 @@
       "monthly_plan": "Monthly plan",
       "project": "Project basis",
       "rework": "Rework"
+    },
+    "orgControl": {
+      "title": "Organization",
+      "help": "Set or change the organization this ticket belongs to — or mark it as having none. Same as the triage queue, available here so a dismissed or mis-matched ticket isn't stuck.",
+      "noOrganization": "No organization"
     },
     "statusControl": {
       "label": "Set status"
@@ -693,13 +700,15 @@
       "channelSystem": "System",
       "channelSms": "SMS",
       "resolutionNoteBadge": "Resolution note",
-      "internalNoteBadge": "Internal note"
+      "internalNoteBadge": "Internal note",
+      "participantBadge": "Participant"
     },
     "attachments": {
       "label": "Attachments",
       "openImage": "Open {fileName}",
       "download": "Download attachment",
       "uploadButton": "Attach files",
+      "dropHint": "or drag & drop files here",
       "prepareFailed": "Couldn't start the upload. Complete the form above first.",
       "uploading": "Uploading {fileName}…",
       "uploadingShort": "Uploading…",
@@ -918,18 +927,56 @@
       "title": "Edit {name}",
       "subtitle": "Update the organization's details and contract balance.",
       "cardTitle": "Organization details",
-      "readOnly": "You don't have permission to edit this organization."
+      "readOnly": "You don't have permission to edit this organization.",
+      "planCardTitle": "Support plan & hours",
+      "planIncluded": "Included / month",
+      "planRemaining": "Hours remaining",
+      "planUsed": "Used this period",
+      "planNegative": "Over plan by {hours}. The accountants have been notified.",
+      "usageCardTitle": "Work by category"
+    },
+    "addHours": {
+      "label": "Add hours to this plan",
+      "placeholder": "e.g. 5",
+      "add": "Add hours",
+      "adding": "Adding…",
+      "hint": "Adds to the hours-remaining balance for this month (e.g. a top-up when the plan runs short). This is the only manual way to change the balance.",
+      "invalid": "Enter a positive number of hours."
+    },
+    "usage": {
+      "thisMonth": "{month} so far",
+      "totalHours": "{hours} total",
+      "noneThisMonth": "No work logged this month yet.",
+      "history": "Monthly history",
+      "month": "Month",
+      "total": "Total",
+      "allTime": "All time",
+      "noWork": "No work has been logged for this organization yet.",
+      "categories": {
+        "monthly_plan": "Monthly Support",
+        "project": "Project-Basis",
+        "rework": "Rework",
+        "yes": "Billable",
+        "no": "Non-Billable",
+        "uncategorized": "Uncategorized"
+      }
     },
     "fields": {
       "name": "Organization name",
       "abbreviation": "Code",
-      "abbreviationHint": "2–5 letters or digits used as the ticket-number prefix (e.g. KI → KI-20260522-001).",
+      "abbreviationHint": "2–5 letters or digits used as the ticket-number prefix (e.g. KI → KI-20260522-001). Auto-generated from the name; edit it or generate a new one.",
+      "generateCode": "Generate code",
+      "codeChecking": "Checking…",
+      "codeAvailable": "Available",
+      "codeTaken": "That code is already in use — pick or generate a different one.",
+      "codeInvalid": "Code must be 2–5 letters or digits.",
       "emailDomains": "Email domains",
       "emailDomainsHint": "One per line. Guests whose email matches a domain here are linked to this organization automatically (e.g. kingsmill.com).",
       "isMonthlyPlan": "On a monthly support plan",
       "monthlyHoursIncluded": "Hours included per month",
       "monthlyHoursBalance": "Hours remaining (balance)",
       "monthlyHoursBalanceHint": "Defaults to the included hours. Monthly-plan work deducts from this balance.",
+      "monthlyHoursBalanceReadonlyHint": "Read-only. Changes only through logged work, the monthly reset, and the “Add hours” action.",
       "contractNotes": "Contract notes",
       "isActive": "Active"
     },
@@ -1107,9 +1154,32 @@
       "subtitle": "Live values used across the app. Changes take effect immediately.",
       "tabOperations": "Operations",
       "tabTickets": "Tickets",
+      "tabBilling": "Billing",
       "tabEmail": "Email",
       "tabSecurity": "Security",
       "tabBranding": "Branding"
+    },
+    "billing": {
+      "title": "Accountant notifications",
+      "subtitle": "Who receives billing alerts — when an organization goes over its support plan, and when a ticket is resolved. These are your accountants, not the customers'.",
+      "emailsTitle": "Accountant emails",
+      "emailsHint": "Receive over-plan and ticket-billing emails. Add one address at a time.",
+      "phonesTitle": "Accountant phone numbers",
+      "phonesHint": "Receive the over-plan SMS alert. Use E.164 format, e.g. +15551234567.",
+      "superadminLabel": "Also send to Super Admins",
+      "superadminHint": "Send the same accountant notifications to every active Super Admin's own email and phone."
+    },
+    "accountantEmails": {
+      "addPlaceholder": "accountant@yourcompany.com",
+      "addButton": "Add",
+      "remove": "Remove",
+      "empty": "No accountant emails configured yet."
+    },
+    "accountantPhones": {
+      "addPlaceholder": "+15551234567",
+      "addButton": "Add",
+      "remove": "Remove",
+      "empty": "No accountant phone numbers configured yet."
     },
     "branding": {
       "title": "Brand identity",
@@ -1306,14 +1376,24 @@
       "noAfter": "(none)"
     }
   },
+  "moderation": {
+    "title": "Inbound moderation",
+    "subtitle": "Email replies from senders outside the ticket's organization are held here. Approve to post the reply and recognize the sender as a participant, or reject it.",
+    "empty": "Nothing to moderate — no held replies.",
+    "onTicket": "On ticket",
+    "heldNote": "Held: the sender's email domain doesn't belong to this ticket's organization.",
+    "approve": "Approve & post",
+    "reject": "Reject"
+  },
   "orgTriage": {
     "title": "Organization triage",
-    "subtitle": "Tickets whose typed company couldn't be confirmed by email domain. Link each to the right organization, or create a new one.",
+    "subtitle": "Guest tickets whose email domain didn't match a registered organization. Link each to the right one by their email, create a new organization, or mark it as having none.",
     "empty": "Nothing to triage — every ticket's organization is confirmed.",
     "selectOrg": "Select organization…",
     "link": "Link",
     "linking": "Linking…",
     "createNew": "Create new",
+    "dismiss": "No organization",
     "banner": "{count, plural, =1 {# ticket needs an organization} other {# tickets need an organization}}.",
     "bannerCta": "Review",
     "columns": {
@@ -1472,7 +1552,9 @@
       "headerSms": "SMS",
       "events": {
         "ticket__assigned": "Ticket assigned to me",
+        "ticket__reassigned": "A ticket was reassigned (Superadmin)",
         "ticket__customer_replied": "Customer replied to my ticket",
+        "ticket__csat_unsatisfied": "Customer reopened after a resolution",
         "ticket__escalated": "Ticket escalated",
         "sla__warning_50": "SLA at 50% of the deadline",
         "sla__warning_80": "SLA at 80% of the deadline",
@@ -1497,13 +1579,25 @@
       "unreadAriaLive": "{count, plural, =1 {You have 1 unread notification} other {You have # unread notifications}}"
     },
     "ticket": {
+      "assigned_customer": {
+        "title": "Your ticket {ticketNumber} has been assigned",
+        "body": "{technicianName} is now handling your request."
+      },
       "assigned": {
         "title": "Ticket {ticketNumber} assigned to you",
         "body": "{subject}"
       },
+      "reassigned": {
+        "title": "Ticket {ticketNumber} reassigned",
+        "body": "Reassigned from {fromTechName} to {toTechName}."
+      },
       "customer_replied": {
         "title": "Customer replied on {ticketNumber}",
         "body": "{customerName} sent a new message."
+      },
+      "message_held": {
+        "title": "Reply held for review on {ticketNumber}",
+        "body": "{sender} replied from outside the organization. Review it in moderation."
       },
       "resolved": {
         "title": "Ticket {ticketNumber} resolved",
@@ -1573,6 +1667,9 @@
     "ticketAssigned": {
       "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
     },
+    "ticketReassigned": {
+      "body": "{ticketNumber}: Ticket reassigned between technicians. {ticketUrl}"
+    },
     "ticketEscalated": {
       "body": "{ticketNumber}: Ticket escalated — needs your attention. {ticketUrl}"
     },
@@ -1602,6 +1699,9 @@
     },
     "slaBreached": {
       "body": "{ticketNumber}: SLA BREACHED. Action needed. {ticketUrl}"
+    },
+    "accountantNegativeBalance": {
+      "body": "{orgName} is {overHours} over its monthly support plan. Over-plan hours are billable."
     }
   },
   "admin": {
@@ -1613,6 +1713,7 @@
       "mainNavLabel": "Main",
       "navTickets": "Tickets",
       "navWorkLog": "Work Log",
+      "navModeration": "Moderation",
       "navProcurement": "Procurement",
       "navOrganizations": "Organizations",
       "navUsers": "Users",
@@ -1832,6 +1933,15 @@
       "view": "Open ticket",
       "subject": "[{ticketNumber}] Ticket escalated: {subject}"
     },
+    "ticketReassigned": {
+      "preview": "Ticket {ticketNumber} was reassigned to another technician",
+      "title": "A ticket was reassigned",
+      "intro": "A ticket has been reassigned from one technician to another.",
+      "body": "{actorName} reassigned ticket {ticketNumber} “{subject}” from {fromTechName} to {toTechName}.",
+      "metaCustomer": "Customer: {customerName}",
+      "view": "Open ticket",
+      "subject": "[{ticketNumber}] Ticket reassigned: {subject}"
+    },
     "csatUnsatisfiedStaff": {
       "preview": "Customer reopened ticket {ticketNumber} — still not resolved",
       "title": "Customer says the ticket is still not resolved",
@@ -1840,6 +1950,15 @@
       "guidance": "Please review the latest customer comment on the ticket and follow up.",
       "view": "Open ticket",
       "subject": "[{ticketNumber}] Customer reopened — still not resolved"
+    },
+    "customerRepliedStaff": {
+      "preview": "{customerName} replied to ticket {ticketNumber}",
+      "title": "New customer reply",
+      "body": "{customerName} added a new message to ticket {ticketNumber}.",
+      "metaSubject": "Re: {subject}",
+      "view": "Open ticket",
+      "trailerLine": "Reply from the ticket in the admin console to respond to {ticketNumber}.",
+      "subject": "[{ticketNumber}] Customer replied"
     },
     "inboundBounce": {
       "preview": "We couldn't match your email to a ticket",
@@ -1902,6 +2021,15 @@
       "button": "Open ticket",
       "subject": "[{ticketNumber}] Attachment quarantined: {fileName}"
     },
+    "attachmentRemovedCustomer": {
+      "preview": "An attachment on {ticketNumber} couldn't be added",
+      "title": "We couldn't add your attachment",
+      "greeting": "Hi {customerName},",
+      "body": "The file {fileName} you added to ticket {ticketNumber} didn't pass our security scan, so we weren't able to attach it.",
+      "guidance": "Please check the file on your device and, if you're confident it's safe, try uploading it again — or reply to let us know what it contained.",
+      "view": "View your ticket",
+      "subject": "[{ticketNumber}] We couldn't add your attachment: {fileName}"
+    },
     "accountLockout": {
       "preview": "Your account has been temporarily locked",
       "title": "Your account has been temporarily locked",
@@ -1950,6 +2078,38 @@
       "noClaimedBody": "Your portal is ready. You can submit and track tickets from here.",
       "button": "Open my portal",
       "subject": "Welcome to your Axiom360 support portal"
+    },
+    "accountantNegativeBalance": {
+      "preview": "{orgName} has gone over its monthly support hours",
+      "title": "Monthly plan over balance",
+      "body": "{orgName} has used all of its included support hours and is now {overHours} over its monthly plan.",
+      "metaPlan": "Plan: {includedHours} included per month · Period: {period}",
+      "guidance": "Over-plan hours are billable. Please review and invoice the overage as appropriate.",
+      "view": "Open organization",
+      "subject": "Over plan: {orgName} is out of support hours"
+    },
+    "accountantTicketBilling": {
+      "preview": "Billing summary for {ticketNumber} ({orgName})",
+      "title": "Ticket resolved — billing",
+      "intro": "Ticket {ticketNumber} for {orgName} has been resolved. Here is the billing summary:",
+      "rowCategory": "Category: {category}",
+      "rowHours": "Hours logged: {hours}",
+      "view": "Open ticket",
+      "subject": "[{ticketNumber}] Resolved — billing summary",
+      "categories": {
+        "monthly_plan": "Monthly Support",
+        "project": "Project-Basis",
+        "rework": "Rework",
+        "yes": "Billable",
+        "no": "Non-Billable",
+        "uncategorized": "Uncategorized"
+      },
+      "status": {
+        "billed": "Covered by the monthly support plan — no invoice needed.",
+        "pending": "An amount is pending — please invoice this work{overHours, select, none {} other { ({overHours} over plan)}}.",
+        "none": "Nothing to bill for this ticket.",
+        "review": "Needs review — this ticket isn't categorized for billing yet."
+      }
     }
   }
 }

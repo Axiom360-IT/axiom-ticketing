@@ -38,6 +38,18 @@ export const organizations = pgTable(
     isMonthlyPlan: boolean("is_monthly_plan").notNull().default(false),
     monthlyMinutesIncluded: integer("monthly_minutes_included"),
     monthlyMinutesBalance: integer("monthly_minutes_balance"),
+    // When the monthly plan was last reset to its included hours (req 8.2).
+    // The daily reset cron resets each monthly-plan org at most once per
+    // calendar month by comparing this against the start of the current month.
+    monthlyPlanResetAt: timestamp("monthly_plan_reset_at", {
+      withTimezone: true,
+    }),
+    // Set when an over-plan (negative balance) accountant alert has been sent
+    // for the CURRENT negative episode (req 8.6). Cleared when the balance
+    // returns to >= 0 (top-up, reset) so the next dip re-alerts exactly once.
+    negativeBalanceAlertedAt: timestamp("negative_balance_alerted_at", {
+      withTimezone: true,
+    }),
     contractNotes: text("contract_notes"),
     isActive: boolean("is_active").notNull().default(true),
     createdById: uuid("created_by_id").references(() => users.id, {

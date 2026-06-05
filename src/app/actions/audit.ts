@@ -12,7 +12,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
-import { can } from "@/lib/auth/can";
+import { can, isStrictTechnician } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
@@ -146,6 +146,13 @@ export async function listAuditEntries(opts: {
   if (!filters.success) {
     return { rows: [], nextCursor: null };
   }
+  // Req 7.1 — a normal (strict) technician may only see their OWN actions.
+  // Force the actor filter to the caller, overriding any client-supplied
+  // actorId so they can never page through another user's entries. Elevated
+  // roles (Coordinator/IT Director/Super Admin) see everyone.
+  const effectiveFilters: AuditFilters = isStrictTechnician(caller)
+    ? { ...filters.data, actorId: caller.id }
+    : filters.data;
   const cursor = opts.cursor
     ? cursorSchema.safeParse(opts.cursor).success
       ? opts.cursor
@@ -153,7 +160,7 @@ export async function listAuditEntries(opts: {
     : null;
 
   const pageSize = Math.min(Math.max(opts.pageSize ?? PAGE_SIZE, 1), 200);
-  const where = buildWhere(filters.data, cursor);
+  const where = buildWhere(effectiveFilters, cursor);
 
   // Self-join twice via SQL aliasing for actor + impersonator emails/names.
   const result = await db.execute<{
@@ -289,6 +296,9 @@ export async function getAuditEntry(
   `);
   const r = result.rows[0];
   if (!r) return null;
+  // Req 7.1 — a strict technician may only open their own entries; deny
+  // (as not-found) anything actioned by someone else, even by direct id.
+  if (isStrictTechnician(caller) && r.actor_id !== caller.id) return null;
   return {
     id: r.id,
     timestamp: new Date(r.timestamp),
@@ -320,9 +330,13 @@ export async function listAuditActions(): Promise<string[]> {
   ) {
     throw new ForbiddenError();
   }
+  // Req 7.1 — scope the action dropdown to a strict technician's own entries
+  // so it never reveals action types only present in others' logs.
+  const ownOnly = isStrictTechnician(caller) ? caller.id : null;
   const rows = await db
     .selectDistinct({ action: auditLog.action })
     .from(auditLog)
+    .where(ownOnly ? eq(auditLog.actorId, ownOnly) : undefined)
     .orderBy(auditLog.action)
     .limit(200);
   return rows.map((r) => r.action);
@@ -338,6 +352,9 @@ export async function listAuditActors(): Promise<
   ) {
     throw new ForbiddenError();
   }
+  // Req 7.1 — a strict technician can only filter by themselves, so the actor
+  // dropdown lists only them (and only if they have any entries).
+  const ownOnly = isStrictTechnician(caller) ? caller.id : null;
   const rows = await db
     .selectDistinct({
       id: users.id,
@@ -346,7 +363,11 @@ export async function listAuditActors(): Promise<
     })
     .from(auditLog)
     .innerJoin(users, eq(users.id, auditLog.actorId))
-    .where(isNotNull(auditLog.actorId))
+    .where(
+      ownOnly
+        ? eq(auditLog.actorId, ownOnly)
+        : isNotNull(auditLog.actorId),
+    )
     .limit(200);
 
   return rows.sort((a, b) => a.name.localeCompare(b.name));

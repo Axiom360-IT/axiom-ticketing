@@ -9,7 +9,8 @@ import {
   type Technician,
 } from "@/components/tickets/assign-control";
 import { BillableControl } from "@/components/tickets/billable-control";
-import { MultiAssignControl } from "@/components/tickets/multi-assign-control";
+import { MergedTechnicians } from "@/components/tickets/merged-technicians";
+import { TicketOrgControl } from "@/components/tickets/ticket-org-control";
 import {
   CategoryBadge,
   EscalatedBadge,
@@ -31,8 +32,11 @@ import { TicketProcurementSection } from "@/components/procurement/ticket-sectio
 import { listProcurementForTicket } from "@/app/actions/procurement";
 import { listWorkLogsForTicket } from "@/app/actions/work-logs";
 import { listTicketCollaborators } from "@/app/actions/ticket-assignees";
+import { listActiveOrganizations } from "@/app/actions/organizations";
+import { listActiveParticipants } from "@/lib/tickets/participants";
+import { approvedMessages } from "@/lib/messages/visibility";
 import { getAttachmentLimits } from "@/lib/storage/limits";
-import { can, isStrictTechnician } from "@/lib/auth/can";
+import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
@@ -72,7 +76,7 @@ export default async function TicketDetailPage({
   const t = await getTranslations("tickets.detail");
   const tWorkLog = await getTranslations("tickets.workLog");
   const tBillable = await getTranslations("tickets.billable");
-  const tMultiAssign = await getTranslations("tickets.multiAssign");
+  const tOrgControl = await getTranslations("tickets.orgControl");
   const tQueue = await getTranslations("tickets.queue");
   const tCsat = await getTranslations("tickets.csat");
   const tEscalationReason = await getTranslations("tickets.escalationReason");
@@ -134,6 +138,8 @@ export default async function TicketDetailPage({
     canUpdate,
     canProcurementView,
     canProcurementCreate,
+    canManageOrg,
+    canMerge,
   ] = await Promise.all([
     can(user, "tickets.reply", ticketScope, productionContext),
     can(user, "tickets.internal_note", ticketScope, productionContext),
@@ -147,11 +153,18 @@ export default async function TicketDetailPage({
     can(user, "tickets.update", ticketScope, productionContext),
     can(user, "procurement.view", { type: "global" }, productionContext),
     can(user, "procurement.create", { type: "global" }, productionContext),
+    can(user, "organizations.update", { type: "global" }, productionContext),
+    can(user, "tickets.merge", ticketScope, productionContext),
   ]);
 
   const procurementRows = canProcurementView
     ? await listProcurementForTicket(ticket.id)
     : [];
+
+  // Coordinators+ can set/change the ticket's organization right here (the
+  // same link/dismiss used by the triage queue), so a dismissed or mis-matched
+  // ticket isn't stuck. Only load the org list when they can act.
+  const orgsForControl = canManageOrg ? await listActiveOrganizations() : [];
 
   const workLogEntries = await listWorkLogsForTicket(ticket.id);
 
@@ -183,8 +196,17 @@ export default async function TicketDetailPage({
       createdAt: messages.createdAt,
     })
     .from(messages)
-    .where(eq(messages.ticketId, ticket.id))
+    // Exclude held/rejected inbound replies — they live in the moderation
+    // queue, not the thread (req 5.2). Internal notes still show to agents.
+    .where(and(eq(messages.ticketId, ticket.id), approvedMessages()))
     .orderBy(asc(messages.createdAt));
+
+  // Recognized external participants (same-org colleagues looped in by email)
+  // — used to badge their replies in the thread (req 5.2).
+  const ticketParticipantRows = await listActiveParticipants(ticket.id);
+  const participantEmails = new Set(
+    ticketParticipantRows.map((p) => p.email.toLowerCase()),
+  );
 
   // Load attachments for the thread in a single query and group by message.
   const attachmentRows = await db
@@ -224,6 +246,7 @@ export default async function TicketDetailPage({
   const thread: ThreadMessage[] = messageRows.map((m) => ({
     ...m,
     authorType: m.authorType as ThreadMessage["authorType"],
+    isParticipant: participantEmails.has(m.authorEmail.toLowerCase()),
     attachments: attachmentsByMessage.get(m.id) ?? [],
   }));
 
@@ -266,16 +289,10 @@ export default async function TicketDetailPage({
     }
   }
 
-  // Multi-technician assignment (Meeting-2, CR-11) — elevated assigners only.
-  const canMultiAssign = canAssign && !isStrictTechnician(user);
-  const collaborators = canMultiAssign
-    ? await listTicketCollaborators(ticket.id)
-    : [];
-  const collaboratorIds = new Set(collaborators.map((c) => c.id));
-  const collaboratorCandidates = technicians.filter(
-    (techUser) =>
-      techUser.id !== ticket.assignedToId && !collaboratorIds.has(techUser.id),
-  );
+  // Merged-ticket co-assignees (req 4.4). A ticket carries a second technician
+  // ONLY as a merge result; we always load them so BOTH techs are displayed,
+  // and the Superadmin (tickets.merge) can remove either (req 4.5).
+  const coAssignees = await listTicketCollaborators(ticket.id);
 
   const isClosedOrResolved =
     ticket.status === "resolved" || ticket.status === "closed";
@@ -372,12 +389,18 @@ export default async function TicketDetailPage({
               <WorkLog
                 ticketId={ticket.id}
                 canLog={canUpdate}
+                currentUserId={user.id}
+                viewerIsAssigned={
+                  ticket.assignedToId === user.id ||
+                  coAssignees.some((c) => c.id === user.id)
+                }
                 entries={workLogEntries.map((e) => ({
                   id: e.id,
                   description: e.description,
                   minutes: e.minutes,
                   serviceType: e.serviceType,
                   createdAt: e.createdAt,
+                  technicianId: e.technicianId,
                   technicianName: e.technicianName,
                 }))}
               />
@@ -472,11 +495,11 @@ export default async function TicketDetailPage({
                       canDeescalate={canDeescalate}
                     />
                   ) : null}
-                  {/* Merge gate: caller must hold tickets.delete AND
-                      this ticket isn't already a duplicate. Once merged
-                      a ticket is closed-as-duplicate; merging again
-                      doesn't make sense. */}
-                  {canDelete && !ticket.duplicateOfId ? (
+                  {/* Merge gate (req §4 — Superadmin): caller holds
+                      tickets.merge AND this ticket isn't already a duplicate.
+                      Once merged a ticket is closed-as-duplicate, so merging
+                      again doesn't make sense. */}
+                  {canMerge && !ticket.duplicateOfId ? (
                     <MergeModal
                       ticketId={ticket.id}
                       sourceTicketNumber={ticket.ticketNumber}
@@ -530,6 +553,27 @@ export default async function TicketDetailPage({
             </CardContent>
           </Card>
 
+          {canManageOrg ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-1.5">
+                  {tOrgControl("title")}
+                  <InfoHint label={tOrgControl("help")} />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm">
+                <TicketOrgControl
+                  ticketId={ticket.id}
+                  currentOrganizationId={ticket.organizationId}
+                  organizations={orgsForControl.map((o) => ({
+                    id: o.id,
+                    name: o.name,
+                  }))}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-1.5">
@@ -554,23 +598,20 @@ export default async function TicketDetailPage({
                 </div>
               )}
 
-              {canMultiAssign ? (
-                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-1.5">
-                    {tMultiAssign("collaboratorsLabel")}
-                  </p>
-                  <MultiAssignControl
-                    ticketId={ticket.id}
-                    collaborators={collaborators.map((c) => ({
-                      id: c.id,
-                      name: c.name,
-                    }))}
-                    candidates={collaboratorCandidates.map((c) => ({
-                      id: c.id,
-                      name: c.name,
-                    }))}
-                  />
-                </div>
+              {coAssignees.length > 0 ? (
+                <MergedTechnicians
+                  ticketId={ticket.id}
+                  primary={
+                    ticket.assignedToId && assigneeName
+                      ? { id: ticket.assignedToId, name: assigneeName }
+                      : null
+                  }
+                  coAssignees={coAssignees.map((c) => ({
+                    id: c.id,
+                    name: c.name,
+                  }))}
+                  canManage={canMerge}
+                />
               ) : null}
             </CardContent>
           </Card>

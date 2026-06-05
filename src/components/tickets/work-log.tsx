@@ -26,6 +26,7 @@ export type WorkLogEntry = {
   minutes: number;
   serviceType: string;
   createdAt: Date;
+  technicianId: string | null;
   technicianName: string | null;
 };
 
@@ -41,10 +42,19 @@ export function WorkLog({
   ticketId,
   entries,
   canLog,
+  currentUserId,
+  viewerIsAssigned,
 }: {
   ticketId: string;
   entries: WorkLogEntry[];
   canLog: boolean;
+  /** The viewer's user id — only their OWN entries are deletable (frozen
+   *  history, req 3.5/4.6). */
+  currentUserId: string;
+  /** Whether the viewer is the ticket's current primary or a co-assignee.
+   *  Entries are frozen (read-only) once their author leaves the ticket, for
+   *  every role — so delete only shows while the viewer is still assigned. */
+  viewerIsAssigned: boolean;
 }) {
   const router = useRouter();
   const t = useTranslations("tickets.workLog");
@@ -137,7 +147,7 @@ export function WorkLog({
                     })}
                   </p>
                 </div>
-                {canLog ? (
+                {viewerIsAssigned && entry.technicianId === currentUserId ? (
                   <button
                     type="button"
                     onClick={() => handleDelete(entry.id)}

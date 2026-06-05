@@ -11,8 +11,11 @@ import { twilioClient, twilioFromNumber } from "./client";
 export type { SmsTemplate } from "../notifications/sms-types";
 
 const TEMPLATE_NAMESPACE = {
+  // Accountant-facing (configured contacts, not app users)
+  accountant_negative_balance: "sms.accountantNegativeBalance",
   // Staff-facing
   ticket_assigned: "sms.ticketAssigned",
+  ticket_reassigned: "sms.ticketReassigned",
   ticket_escalated: "sms.ticketEscalated",
   customer_replied: "sms.customerReplied",
   csat_unsatisfied_staff: "sms.csatUnsatisfiedStaff",

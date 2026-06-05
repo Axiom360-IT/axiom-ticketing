@@ -12,7 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { linkTicketOrganization } from "@/app/actions/organizations";
+import {
+  dismissTicketOrganization,
+  linkTicketOrganization,
+} from "@/app/actions/organizations";
 
 type Org = { id: string; name: string };
 
@@ -51,6 +54,18 @@ export function OrgTriageRow({
     });
   }
 
+  function dismiss() {
+    setError(null);
+    startTransition(async () => {
+      const res = await dismissTicketOrganization(ticketId);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select
@@ -80,6 +95,15 @@ export function OrgTriageRow({
         render={<Link href={createHref} />}
       >
         {t("createNew")}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={dismiss}
+        disabled={pending}
+        className="text-zinc-500"
+      >
+        {t("dismiss")}
       </Button>
       {error ? (
         <span role="alert" className="text-xs text-red-600 dark:text-red-400">

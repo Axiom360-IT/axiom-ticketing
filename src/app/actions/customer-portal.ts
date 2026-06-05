@@ -383,15 +383,15 @@ export async function customerReply(
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
+          // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
           template: {
-            template: "ticket_reply",
+            template: "customer_replied_staff",
             data: {
               ticketNumber: ticket.ticketNumber,
               customerName: profile.name,
               subject: ticket.subject,
-              agentName: profile.name,
               body: htmlToPlainText(cleanBody),
-              trackingUrl: ticketUrl,
+              ticketUrl,
             },
           },
           ticketNumber: ticket.ticketNumber,
@@ -571,15 +571,15 @@ export async function guestReply(input: {
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
+          // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
           template: {
-            template: "ticket_reply",
+            template: "customer_replied_staff",
             data: {
               ticketNumber: ticket.ticketNumber,
               customerName: ticket.customerName,
               subject: ticket.subject,
-              agentName: ticket.customerName,
               body: htmlToPlainText(cleanBody),
-              trackingUrl: ticketUrl,
+              ticketUrl,
             },
           },
           ticketNumber: ticket.ticketNumber,

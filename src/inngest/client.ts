@@ -15,6 +15,22 @@ export type Events = {
     data: { attachmentId: string };
   };
 
+  // ── Billing (M8 — support plans, hours, accountant alerts) ────────
+  //
+  // Emitted (post-commit) whenever an organization's Monthly-Plan balance may
+  // have changed — a work-log deduction, an admin top-up, or the monthly
+  // reset. The balance monitor re-reads the committed balance and sends the
+  // accountant negative-balance alert (req 8.6), de-duped so each negative
+  // episode alerts exactly once.
+  "billing/balance.changed": {
+    data: { organizationId: string };
+  };
+  // Emitted when a ticket is resolved, so the accountant gets the billing
+  // outcome email (req 8.9).
+  "billing/ticket.resolved": {
+    data: { ticketId: string };
+  };
+
   // ── Notification fan-out (M11) ────────────────────────────────────
   //
   // Producers emit one `notification/dispatch`; the dispatcher reads
@@ -54,19 +70,28 @@ export type Events = {
 };
 
 export type NotificationEventType =
-  // ── Customer-facing (delivered to ticket owner) ──
-  // `ticket.assigned` is overloaded: the SAME event type is used for the
-  // customer ("someone's working on your ticket") and the tech ("you've
-  // been assigned"). Different dispatch calls with different email
-  // templates and different recipient sets; the dispatcher looks up
-  // per-user `notification_preferences` so each side toggles their own
-  // copy independently.
-  | "ticket.assigned"
+  // ── Customer-facing (delivered to the ticket owner) ──
+  // When a tech is assigned, the customer and the technician each get a
+  // SEPARATE event type — never the same one. The in-app registry is keyed
+  // by event type, so a shared type would render the tech-oriented
+  // "assigned to you" wording in the customer's bell (req 6.1). The customer
+  // gets `ticket.assigned_customer` (neutral wording naming the technician,
+  // req 6.2); the technician gets `ticket.assigned`. Each side toggles its
+  // own `notification_preferences` row independently.
+  | "ticket.assigned_customer"
   | "ticket.agent_replied"
   | "ticket.resolved"
   | "ticket.reopened"
   | "ticket.closed"
   // ── Staff-facing ──
+  // Delivered to the newly-assigned technician ("Ticket … assigned to you").
+  | "ticket.assigned"
+  // Fired only on a TRUE reassignment (the ticket already had a different
+  // technician). Broadcast to all Super Admins on every channel (req 3.2).
+  | "ticket.reassigned"
+  // An inbound email reply from a sender outside the ticket's organization was
+  // held for moderation (req 5.2). In-app only — routed to Coordinators.
+  | "ticket.message_held"
   | "ticket.customer_replied"
   | "ticket.escalated"
   | "ticket.csat_unsatisfied"

@@ -13,8 +13,16 @@ import {
   organizations,
 } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
+import { workLogs } from "@/lib/db/schema/work-logs";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
+import { notifyBalanceChanged } from "@/lib/billing/events";
+import {
+  emptyBucket,
+  normalizeCategory,
+  type OrganizationUsage,
+  type UsageBucket,
+} from "@/lib/billing/usage";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 
 // Abbreviation: 2–5 upper-case alphanumerics. Used as the ticket-number prefix
@@ -84,8 +92,10 @@ const baseSchema = z.object({
   abbreviation: z.string().trim().min(1).max(20),
   isMonthlyPlan: z.boolean().default(false),
   // Decimal hours from the form (e.g. 20 or 12.5). Stored as integer minutes.
+  // NOTE: there is intentionally NO `monthlyHoursBalance` here — the balance
+  // ("hours remaining") is read-only (req 8.1) and only ever changes through
+  // logged work, the monthly reset, and the admin add-hours action.
   monthlyHoursIncluded: z.number().min(0).max(100000).nullable().optional(),
-  monthlyHoursBalance: z.number().min(0).max(100000).nullable().optional(),
   contractNotes: z.string().trim().max(2000).optional(),
   // Email domains that identify this org's people (the guest-ticket matcher).
   emailDomains: z.array(z.string()).max(50).optional(),
@@ -129,6 +139,106 @@ async function nameTaken(name: string, excludeId?: string) {
   return Boolean(row);
 }
 
+// ── Organization code (abbreviation) generation + validation ───────
+
+/** Gate for the code helpers: the caller must be able to create or update
+ *  organizations (the only surfaces that pick a code). */
+async function requireOrgManage() {
+  const caller = await requireSessionUser();
+  const ok =
+    (await can(caller, "organizations.create", { type: "global" }, productionContext)) ||
+    (await can(caller, "organizations.update", { type: "global" }, productionContext));
+  if (!ok) throw new ForbiddenError();
+  return caller;
+}
+
+/** Derive a 2–5 char upper-case code seed from an org name: word initials for
+ *  multi-word names ("Kingsmill Foods Ltd" → "KFL"), else the first letters of
+ *  a single word ("Kingsmill" → "KING"). Padded to ≥2 chars. */
+function deriveCodeBase(name: string): string {
+  const cleaned = (name ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  let base =
+    words.length >= 2
+      ? words.map((w) => w[0]).join("")
+      : (words[0] ?? "").slice(0, 4);
+  base = base.replace(/[^A-Z0-9]/g, "").slice(0, 5);
+  if (base.length < 2) {
+    base = ((words[0] ?? "") + "XX").replace(/[^A-Z0-9]/g, "").slice(0, 2);
+  }
+  return base;
+}
+
+/** First code (base, then base+1, base+2, …, ≤5 chars) not already taken or
+ *  excluded, checking against the in-memory set of existing abbreviations. */
+function firstAvailableCode(
+  base: string,
+  existing: Set<string>,
+  exclude: Set<string>,
+): string {
+  const tryCode = (c: string): string | null =>
+    c.length >= 2 &&
+    ABBREVIATION_RE.test(c) &&
+    !existing.has(c) &&
+    !exclude.has(c)
+      ? c
+      : null;
+
+  const direct = tryCode(base);
+  if (direct) return direct;
+
+  for (let i = 1; i <= 9999; i++) {
+    const suffix = String(i);
+    const head = base.slice(0, Math.max(1, 5 - suffix.length));
+    const candidate = tryCode((head + suffix).slice(0, 5));
+    if (candidate) return candidate;
+  }
+  return base; // give up gracefully (server still rejects a dup on submit)
+}
+
+export type SuggestCodeResult =
+  | { ok: true; code: string }
+  | { ok: false; error: string };
+
+/** Suggest a unique organization code derived from the name. `exclude` lets the
+ *  "Generate" button request a code different from the current one. */
+export async function suggestOrgCode(
+  name: string,
+  exclude: string[] = [],
+): Promise<SuggestCodeResult> {
+  await requireOrgManage();
+  const base = deriveCodeBase(name);
+  if (!base) {
+    return { ok: false, error: "Enter an organization name first." };
+  }
+  const rows = await db
+    .select({ abbreviation: organizations.abbreviation })
+    .from(organizations);
+  const existing = new Set(rows.map((r) => r.abbreviation));
+  const excludeSet = new Set(
+    exclude.map((e) => normalizeAbbreviation(e)).filter(Boolean),
+  );
+  return { ok: true, code: firstAvailableCode(base, existing, excludeSet) };
+}
+
+/** Real-time availability/format check for a manually-entered code. */
+export async function checkOrgCode(
+  code: string,
+  excludeId?: string,
+): Promise<{ valid: boolean; available: boolean; normalized: string }> {
+  await requireOrgManage();
+  const normalized = normalizeAbbreviation(code);
+  if (!ABBREVIATION_RE.test(normalized)) {
+    return { valid: false, available: false, normalized };
+  }
+  const taken = await abbreviationTaken(normalized, excludeId);
+  return { valid: true, available: !taken, normalized };
+}
+
 // ── createOrganization ─────────────────────────────────────────────
 
 export async function createOrganization(
@@ -157,14 +267,25 @@ export async function createOrganization(
   if (await abbreviationTaken(abbreviation)) {
     return { ok: false, error: `Abbreviation "${abbreviation}" is already in use.` };
   }
+  // A monthly plan MUST have positive included hours — otherwise its balance is
+  // NULL and it is silently skipped by the reset cron and the deduction logic.
+  if (
+    data.isMonthlyPlan &&
+    (data.monthlyHoursIncluded == null || data.monthlyHoursIncluded <= 0)
+  ) {
+    return {
+      ok: false,
+      error: "Enter the monthly included hours for a monthly-plan organization.",
+    };
+  }
 
   const minutesIncluded = data.isMonthlyPlan
     ? hoursToMinutes(data.monthlyHoursIncluded)
     : null;
-  // Balance defaults to the included amount on creation when not given.
-  const minutesBalance = data.isMonthlyPlan
-    ? (hoursToMinutes(data.monthlyHoursBalance) ?? minutesIncluded)
-    : null;
+  // Balance ("hours remaining") always STARTS at the included allotment — it is
+  // never entered by hand (req 8.1). It then moves only via logged work, the
+  // monthly reset, and the admin add-hours action.
+  const minutesBalance = data.isMonthlyPlan ? minutesIncluded : null;
 
   let domains: string[];
   try {
@@ -188,6 +309,9 @@ export async function createOrganization(
       isMonthlyPlan: data.isMonthlyPlan,
       monthlyMinutesIncluded: minutesIncluded,
       monthlyMinutesBalance: minutesBalance,
+      // Mark as reset for the current month so the daily reset cron leaves the
+      // fresh balance alone until the next 1st (req 8.2).
+      monthlyPlanResetAt: data.isMonthlyPlan ? new Date() : null,
       contractNotes: data.contractNotes || null,
       isActive: data.isActive,
       createdById: caller.id,
@@ -267,13 +391,33 @@ export async function updateOrganization(
     if (data.isMonthlyPlan === false) {
       set.monthlyMinutesIncluded = null;
       set.monthlyMinutesBalance = null;
+      set.monthlyPlanResetAt = null;
+      set.negativeBalanceAlertedAt = null;
     }
   } else {
     if (data.monthlyHoursIncluded !== undefined) {
       set.monthlyMinutesIncluded = hoursToMinutes(data.monthlyHoursIncluded);
     }
-    if (data.monthlyHoursBalance !== undefined) {
-      set.monthlyMinutesBalance = hoursToMinutes(data.monthlyHoursBalance);
+    // The balance ("hours remaining") is read-only (req 8.1) and is never set
+    // from this form. The ONE exception is initialization: when an org first
+    // turns its monthly plan ON, the balance starts at the included allotment
+    // (and is marked reset for the current month).
+    if (!org.isMonthlyPlan) {
+      set.monthlyMinutesBalance =
+        set.monthlyMinutesIncluded ?? org.monthlyMinutesIncluded ?? null;
+      set.monthlyPlanResetAt = new Date();
+      set.negativeBalanceAlertedAt = null;
+    }
+    // A monthly plan must keep positive included hours (see createOrganization).
+    const effectiveIncluded =
+      set.monthlyMinutesIncluded !== undefined
+        ? set.monthlyMinutesIncluded
+        : org.monthlyMinutesIncluded;
+    if (effectiveIncluded == null || effectiveIncluded <= 0) {
+      return {
+        ok: false,
+        error: "Enter the monthly included hours for a monthly-plan organization.",
+      };
     }
   }
   if (data.contractNotes !== undefined) set.contractNotes = data.contractNotes || null;
@@ -331,6 +475,76 @@ export async function updateOrganization(
   revalidatePath("/admin/organizations");
   revalidatePath(`/admin/organizations/${organizationId}`);
   return { ok: true };
+}
+
+// ── addOrganizationHours (req 8.3) ─────────────────────────────────
+//
+// The ONLY way an admin can manually move the balance, and it's additive only
+// (a top-up for a given month when the included hours run short). The balance
+// is otherwise read-only (req 8.1). Accepts a positive decimal-hours amount,
+// adds it to the running balance, and re-checks the over-plan alert so a
+// top-up that brings the balance back to >= 0 clears the alert state.
+
+const addHoursSchema = z.object({
+  hours: z.number().positive().max(100000),
+});
+
+export async function addOrganizationHours(
+  organizationId: string,
+  hours: number,
+): Promise<{ ok: true; newBalanceMinutes: number } | { ok: false; error: string }> {
+  const parsed = addHoursSchema.safeParse({ hours });
+  if (!parsed.success) {
+    return { ok: false, error: "Enter a positive number of hours." };
+  }
+  const caller = await requireSessionUser();
+  await enforceUserRateLimit("authManageOrganization", caller.id);
+  if (
+    !(await can(caller, "organizations.update", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const [org] = await db
+    .select({
+      id: organizations.id,
+      isMonthlyPlan: organizations.isMonthlyPlan,
+      balance: organizations.monthlyMinutesBalance,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (!org) return { ok: false, error: "Organization not found." };
+  if (!org.isMonthlyPlan) {
+    return { ok: false, error: "This organization is not on a monthly plan." };
+  }
+
+  const addMinutes = hoursToMinutes(parsed.data.hours) ?? 0;
+  const newBalance = (org.balance ?? 0) + addMinutes;
+
+  await db
+    .update(organizations)
+    .set({
+      monthlyMinutesBalance: newBalance,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, organizationId));
+
+  await audit({
+    actorId: caller.id,
+    action: "organization.add_hours",
+    targetType: "organization",
+    targetId: organizationId,
+    before: { monthlyMinutesBalance: org.balance },
+    after: { monthlyMinutesBalance: newBalance, addedMinutes: addMinutes },
+  });
+
+  // Re-evaluate the over-plan alert (a top-up may have cleared the deficit).
+  await notifyBalanceChanged([organizationId]);
+
+  revalidatePath("/admin/organizations");
+  revalidatePath(`/admin/organizations/${organizationId}`);
+  return { ok: true, newBalanceMinutes: newBalance };
 }
 
 // ── deleteOrganization ─────────────────────────────────────────────
@@ -423,6 +637,65 @@ export async function getOrganizationDetail(organizationId: string) {
     .where(eq(organizationDomains.organizationId, organizationId))
     .orderBy(organizationDomains.domain);
   return { ...org, emailDomains: domainRows.map((d) => d.domain) };
+}
+
+// ── Per-organization work breakdown by category (reqs 8.4/8.5) ─────
+//
+// Every work category is tracked, not just Monthly Support. We aggregate
+// work-log minutes per calendar month (UTC, to match the monthly reset) ×
+// category for the org, then pivot for the UI. Shared types/helpers live in
+// `@/lib/billing/usage` (this "use server" file can only export async fns).
+
+export async function getOrganizationUsage(
+  organizationId: string,
+): Promise<OrganizationUsage> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "organizations.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const rows = await db
+    .select({
+      ym: sql<string>`to_char(date_trunc('month', ${workLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM')`,
+      billable: tickets.billable,
+      minutes: sql<number>`coalesce(sum(${workLogs.minutes}), 0)::int`,
+    })
+    .from(workLogs)
+    .innerJoin(tickets, eq(workLogs.ticketId, tickets.id))
+    .where(eq(tickets.organizationId, organizationId))
+    .groupBy(sql`date_trunc('month', ${workLogs.createdAt} AT TIME ZONE 'UTC')`, tickets.billable)
+    .orderBy(sql`date_trunc('month', ${workLogs.createdAt} AT TIME ZONE 'UTC') desc`);
+
+  const byMonth = new Map<string, UsageBucket>();
+  const allTime = emptyBucket();
+  for (const r of rows) {
+    const cat = normalizeCategory(r.billable);
+    const mins = Number(r.minutes) || 0;
+    let bucket = byMonth.get(r.ym);
+    if (!bucket) {
+      bucket = emptyBucket();
+      byMonth.set(r.ym, bucket);
+    }
+    bucket.byCategory[cat] += mins;
+    bucket.total += mins;
+    allTime.byCategory[cat] += mins;
+    allTime.total += mins;
+  }
+
+  const currentYm = new Date().toISOString().slice(0, 7);
+  const months = [...byMonth.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .slice(0, 6)
+    .map(([ym, bucket]) => ({ ym, ...bucket }));
+
+  const cur = byMonth.get(currentYm) ?? emptyBucket();
+  return {
+    currentMonth: { ym: currentYm, ...cur },
+    allTime,
+    months,
+  };
 }
 
 /** Active organizations for staff dropdowns (e.g. create-on-behalf). */
@@ -535,7 +808,7 @@ export async function linkTicketOrganization(
     .limit(1);
   if (!ticket) return { ok: false, error: "Ticket not found." };
 
-  await transactional(async (tx) => {
+  const affectedOrgId = await transactional(async (tx) => {
     await tx
       .update(tickets)
       .set({
@@ -545,8 +818,9 @@ export async function linkTicketOrganization(
       })
       .where(eq(tickets.id, ticketId));
     // Now the ticket has a confirmed org, apply any Monthly-Plan deduction.
-    await syncMonthlyPlanDeduction(tx, ticketId);
+    return syncMonthlyPlanDeduction(tx, ticketId);
   });
+  await notifyBalanceChanged([affectedOrgId]);
 
   await audit({
     actorId: caller.id,
@@ -558,6 +832,39 @@ export async function linkTicketOrganization(
       organizationName: org.name,
       claimedCompany: ticket.customerCompany,
     },
+  });
+
+  revalidatePath("/admin/org-triage");
+  revalidatePath("/admin/organizations");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+/** Mark a triaged ticket as having no organization (a genuine individual /
+ *  one-off submitter), clearing it from the triage queue. Leaves
+ *  organizationId NULL and sets the status to 'none'. */
+export async function dismissTicketOrganization(
+  ticketId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireOrgTriage();
+
+  const [ticket] = await db
+    .select({ id: tickets.id, ticketNumber: tickets.ticketNumber })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  if (!ticket) return { ok: false, error: "Ticket not found." };
+
+  await db
+    .update(tickets)
+    .set({ orgMatchStatus: "none", updatedAt: new Date() })
+    .where(eq(tickets.id, ticketId));
+
+  await audit({
+    actorId: caller.id,
+    action: "ticket.dismiss_organization",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
   });
 
   revalidatePath("/admin/org-triage");

@@ -1,6 +1,17 @@
 "use server";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -22,10 +33,14 @@ import { clientIp, getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
+  emailDomain,
   resolveTicketOrgById,
   resolveTicketOrgForGuest,
+  ticketsShareOrg,
 } from "@/lib/tickets/org";
+import { listActiveParticipants } from "@/lib/tickets/participants";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
+import { notifyBalanceChanged } from "@/lib/billing/events";
 import {
   htmlToPlainText,
   sanitizeMessageHtml,
@@ -73,14 +88,14 @@ const createTicketSchema = z.object({
     .trim()
     .min(3, "Subject must be at least 3 characters")
     .max(150, "Subject must be at most 150 characters"),
-  // Organization (company) raising the ticket (Meeting-2, CR-01). Mandatory.
-  // Category was removed from the customer form (CR-03); it defaults to
-  // "other" server-side and the Coordinator triages/AI-classifies later.
+  // Organization is no longer typed by the submitter — it's resolved from the
+  // email domain (Org Management 1.4). Kept optional for any legacy/API caller;
+  // when absent the resolver falls back to domain matching only.
   organization: z
     .string()
     .trim()
-    .min(1, "Organization is required")
-    .max(160, "Organization must be at most 160 characters"),
+    .max(160, "Organization must be at most 160 characters")
+    .optional(),
   priority: z.enum(TICKET_PRIORITIES).optional().default("medium"),
   // Description is optional (Meeting-2, CR-03/Q2 — the boss chose to keep it
   // optional and observe usage before forcing it).
@@ -620,15 +635,30 @@ export async function assignTicket(
   const before = { assignedToId: ticket.assignedToId };
   const newStatus = ticket.status === "open" ? "in_progress" : ticket.status;
 
-  await db
-    .update(tickets)
-    .set({
-      assignedToId: techId,
-      assignedAt: new Date(),
-      status: newStatus,
-      updatedAt: new Date(),
-    })
-    .where(eq(tickets.id, ticketId));
+  // Both writes in one transaction so the invariant "the primary technician is
+  // NEVER also a merge co-assignee" is crash-safe: set the primary AND drop any
+  // co-assignee row for that same tech (on a merged ticket they may have been a
+  // co-assignee) atomically, so they're never represented — or removable —
+  // twice. On a non-merged ticket the DELETE is a harmless no-op.
+  await transactional(async (tx) => {
+    await tx
+      .update(tickets)
+      .set({
+        assignedToId: techId,
+        assignedAt: new Date(),
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(tickets.id, ticketId));
+    await tx
+      .delete(ticketAssignees)
+      .where(
+        and(
+          eq(ticketAssignees.ticketId, ticketId),
+          eq(ticketAssignees.userId, techId),
+        ),
+      );
+  });
 
   await audit({
     actorId: user.id,
@@ -660,7 +690,10 @@ export async function assignTicket(
       await inngest.send({
         name: "notification/dispatch",
         data: {
-          type: "ticket.assigned",
+          // Customer-facing assignment event — NEVER `ticket.assigned`, which
+          // renders the tech-oriented "assigned to you" copy in the bell
+          // (req 6.1). This one names the technician (req 6.2).
+          type: "ticket.assigned_customer",
           recipientUserIds: [ticket.customerId],
           ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
@@ -686,7 +719,7 @@ export async function assignTicket(
           },
           inApp: {
             titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { subject: ticket.subject },
+            bodyArgs: { technicianName: tech.name },
             linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
           },
         },
@@ -758,6 +791,68 @@ export async function assignTicket(
     });
   } catch (err) {
     console.error("[assignTicket] dispatch failed:", err);
+  }
+
+  // Req 3.2 — On a TRUE reassignment (the ticket already had a DIFFERENT
+  // technician), notify every Super Admin through all three channels (email +
+  // SMS + in-app). Skipped for the first assignment (no prior tech) and for a
+  // no-op re-assign to the same tech. Best-effort: a notification failure must
+  // never roll back the reassignment.
+  if (before.assignedToId && before.assignedToId !== techId) {
+    try {
+      const [prevTech] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, before.assignedToId))
+        .limit(1);
+      const [actor] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      const appUrl = getAppUrl();
+      const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
+      const fromTechName = prevTech?.name ?? "Unassigned";
+      const toTechName = tech.name;
+      const actorName = actor?.name ?? "A technician";
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "ticket.reassigned",
+          recipientRoles: ["Super Admin"],
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          email: {
+            template: {
+              template: "ticket_reassigned",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                subject: ticket.subject,
+                fromTechName,
+                toTechName,
+                actorName,
+                customerName: ticket.customerName,
+                ticketUrl,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+          },
+          sms: {
+            template: {
+              template: "ticket_reassigned",
+              data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { fromTechName, toTechName },
+            linkUrl: `/admin/tickets/${ticket.id}`,
+          },
+        },
+      });
+    } catch (err) {
+      console.error("[assignTicket] reassignment dispatch failed:", err);
+    }
   }
 
   revalidatePath("/admin/tickets");
@@ -859,10 +954,10 @@ export async function deleteTicket(
 // move to A; B is closed and marked `duplicate_of_id = A.id`; viewing
 // B in the future shows a banner linking to A.
 //
-// Authorization: gated on `tickets.delete` since merging is similarly
-// destructive (B effectively stops being a standalone ticket). Future
-// refinement could introduce a dedicated `tickets.merge` permission,
-// but for now we piggyback on delete.
+// Authorization: gated on the dedicated `tickets.merge` permission, granted
+// to Super Admin only (req §4), so it's decoupled from `tickets.delete`. Also
+// carries BOTH source + target technicians onto the surviving ticket (req 4.4)
+// and reparents the source's worklogs.
 
 type MergeTicketsResult =
   | { ok: true; targetTicketNumber: string }
@@ -878,7 +973,7 @@ export async function mergeTickets(
   if (
     !(await can(
       user,
-      "tickets.delete",
+      "tickets.merge",
       { type: "ticket", ticket: source },
       productionContext,
     ))
@@ -890,9 +985,8 @@ export async function mergeTickets(
     return { ok: false, error: "Source ticket has been deleted." };
   }
 
-  // Resolve the target — caller can pass either a ticket UUID or a
-  // ticket number (the AX-XXXX a human types). Accepting both makes
-  // the UI simpler: an admin types "AX-0042" and we match.
+  // Resolve the target — caller can pass either a ticket UUID (the dropdown
+  // path) or a ticket number (AX-XXXX). Accepting both keeps the action robust.
   const normalized = targetTicketNumberOrId.trim();
   if (!normalized) {
     return { ok: false, error: "Pick a target ticket to merge into." };
@@ -907,6 +1001,9 @@ export async function mergeTickets(
       status: tickets.status,
       duplicateOfId: tickets.duplicateOfId,
       deletedAt: tickets.deletedAt,
+      assignedToId: tickets.assignedToId,
+      organizationId: tickets.organizationId,
+      customerEmail: tickets.customerEmail,
     })
     .from(tickets)
     .where(
@@ -934,10 +1031,29 @@ export async function mergeTickets(
   if (source.duplicateOfId) {
     return { ok: false, error: "Source is already merged." };
   }
-  if (target.status === "closed") {
+  if (target.status === "closed" || target.status === "resolved") {
     return {
       ok: false,
-      error: `Target ${target.ticketNumber} is closed — merging would lose visibility of the source's history. Reopen the target first.`,
+      error: `Target ${target.ticketNumber} is ${target.status} — merging would bury the source's history where it won't be triaged. Reopen the target first.`,
+    };
+  }
+
+  // Req 4.3 — only same-organization tickets may merge (defense-in-depth; the
+  // dropdown already filters to these). loadTicketScope omits organizationId,
+  // so fetch the source's here.
+  const [sourceOrgRow] = await db
+    .select({ organizationId: tickets.organizationId })
+    .from(tickets)
+    .where(eq(tickets.id, source.id))
+    .limit(1);
+  const sourceForOrg = {
+    organizationId: sourceOrgRow?.organizationId ?? null,
+    customerEmail: source.customerEmail,
+  };
+  if (!ticketsShareOrg(sourceForOrg, target)) {
+    return {
+      ok: false,
+      error: `${target.ticketNumber} belongs to a different organization. You can only merge tickets from the same organization.`,
     };
   }
 
@@ -953,7 +1069,20 @@ export async function mergeTickets(
   const actorEmail = actor?.email ?? "system@local";
 
   const now = new Date();
-  await transactional(async (tx) => {
+  // Req 4.4 — carry BOTH technicians onto the merged ticket. The target keeps
+  // its own tech as primary (Q2); the source's tech rides along as a co-assignee
+  // (the one sanctioned exception to single-technician, req 3.1). If the target
+  // had no tech, the source's becomes the sole primary instead.
+  const sourceTech = source.assignedToId;
+  const targetTech = target.assignedToId;
+  const promoteSourceTechToPrimary = Boolean(
+    sourceTech && !targetTech && sourceTech !== targetTech,
+  );
+  const addSourceTechAsCoAssignee = Boolean(
+    sourceTech && targetTech && sourceTech !== targetTech,
+  );
+
+  const mergeAffectedOrgIds = await transactional(async (tx) => {
     // Move every message + attachment from source to target. The
     // history shows as one chronological thread on the target after.
     await tx
@@ -964,6 +1093,14 @@ export async function mergeTickets(
       .update(attachments)
       .set({ ticketId: target.id })
       .where(eq(attachments.ticketId, source.id));
+    // Reparent the source's work-log entries so the merged ticket carries the
+    // combined logged time (and the source's tech's time is attributable on the
+    // surviving ticket). technician_id/_name are untouched, preserving
+    // authorship for the frozen-history rules (req 4.6).
+    await tx
+      .update(workLogs)
+      .set({ ticketId: target.id })
+      .where(eq(workLogs.ticketId, source.id));
 
     // System message on the target announcing the merge so the
     // thread reads naturally.
@@ -977,6 +1114,23 @@ export async function mergeTickets(
       bodyFormat: "text",
       channel: "system",
     });
+
+    // Second technician on the target (req 4.4).
+    if (promoteSourceTechToPrimary) {
+      await tx
+        .update(tickets)
+        .set({ assignedToId: sourceTech, assignedAt: now, updatedAt: now })
+        .where(eq(tickets.id, target.id));
+    } else if (addSourceTechAsCoAssignee) {
+      await tx
+        .insert(ticketAssignees)
+        .values({
+          ticketId: target.id,
+          userId: sourceTech!,
+          assignedById: user.id,
+        })
+        .onConflictDoNothing();
+    }
 
     // Close + mark the source as a duplicate of the target. closedAt
     // stamps the merge time so it shows up in audit + filtering.
@@ -996,7 +1150,15 @@ export async function mergeTickets(
       .update(tickets)
       .set({ updatedAt: now })
       .where(eq(tickets.id, target.id));
+
+    // Worklogs moved between tickets — recompute the Monthly-Plan deduction for
+    // both so the org balance stays consistent (source refunds to 0, target
+    // re-deducts the combined total under its own billing policy).
+    const a = await syncMonthlyPlanDeduction(tx, source.id);
+    const b = await syncMonthlyPlanDeduction(tx, target.id);
+    return [a, b];
   });
+  await notifyBalanceChanged(mergeAffectedOrgIds);
 
   await audit({
     actorId: user.id,
@@ -1006,6 +1168,8 @@ export async function mergeTickets(
     after: {
       mergedInto: target.ticketNumber,
       mergedAt: now.toISOString(),
+      coAssignedTech: addSourceTechAsCoAssignee ? sourceTech : null,
+      promotedTech: promoteSourceTechToPrimary ? sourceTech : null,
     },
   });
 
@@ -1013,6 +1177,98 @@ export async function mergeTickets(
   revalidatePath(`/admin/tickets/${sourceId}`);
   revalidatePath(`/admin/tickets/${target.id}`);
   return { ok: true, targetTicketNumber: target.ticketNumber };
+}
+
+export type MergeCandidate = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  customerName: string;
+};
+
+/**
+ * Candidate tickets the source can be merged INTO (req 4.1/4.2/4.3): same
+ * organization as the source (by org link, else email domain), searchable by
+ * ticket number OR subject, excluding the source itself, drafts, soft-deleted,
+ * already-merged duplicates, and closed tickets. Superadmin-only.
+ */
+export async function listMergeCandidates(
+  sourceId: string,
+  query: string,
+): Promise<MergeCandidate[]> {
+  const user = await requireSessionUser();
+  const source = await loadTicketScope(sourceId);
+  if (!source) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.merge",
+      { type: "ticket", ticket: source },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const [sourceOrgRow] = await db
+    .select({ organizationId: tickets.organizationId })
+    .from(tickets)
+    .where(eq(tickets.id, source.id))
+    .limit(1);
+  const sourceOrgId = sourceOrgRow?.organizationId ?? null;
+
+  // Same-org filter — MUST mirror ticketsShareOrg(): linked source → exact org
+  // match; unlinked source → other unlinked tickets sharing its email domain.
+  let orgFilter: SQL;
+  if (sourceOrgId) {
+    orgFilter = eq(tickets.organizationId, sourceOrgId);
+  } else {
+    const sourceDomain = emailDomain(source.customerEmail);
+    if (!sourceDomain) return [];
+    // Domain = text after the LAST '@', matching emailDomain()'s lastIndexOf
+    // semantics exactly (split_part(...,2) would take text after the FIRST '@'
+    // and could leak a cross-org ticket for unusual multi-'@' addresses).
+    orgFilter = and(
+      isNull(tickets.organizationId),
+      sql`lower(substring(${tickets.customerEmail} from '@([^@]+)$')) = ${sourceDomain}`,
+    )!;
+  }
+
+  const trimmed = query.trim();
+  const searchFilter = trimmed
+    ? or(
+        ilike(tickets.ticketNumber, `%${trimmed}%`),
+        ilike(tickets.subject, `%${trimmed}%`),
+      )!
+    : undefined;
+
+  const rows = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      subject: tickets.subject,
+      customerName: tickets.customerName,
+    })
+    .from(tickets)
+    .where(
+      and(
+        ne(tickets.id, source.id),
+        isNull(tickets.deletedAt),
+        isNull(tickets.duplicateOfId),
+        ne(tickets.status, "draft"),
+        // Only merge into an ACTIVELY-worked ticket — merging into a
+        // resolved/closed one would bury the source's history where it won't
+        // be triaged. Reopen the target first if that's really intended.
+        ne(tickets.status, "closed"),
+        ne(tickets.status, "resolved"),
+        orgFilter,
+        ...(searchFilter ? [searchFilter] : []),
+      ),
+    )
+    .orderBy(desc(tickets.updatedAt))
+    .limit(20);
+
+  return rows;
 }
 
 // ── Reply (visible to customer) ──────────────────────────────────────
@@ -1190,6 +1446,47 @@ export async function replyToTicket(
     }
   } catch (err) {
     console.error("[replyToTicket] customer notification failed:", err);
+  }
+
+  // CC active external participants (req 5.2) — same-org colleagues the
+  // requester looped in by email get future agent replies too. They have no
+  // account, so email each directly with a Reply-To that threads their reply
+  // back to the ticket. Best-effort; a send failure never fails the reply.
+  try {
+    const participants = await listActiveParticipants(ticket.id);
+    if (participants.length > 0) {
+      const appUrl = getAppUrl();
+      const plain = htmlToPlainText(cleanBody);
+      for (const p of participants) {
+        if (p.email === ticket.customerEmail.toLowerCase()) continue;
+        try {
+          await sendEmail({
+            to: p.email,
+            template: {
+              template: "ticket_reply",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: p.name ?? p.email,
+                subject: ticket.subject,
+                agentName: agent.name,
+                body: plain,
+                trackingUrl: guestTicketUrl(appUrl, ticket.ticketNumber, p.email),
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            replyToTicket: true,
+            fromActorName: agent.name,
+          });
+        } catch (err) {
+          console.error(
+            `[replyToTicket] participant CC failed (${p.email}):`,
+            err,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[replyToTicket] participant CC load failed:", err);
   }
 
   revalidatePath(`/admin/tickets/${ticketId}`);
@@ -1416,6 +1713,18 @@ export async function resolveTicket(
             skip_reason: parsed.data.skipReason,
           },
   });
+
+  // Accountant billing summary (req 8.9) — best-effort, processed async by the
+  // notify-accountant-resolved Inngest function which derives the billing
+  // outcome and emails the configured accountants.
+  try {
+    await inngest.send({
+      name: "billing/ticket.resolved",
+      data: { ticketId: ticket.id },
+    });
+  } catch (err) {
+    console.error("[resolveTicket] accountant billing dispatch failed:", err);
+  }
 
   // Customer notification — fan-out through the dispatcher so the
   // customer's email + SMS + in-app prefs are all honored (previously
@@ -1725,14 +2034,15 @@ export async function setTicketBillable(
     throw new ForbiddenError();
   }
 
-  await transactional(async (tx) => {
+  const affectedOrgId = await transactional(async (tx) => {
     await tx
       .update(tickets)
       .set({ billable, updatedAt: new Date() })
       .where(eq(tickets.id, ticket.id));
     // Re-sync the Monthly-Plan deduction now the billable value changed.
-    await syncMonthlyPlanDeduction(tx, ticket.id);
+    return syncMonthlyPlanDeduction(tx, ticket.id);
   });
+  await notifyBalanceChanged([affectedOrgId]);
 
   await audit({
     actorId: user.id,
@@ -1758,15 +2068,26 @@ const ESCALATION_REASONS = [
 ] as const;
 type EscalationReason = (typeof ESCALATION_REASONS)[number];
 
+// Roles a ticket may be escalated TO (Meeting-2, CR-14). Constrained to the
+// supervisory tier: `targetRole` is used verbatim as the notification
+// `recipientRoles`, so accepting an arbitrary client string would let a caller
+// broadcast a staff-worded escalation to ANY role — including "Customer"
+// (req 6.4). Validate it server-side against this allowlist.
+const ESCALATION_TARGET_ROLES = [
+  "IT Director",
+  "Coordinator",
+  "Super Admin",
+] as const;
+
 const escalateSchema = z.object({
   // Spec §3.2 — categorical so reporting can group cleanly.
   reason: z.enum(ESCALATION_REASONS),
   // Optional supplementary context (max 1000 chars). Stored alongside
   // the categorical reason; never replaces it.
   note: z.string().trim().max(1000).optional(),
-  // Who the ticket is being escalated TO (Meeting-2, CR-14): an upper-
-  // hierarchy role name. Drives who gets notified; stored on the ticket.
-  targetRole: z.string().trim().max(80).optional(),
+  // Who the ticket is being escalated TO: an upper-hierarchy role. Drives who
+  // gets notified; stored on the ticket. Constrained to the supervisory tier.
+  targetRole: z.enum(ESCALATION_TARGET_ROLES).optional(),
 });
 
 export async function escalateTicket(

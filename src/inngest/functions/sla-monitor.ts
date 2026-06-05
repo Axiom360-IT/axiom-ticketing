@@ -147,12 +147,18 @@ async function dispatch(
   // an SMS to the assignee if they have one configured. None of the
   // SLA events have a dedicated email template yet — the dispatcher
   // only sends the email leg when `email` is supplied here.
-  if (!t.assignedToId) return;
-
+  //
+  // Recipient: the assignee when the ticket is owned, otherwise the
+  // Coordinator queue (req 6.3). Previously an unassigned ticket returned
+  // early here, so a ticket that breached its SLA while still in triage
+  // notified NOBODY — exactly the unowned-SLA case the monitor exists to
+  // catch. SMS stays scoped to a named assignee (we don't SMS-blast the
+  // whole Coordinator role); the Coordinator fallback is in-app only.
   const appUrl = getAppUrl();
   const ticketUrl = `${appUrl}/admin/tickets/${t.id}`;
 
-  const wantsSms = type === "sla.warning_80" || type === "sla.breached";
+  const wantsSms =
+    !!t.assignedToId && (type === "sla.warning_80" || type === "sla.breached");
   const smsTemplate =
     type === "sla.warning_80" ? "sla_warning_80" : "sla_breached";
 
@@ -161,7 +167,8 @@ async function dispatch(
       name: "notification/dispatch",
       data: {
         type,
-        recipientUserIds: [t.assignedToId],
+        recipientUserIds: t.assignedToId ? [t.assignedToId] : undefined,
+        recipientRoles: t.assignedToId ? undefined : ["Coordinator"],
         ticketId: t.id,
         ticketNumber: t.ticketNumber,
         ...(wantsSms

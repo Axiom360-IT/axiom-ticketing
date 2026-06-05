@@ -6,23 +6,15 @@ import {
   type NotificationPrefRow,
   updateNotificationPreference,
 } from "@/app/actions/profile";
+import { CUSTOMER_EVENT_TYPES } from "@/lib/notifications/audience";
 
-// Customer-facing notification events. Each one has a per-user pref row
-// in `notification_preferences` (email + SMS toggle). The previous list
-// had `ticket.customer_replied` here, but that event is fired to AGENTS
-// when the CUSTOMER replies — wrong recipient for the customer's
-// "when my ticket gets a reply" intent. Replaced with
-// `ticket.agent_replied` which fires to the customer when an agent
-// posts a reply. Existing pref rows under the old event key will fall
-// back to the schema defaults (email on, SMS on) since no UI exposes
-// them anymore — acceptable for a tool whose users are still onboarding.
-const CUSTOMER_EVENTS = [
-  "ticket.assigned",
-  "ticket.agent_replied",
-  "ticket.resolved",
-  "ticket.reopened",
-  "ticket.closed",
-] as const;
+// Customer-facing notification events come from the shared role matrix
+// (src/lib/notifications/audience.ts) so the grid, the write-validation set,
+// and the dispatch sites can never drift apart (req 6.4). The assignment row
+// is `ticket.assigned_customer` — the customer-worded event — NOT the
+// technician's `ticket.assigned` ("assigned to you"), which previously leaked
+// into the customer's grid (req 6.1).
+const CUSTOMER_EVENTS = CUSTOMER_EVENT_TYPES;
 
 type Props = {
   initial: NotificationPrefRow[];

@@ -21,6 +21,10 @@ import {
   presignUploadUrl,
 } from "@/lib/storage/upload";
 import type { NotificationEventType } from "@/inngest/client";
+import {
+  STAFF_EVENT_TYPES,
+  TOGGLEABLE_EVENT_TYPES,
+} from "@/lib/notifications/audience";
 
 // ── Avatar constants (module-private per Next.js 16 strict "use server") ──
 const AVATAR_ALLOWED_MIMES = [
@@ -271,20 +275,8 @@ export async function revokeOtherSessions(): Promise<{
 
 // ── Notification preferences ────────────────────────────────────
 
-const KNOWN_EVENT_TYPES = new Set<NotificationEventType>([
-  "ticket.assigned",
-  "ticket.customer_replied",
-  "ticket.csat_unsatisfied",
-  "ticket.escalated",
-  "sla.warning_50",
-  "sla.warning_80",
-  "sla.breached",
-  "procurement.submitted",
-  "procurement.approved",
-  "procurement.rejected",
-  "procurement.delivered",
-  "attachment.quarantined",
-]);
+// Role-scoped notification event sets live in a plain module (this file is
+// "use server" and may only export async functions). See req 6.4.
 
 export type NotificationPrefRow = {
   eventType: NotificationEventType;
@@ -292,10 +284,11 @@ export type NotificationPrefRow = {
   smsEnabled: boolean;
 };
 
-export async function listMyNotificationPreferences(): Promise<
-  NotificationPrefRow[]
-> {
+export async function listMyNotificationPreferences(
+  events: readonly NotificationEventType[] = STAFF_EVENT_TYPES,
+): Promise<NotificationPrefRow[]> {
   const user = await requireSessionUser();
+  const display = new Set<NotificationEventType>(events);
   const rows = await db
     .select({
       eventType: notificationPreferences.eventType,
@@ -307,7 +300,7 @@ export async function listMyNotificationPreferences(): Promise<
 
   const map = new Map<NotificationEventType, NotificationPrefRow>();
   for (const r of rows) {
-    if (KNOWN_EVENT_TYPES.has(r.eventType as NotificationEventType)) {
+    if (display.has(r.eventType as NotificationEventType)) {
       map.set(r.eventType as NotificationEventType, {
         eventType: r.eventType as NotificationEventType,
         emailEnabled: r.emailEnabled,
@@ -316,9 +309,9 @@ export async function listMyNotificationPreferences(): Promise<
     }
   }
   // Fill in defaults (email + SMS both on) for events the user has
-  // never touched, so the UI renders the full grid.
+  // never touched, so the UI renders the full grid for this audience.
   const out: NotificationPrefRow[] = [];
-  for (const t of KNOWN_EVENT_TYPES) {
+  for (const t of events) {
     out.push(
       map.get(t) ?? { eventType: t, emailEnabled: true, smsEnabled: true },
     );
@@ -331,7 +324,7 @@ export async function updateNotificationPreference(input: {
   channel: "email" | "sms";
   enabled: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!KNOWN_EVENT_TYPES.has(input.eventType as NotificationEventType)) {
+  if (!TOGGLEABLE_EVENT_TYPES.has(input.eventType as NotificationEventType)) {
     return { ok: false, error: "Unknown event type" };
   }
   if (input.channel !== "email" && input.channel !== "sms") {

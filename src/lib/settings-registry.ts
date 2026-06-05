@@ -59,6 +59,20 @@ export const SETTING_SCHEMAS = {
   // Procurement
   procurement_approval_threshold: z.number().nonnegative().max(1_000_000),
 
+  // Billing / accountant notifications (reqs 8.6–8.9). Accountants are OUR
+  // platform's accountants (not per-organization contacts) — a global list of
+  // email addresses (for negative-balance + ticket-billing alerts) and phone
+  // numbers (for the negative-balance SMS). `superadmin_receive_copy` lets the
+  // Superadmin opt in to receive the same notifications on their own account.
+  "billing.accountant_emails": z.array(
+    z.string().trim().toLowerCase().email(),
+  ).max(20),
+  "billing.accountant_phones": z.array(
+    // E.164-ish: a leading + and 7–15 digits. Twilio wants E.164.
+    z.string().trim().regex(/^\+[1-9]\d{6,14}$/, "Use E.164 format, e.g. +15551234567"),
+  ).max(20),
+  "billing.superadmin_receive_copy": z.boolean(),
+
   // Public rate limits
   "rate_limits.public_submit": z.object({
     per_ip_per_hour: z.number().int().positive().max(10_000),

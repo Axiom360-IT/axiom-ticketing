@@ -8,9 +8,21 @@ import {
   type AccountLockoutProps,
 } from "./templates/account-lockout";
 import {
+  AccountantNegativeBalanceEmail,
+  type AccountantNegativeBalanceProps,
+} from "./templates/accountant-negative-balance";
+import {
+  AccountantTicketBillingEmail,
+  type AccountantTicketBillingProps,
+} from "./templates/accountant-ticket-billing";
+import {
   AttachmentQuarantinedEmail,
   type AttachmentQuarantinedProps,
 } from "./templates/attachment-quarantined";
+import {
+  AttachmentRemovedCustomerEmail,
+  type AttachmentRemovedCustomerProps,
+} from "./templates/attachment-removed-customer";
 import {
   CustomerEmailVerificationEmail,
   type CustomerEmailVerificationProps,
@@ -32,9 +44,17 @@ import {
   type CsatUnsatisfiedStaffProps,
 } from "./templates/csat-unsatisfied-staff";
 import {
+  CustomerRepliedStaffEmail,
+  type CustomerRepliedStaffProps,
+} from "./templates/customer-replied-staff";
+import {
   EscalationAlertEmail,
   type EscalationAlertProps,
 } from "./templates/escalation-alert";
+import {
+  TicketReassignedEmail,
+  type TicketReassignedProps,
+} from "./templates/ticket-reassigned";
 import {
   InboundBounceEmail,
   type InboundBounceProps,
@@ -104,8 +124,16 @@ export type EmailTemplate =
       data: Omit<EscalationAlertProps, "locale">;
     }
   | {
+      template: "ticket_reassigned";
+      data: Omit<TicketReassignedProps, "locale">;
+    }
+  | {
       template: "csat_unsatisfied_staff";
       data: Omit<CsatUnsatisfiedStaffProps, "locale">;
+    }
+  | {
+      template: "customer_replied_staff";
+      data: Omit<CustomerRepliedStaffProps, "locale">;
     }
   | { template: "inbound_bounce"; data: Omit<InboundBounceProps, "locale"> }
   | {
@@ -137,6 +165,10 @@ export type EmailTemplate =
       data: Omit<AttachmentQuarantinedProps, "locale">;
     }
   | {
+      template: "attachment_removed_customer";
+      data: Omit<AttachmentRemovedCustomerProps, "locale">;
+    }
+  | {
       template: "customer_magic_link";
       data: Omit<CustomerMagicLinkProps, "locale">;
     }
@@ -151,6 +183,14 @@ export type EmailTemplate =
   | {
       template: "staff_setup_invite";
       data: Omit<StaffSetupInviteProps, "locale">;
+    }
+  | {
+      template: "accountant_negative_balance";
+      data: Omit<AccountantNegativeBalanceProps, "locale">;
+    }
+  | {
+      template: "accountant_ticket_billing";
+      data: Omit<AccountantTicketBillingProps, "locale">;
     };
 
 type SendEmailOptions = {
@@ -199,9 +239,17 @@ async function renderTemplate(
       return await render(
         <EscalationAlertEmail {...t.data} locale={locale} />,
       );
+    case "ticket_reassigned":
+      return await render(
+        <TicketReassignedEmail {...t.data} locale={locale} />,
+      );
     case "csat_unsatisfied_staff":
       return await render(
         <CsatUnsatisfiedStaffEmail {...t.data} locale={locale} />,
+      );
+    case "customer_replied_staff":
+      return await render(
+        <CustomerRepliedStaffEmail {...t.data} locale={locale} />,
       );
     case "inbound_bounce":
       return await render(<InboundBounceEmail {...t.data} locale={locale} />);
@@ -233,6 +281,10 @@ async function renderTemplate(
       return await render(
         <AttachmentQuarantinedEmail {...t.data} locale={locale} />,
       );
+    case "attachment_removed_customer":
+      return await render(
+        <AttachmentRemovedCustomerEmail {...t.data} locale={locale} />,
+      );
     case "customer_magic_link":
       return await render(
         <CustomerMagicLinkEmail {...t.data} locale={locale} />,
@@ -249,6 +301,14 @@ async function renderTemplate(
       return await render(
         <StaffSetupInviteEmail {...t.data} locale={locale} />,
       );
+    case "accountant_negative_balance":
+      return await render(
+        <AccountantNegativeBalanceEmail {...t.data} locale={locale} />,
+      );
+    case "accountant_ticket_billing":
+      return await render(
+        <AccountantTicketBillingEmail {...t.data} locale={locale} />,
+      );
   }
 }
 
@@ -261,7 +321,9 @@ const TEMPLATE_NAMESPACE = {
   ticket_reopened: "emails.ticketReopened",
   new_assignment: "emails.newAssignment",
   escalation_alert: "emails.escalationAlert",
+  ticket_reassigned: "emails.ticketReassigned",
   csat_unsatisfied_staff: "emails.csatUnsatisfiedStaff",
+  customer_replied_staff: "emails.customerRepliedStaff",
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",
   procurement_submitted: "emails.procurementSubmitted",
@@ -270,10 +332,13 @@ const TEMPLATE_NAMESPACE = {
   procurement_delivered: "emails.procurementDelivered",
   account_lockout: "emails.accountLockout",
   attachment_quarantined: "emails.attachmentQuarantined",
+  attachment_removed_customer: "emails.attachmentRemovedCustomer",
   customer_magic_link: "emails.customerMagicLink",
   customer_email_verification: "emails.customerEmailVerification",
   customer_welcome: "emails.customerWelcome",
   staff_setup_invite: "emails.staffSetupInvite",
+  accountant_negative_balance: "emails.accountantNegativeBalance",
+  accountant_ticket_billing: "emails.accountantTicketBilling",
 } as const;
 
 async function defaultSubject(
@@ -354,6 +419,13 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     subject: finalSubject,
     html,
     replyTo,
-    headers: ticketNumber ? { "X-Ticket-Number": ticketNumber } : undefined,
+    headers: {
+      // These are system-generated notifications. Per RFC 3834, this tells
+      // remote auto-responders (out-of-office, etc.) NOT to auto-reply to us,
+      // heading off mail loops before they reach the inbound filter. A human's
+      // manual reply is unaffected (it carries no Auto-Submitted header).
+      "Auto-Submitted": "auto-generated",
+      ...(ticketNumber ? { "X-Ticket-Number": ticketNumber } : {}),
+    },
   });
 }

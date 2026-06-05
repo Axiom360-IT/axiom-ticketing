@@ -28,6 +28,9 @@ export type ThreadMessage = {
   isInternalNote: boolean;
   isResolutionNote: boolean;
   createdAt: Date;
+  /** True when the author is a recognized ticket participant (a same-org
+   *  colleague the requester looped in), not the original requester (req 5.2). */
+  isParticipant?: boolean;
   attachments?: ThreadAttachment[];
 };
 
@@ -87,6 +90,11 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">
                   {t(CHANNEL_KEYS[m.channel] ?? "channelDashboard")}
                 </span>
+                {m.isParticipant ? (
+                  <span className="rounded bg-blue-100 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                    {t("participantBadge")}
+                  </span>
+                ) : null}
                 {m.isResolutionNote ? (
                   <span className="text-xs font-medium text-green-700 dark:text-green-400">
                     · {t("resolutionNoteBadge")}

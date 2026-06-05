@@ -83,7 +83,6 @@ export function SubmissionForm({
   const [formData, setFormData] = useState({
     customerName: initialName,
     customerEmail: initialEmail,
-    organization: "",
     subject: "",
     description: "",
   });
@@ -190,9 +189,6 @@ export function SubmissionForm({
     } else if (!EMAIL_RE.test(email)) {
       errs.customerEmail = tSubmit("validation.emailInvalid");
     }
-    if (!formData.organization.trim()) {
-      errs.organization = tSubmit("validation.organizationRequired");
-    }
     if (formData.subject.trim().length < 3) {
       errs.subject = tSubmit("validation.subjectShort");
     }
@@ -217,7 +213,6 @@ export function SubmissionForm({
     const result = await createTicket({
       customerName: formData.customerName,
       customerEmail: formData.customerEmail,
-      organization: formData.organization,
       subject: formData.subject,
       // Priority intentionally omitted — server defaults to `medium`,
       // Coordinator triages on review.
@@ -313,35 +308,6 @@ export function SubmissionForm({
               message={fieldErrors.customerEmail}
             />
           </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="organization">
-            {tFields("organization")}
-            <RequiredMark />
-          </Label>
-          <Input
-            id="organization"
-            required
-            autoComplete="organization"
-            value={formData.organization}
-            onChange={(e) => update("organization", e.target.value)}
-            maxLength={160}
-            placeholder={tFields("organizationPlaceholder")}
-            aria-invalid={fieldErrors.organization ? true : undefined}
-            aria-describedby={
-              fieldErrors.organization
-                ? "organization-error organization-hint"
-                : "organization-hint"
-            }
-          />
-          <p
-            id="organization-hint"
-            className="text-xs text-zinc-500 dark:text-zinc-400"
-          >
-            {tFields("organizationHint")}
-          </p>
-          <FieldError id="organization-error" message={fieldErrors.organization} />
         </div>
 
         <div className="space-y-1.5">

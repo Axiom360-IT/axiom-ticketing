@@ -6,6 +6,7 @@ export * from "./rbac";
 export * from "./organizations";
 export * from "./tickets";
 export * from "./ticket-assignees";
+export * from "./ticket-participants";
 export * from "./work-logs";
 export * from "./messages";
 export * from "./attachments";

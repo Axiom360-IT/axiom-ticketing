@@ -9,6 +9,7 @@ import {
   Clock,
   GitBranch,
   History,
+  MailWarning,
   Settings,
   Shield,
   ShoppingCart,
@@ -25,6 +26,7 @@ type NavItem = {
   labelKey:
     | "navTickets"
     | "navWorkLog"
+    | "navModeration"
     | "navProcurement"
     | "navReports"
     | "navOrganizations"
@@ -44,6 +46,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket, requires: "tickets.view" },
   { href: "/admin/work-log", labelKey: "navWorkLog", icon: Clock, requires: "tickets.update" },
+  { href: "/admin/moderation", labelKey: "navModeration", icon: MailWarning, requires: "tickets.update" },
   { href: "/admin/procurement", labelKey: "navProcurement", icon: ShoppingCart, requires: "procurement.view" },
   { href: "/admin/reports", labelKey: "navReports", icon: ClipboardList, requires: "reports.view" },
   { href: "/admin/organizations", labelKey: "navOrganizations", icon: Building2, requires: "organizations.view" },

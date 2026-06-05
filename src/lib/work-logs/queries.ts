@@ -96,7 +96,11 @@ export async function listWorkLogs(
       serviceType: workLogs.serviceType,
       createdAt: workLogs.createdAt,
       technicianId: workLogs.technicianId,
-      technicianName: users.name,
+      // Live name, falling back to the snapshot so a removed/deleted
+      // technician's entries stay attributable (req 4.6).
+      technicianName: sql<
+        string | null
+      >`coalesce(${users.name}, ${workLogs.technicianName})`,
       ticketId: workLogs.ticketId,
       ticketNumber: tickets.ticketNumber,
       ticketSubject: tickets.subject,

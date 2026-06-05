@@ -5,9 +5,8 @@ import { AvatarUpload } from "@/components/customer/avatar-upload";
 import { CustomerNotificationPrefs } from "@/components/customer/customer-notification-prefs";
 import { CustomerPasswordSection } from "@/components/customer/customer-password-section";
 import { CustomerProfileForm } from "@/components/customer/customer-profile-form";
-import {
-  listMyNotificationPreferences,
-} from "@/app/actions/profile";
+import { listMyNotificationPreferences } from "@/app/actions/profile";
+import { CUSTOMER_EVENT_TYPES } from "@/lib/notifications/audience";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { accounts, users } from "@/lib/db/schema/auth";
@@ -31,7 +30,7 @@ export default async function PortalProfilePage() {
     .from(users)
     .where(eq(users.id, user.id))
     .limit(1);
-  const prefs = await listMyNotificationPreferences();
+  const prefs = await listMyNotificationPreferences(CUSTOMER_EVENT_TYPES);
   // image stores the R2 storage key; generate a 1-hour signed URL so the
   // browser can cache it for the session.
   const avatarUrl = profile?.image

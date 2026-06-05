@@ -119,21 +119,29 @@ export default async function WorkLogPage({
     canViewAll ? listAssignableTechnicians() : Promise.resolve([]),
     listOrganizationsForFilter(),
     listLoggableTickets(user.id),
-    canViewAll
-      ? Promise.resolve<string[]>([])
-      : listUserCollaboratorTicketIds(user.id),
+    // Needed for ALL viewers (incl. Super Admin) — even a view_all user may
+    // only manage their OWN entries on tickets they currently own/co-own.
+    listUserCollaboratorTicketIds(user.id),
   ]);
 
   const { items: rows, hasMore } = takePage(rawRows, pageSize);
 
-  // A technician can edit/delete an entry only while they still own the
-  // ticket (current assignee or a collaborator). Once it's reassigned away,
-  // their entry becomes read-only here — matching the server-side gate. Users
-  // with worklog.view_all (Super Admin) can manage any entry.
+  // An entry is editable only by its ORIGINAL author (req 3.5 / 4.6 — frozen
+  // history: not even an admin or the new owner may edit someone else's entry),
+  // and only while that author still owns the ticket (current assignee or merge
+  // co-assignee). Once reassigned away, the author's own entry becomes
+  // read-only here too — matching the server-side gate.
   const collaboratorSet = new Set(collaboratorTicketIds);
   const viewerId = user.id;
-  function canManageRow(assignedToId: string | null, ticketId: string): boolean {
-    if (canViewAll) return true;
+  function canManageRow(
+    assignedToId: string | null,
+    ticketId: string,
+    technicianId: string | null,
+  ): boolean {
+    if (technicianId !== viewerId) return false;
+    // Author-only is not enough — the author must still be on the ticket. This
+    // applies to EVERY role (a Super Admin can't edit their own entry once
+    // they've been reassigned away), matching the server-side guard.
     return assignedToId === viewerId || collaboratorSet.has(ticketId);
   }
 
@@ -275,6 +283,7 @@ export default async function WorkLogPage({
                           canManage={canManageRow(
                             row.ticketAssignedToId,
                             row.ticketId,
+                            row.technicianId,
                           )}
                           entry={{
                             id: row.id,

@@ -63,10 +63,15 @@ export async function globalSearch(rawQuery: string): Promise<GlobalSearchResult
   // ── Tickets ──────────────────────────────────────────────────
   // Gate per row via the existing ticketsVisibilityCondition helper —
   // it already encodes "Tech sees own assigned, Customer sees own,
-  // everyone else sees all" matching the can() rules.
+  // everyone else sees all" matching the can() rules. Search includes the
+  // worked-on carry-over so a technician can still find (and open read-only) a
+  // ticket they logged work on after it was reassigned away (req 3.4), even
+  // though it has left their active queue (req 3.3).
   let ticketHits: SearchTicketHit[] = [];
   if (await can(caller, "tickets.view", { type: "global" }, productionContext)) {
-    const visibility = ticketsVisibilityCondition(caller);
+    const visibility = ticketsVisibilityCondition(caller, {
+      includeWorkedOn: true,
+    });
     const matches = or(
       ilike(tickets.ticketNumber, like),
       ilike(tickets.subject, like),

@@ -151,6 +151,26 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "Cost above which procurement requires Super Admin approval (0 = single-step Coordinator approval only)",
     },
 
+    // Billing / accountant notifications (reqs 8.6–8.9)
+    {
+      key: "billing.accountant_emails",
+      value: [],
+      description:
+        "Accountant email addresses that receive negative-balance and ticket-billing notifications",
+    },
+    {
+      key: "billing.accountant_phones",
+      value: [],
+      description:
+        "Accountant phone numbers (E.164) that receive the negative-balance SMS",
+    },
+    {
+      key: "billing.superadmin_receive_copy",
+      value: false,
+      description:
+        "Also send accountant billing notifications to active Super Admins",
+    },
+
     // Public rate limits
     {
       key: "rate_limits.public_submit",

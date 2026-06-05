@@ -3,13 +3,17 @@ import { index, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core
 import { users } from "./auth";
 import { tickets } from "./tickets";
 
-// ── Multi-technician assignment (Meeting-2, CR-11) ────────────────────
+// ── Merge co-assignee (the single-technician exception) ───────────────
 //
-// `tickets.assigned_to_id` remains the PRIMARY assignee (it drives the
-// "my tickets" queue, SLA ownership, and the primary notification). This
-// junction adds COLLABORATING technicians so an admin/coordinator can put
-// several technicians on one ticket. Strict-technician visibility is the
-// union of the primary assignee and any collaborator rows here.
+// Every ticket has exactly ONE primary technician: `tickets.assigned_to_id`
+// (it drives the "my tickets" queue, SLA ownership, and the primary
+// notification). A ticket may carry a SECOND technician ONLY as the result of
+// a merge: when two tickets are merged, the source ticket's technician is
+// recorded here as a co-assignee on the surviving (target) ticket — the one
+// sanctioned exception to the single-technician rule (req 3.1 / 4.4). Rows are
+// written solely by the merge flow; a Superadmin can remove either technician
+// (removing the primary promotes the co-assignee — req 4.5). Strict-technician
+// visibility is the union of the primary assignee and any co-assignee row here.
 // ──────────────────────────────────────────────────────────────────────
 
 export const ticketAssignees = pgTable(

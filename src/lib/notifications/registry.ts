@@ -22,13 +22,29 @@ export type InAppDescriptor = {
 };
 
 const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
+  // Customer-facing assignment: neutral wording that names the technician
+  // (req 6.2). Distinct from `ticket.assigned` so the customer's bell never
+  // shows the tech-oriented "assigned to you" copy (req 6.1).
+  "ticket.assigned_customer": {
+    titleKey: "notifications.ticket.assigned_customer.title",
+    bodyKey: "notifications.ticket.assigned_customer.body",
+  },
+  // Technician-facing assignment ("assigned to you").
   "ticket.assigned": {
     titleKey: "notifications.ticket.assigned.title",
     bodyKey: "notifications.ticket.assigned.body",
   },
+  "ticket.reassigned": {
+    titleKey: "notifications.ticket.reassigned.title",
+    bodyKey: "notifications.ticket.reassigned.body",
+  },
   "ticket.customer_replied": {
     titleKey: "notifications.ticket.customer_replied.title",
     bodyKey: "notifications.ticket.customer_replied.body",
+  },
+  "ticket.message_held": {
+    titleKey: "notifications.ticket.message_held.title",
+    bodyKey: "notifications.ticket.message_held.body",
   },
   "ticket.resolved": {
     titleKey: "notifications.ticket.resolved.title",

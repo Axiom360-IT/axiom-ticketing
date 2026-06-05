@@ -251,22 +251,45 @@ export async function setProcurementStatus(
     after: { status },
   });
 
-  // Tell the requester when the order is completed.
-  if (status === "order_completed" && r.requestedByEmail) {
+  // Tell the requester when the order is completed. Route through the
+  // dispatcher (not a bare sendEmail) so the requester's notification
+  // preferences are honored AND an in-app bell entry is created — a
+  // procurement.delivered registry descriptor exists, but the previous direct
+  // send bypassed both (req 6.3). Fall back to a direct email only when there
+  // is no user account to target.
+  if (status === "order_completed") {
     const ticket = await ticketSubject(r.ticketId);
+    const ticketNumber = ticket?.ticketNumber ?? "";
+    const adminUrl = `${getAppUrl()}/admin/procurement/${requestId}`;
+    const deliveredEmail = {
+      template: "procurement_delivered",
+      data: {
+        ticketNumber,
+        itemName: r.itemName,
+        quantity: r.quantity,
+        adminUrl,
+      },
+    } as const;
     try {
-      await sendEmail({
-        to: r.requestedByEmail,
-        template: {
-          template: "procurement_delivered",
+      if (r.requestedById) {
+        await inngest.send({
+          name: "notification/dispatch",
           data: {
-            ticketNumber: ticket?.ticketNumber ?? "",
-            itemName: r.itemName,
-            quantity: r.quantity,
-            adminUrl: `${getAppUrl()}/admin/procurement/${requestId}`,
+            type: "procurement.delivered",
+            recipientUserIds: [r.requestedById],
+            ticketId: r.ticketId,
+            ticketNumber,
+            email: { template: deliveredEmail },
+            inApp: {
+              titleArgs: { itemName: r.itemName },
+              bodyArgs: { quantity: r.quantity, itemName: r.itemName },
+              linkUrl: `/admin/procurement/${requestId}`,
+            },
           },
-        },
-      });
+        });
+      } else if (r.requestedByEmail) {
+        await sendEmail({ to: r.requestedByEmail, template: deliveredEmail });
+      }
     } catch (err) {
       console.error("[setProcurementStatus] requester notify failed:", err);
     }

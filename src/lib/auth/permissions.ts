@@ -20,6 +20,9 @@ export const PERMISSIONS = [
   "tickets.escalate",
   "tickets.deescalate",
   "tickets.delete",
+  // Superadmin-only: merge a duplicate ticket into another. Distinct from
+  // tickets.delete so a custom role granted delete can't merge (req §4).
+  "tickets.merge",
   "tickets.export",
 
   // Procurement (Meeting-2 CR-24: approval removed; coordinator actions the
@@ -107,6 +110,9 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   "procurement.manage",
   "users.view",
   "reports.view",
+  // Req 7.2 — audit logs are visible to everyone by default. An admin can
+  // revoke this from a role to hide the logs view from it.
+  "audit.view",
 ];
 
 export const TECHNICIAN_PERMISSIONS: Permission[] = [
@@ -120,6 +126,10 @@ export const TECHNICIAN_PERMISSIONS: Permission[] = [
   "procurement.view",
   "procurement.create",
   "procurement.update",
+  // Req 7.2 — audit logs are visible to everyone by default. A normal
+  // technician with this permission sees ONLY their own actions (req 7.1,
+  // scoped in src/app/actions/audit.ts); revoking it hides the logs view.
+  "audit.view",
 ];
 
 export const CUSTOMER_PERMISSIONS: Permission[] = [

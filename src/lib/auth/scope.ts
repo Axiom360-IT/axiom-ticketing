@@ -28,29 +28,42 @@ const ACTIVE_TICKETS_BASE = and(
  * Elevated roles get only the base filter; scoped roles get role-condition
  * AND-ed with it.
  *
+ * For a strict technician this defaults to their ACTIVE list — tickets they
+ * currently own (primary assignee) or co-own (a merge co-assignee). A ticket
+ * reassigned away from them leaves this set immediately (req 3.1/3.3). Pass
+ * `{ includeWorkedOn: true }` to additionally surface tickets they've logged
+ * work on but no longer own — a read-only carry-over used by search/history so
+ * their worklog stays reachable (req 3.4), NOT by the active queue.
+ *
  * Use in queue queries:
  *   const where = ticketsVisibilityCondition(user);
  *   const rows = db.select().from(tickets).where(where);
  */
-export function ticketsVisibilityCondition(user: SessionUser): SQL {
+export function ticketsVisibilityCondition(
+  user: SessionUser,
+  opts?: { includeWorkedOn?: boolean },
+): SQL {
   // Elevated roles see everything except soft-deleted + drafts
   for (const r of user.roleNames) {
     if (ELEVATED_TICKET_ROLES.has(r)) return ACTIVE_TICKETS_BASE;
   }
 
-  // Strict Technician — tickets assigned to them, OR where they are an
-  // additional collaborator (Meeting-2, CR-11), OR which they've logged work
-  // on (read-only carry-over: they keep sight of tickets they worked on even
-  // after the ticket is reassigned away from them).
+  // Strict Technician — their ACTIVE list is tickets currently assigned to
+  // them OR where they are a merge co-assignee (the single sanctioned
+  // two-technician case, req 4.4). The worklog carry-over leg is added only
+  // when `includeWorkedOn` is set, so a reassigned-away ticket drops out of the
+  // active queue (req 3.3) yet stays findable in history (req 3.4).
   if (isStrictTechnician(user)) {
-    return and(
-      ACTIVE_TICKETS_BASE,
-      or(
-        eq(tickets.assignedToId, user.id),
-        sql`EXISTS (SELECT 1 FROM ${ticketAssignees} WHERE ${ticketAssignees.ticketId} = ${tickets.id} AND ${ticketAssignees.userId} = ${user.id})`,
+    const legs: SQL[] = [
+      eq(tickets.assignedToId, user.id),
+      sql`EXISTS (SELECT 1 FROM ${ticketAssignees} WHERE ${ticketAssignees.ticketId} = ${tickets.id} AND ${ticketAssignees.userId} = ${user.id})`,
+    ];
+    if (opts?.includeWorkedOn) {
+      legs.push(
         sql`EXISTS (SELECT 1 FROM ${workLogs} WHERE ${workLogs.ticketId} = ${tickets.id} AND ${workLogs.technicianId} = ${user.id})`,
-      ),
-    )!;
+      );
+    }
+    return and(ACTIVE_TICKETS_BASE, or(...legs))!;
   }
 
   // Strict Customer — only own tickets. Linking guest-submitted tickets

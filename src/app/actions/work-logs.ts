@@ -12,6 +12,7 @@ import { workLogs } from "@/lib/db/schema/work-logs";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
+import { notifyBalanceChanged } from "@/lib/billing/events";
 import { loadTicketScope } from "@/lib/tickets/load";
 
 const SERVICE_TYPES = ["onsite", "remote"] as const;
@@ -59,10 +60,19 @@ export async function addWorkLogEntry(
     throw new ForbiddenError();
   }
 
-  await transactional(async (tx) => {
+  // Snapshot the author's name now so the entry stays attributable even if the
+  // user is later removed/merged-out and technician_id is nulled (req 4.6).
+  const [me] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+
+  const affectedOrgId = await transactional(async (tx) => {
     await tx.insert(workLogs).values({
       ticketId: ticket.id,
       technicianId: user.id,
+      technicianName: me?.name ?? null,
       description: data.description,
       minutes: data.minutes,
       serviceType: data.serviceType,
@@ -70,8 +80,11 @@ export async function addWorkLogEntry(
     });
     // Keep the Monthly-Plan balance in sync (no-op unless the ticket is
     // billed as Monthly Plan against a plan organization).
-    await syncMonthlyPlanDeduction(tx, ticket.id);
+    return syncMonthlyPlanDeduction(tx, ticket.id);
   });
+  // Post-commit: let the balance monitor check for an over-plan (negative)
+  // balance and alert the accountant if it just crossed (req 8.6).
+  await notifyBalanceChanged([affectedOrgId]);
 
   await audit({
     actorId: user.id,
@@ -114,6 +127,7 @@ export async function updateWorkLogEntry(
       id: workLogs.id,
       ticketId: workLogs.ticketId,
       minutes: workLogs.minutes,
+      technicianId: workLogs.technicianId,
     })
     .from(workLogs)
     .where(eq(workLogs.id, workLogId))
@@ -133,7 +147,25 @@ export async function updateWorkLogEntry(
     throw new ForbiddenError();
   }
 
-  await transactional(async (tx) => {
+  // Req 3.5 / 4.6 — frozen history: an entry is mutable ONLY by its original
+  // author, and ONLY while that author is still on the ticket (current primary
+  // OR a merge co-assignee). We check assignment explicitly rather than leaning
+  // on the can(tickets.update) gate above, because that gate does NOT scope
+  // elevated roles (Coordinator / IT Director / Super Admin) to assignment.
+  // Once the author leaves the ticket — reassigned away, or removed from a
+  // merged ticket — the entry is read-only to EVERYONE, including the current
+  // owner and admins.
+  const stillAssigned =
+    ticket.assignedToId === user.id || ticket.assigneeIds.includes(user.id);
+  if (entry.technicianId !== user.id || !stillAssigned) {
+    return {
+      ok: false,
+      error:
+        "This work-log entry is read-only — it can only be changed by its author while they're assigned to the ticket.",
+    };
+  }
+
+  const affectedOrgId = await transactional(async (tx) => {
     await tx
       .update(workLogs)
       .set({
@@ -144,8 +176,9 @@ export async function updateWorkLogEntry(
       })
       .where(eq(workLogs.id, workLogId));
     // Minutes may have changed — keep any Monthly-Plan deduction in sync.
-    await syncMonthlyPlanDeduction(tx, entry.ticketId);
+    return syncMonthlyPlanDeduction(tx, entry.ticketId);
   });
+  await notifyBalanceChanged([affectedOrgId]);
 
   await audit({
     actorId: user.id,
@@ -171,6 +204,7 @@ export async function deleteWorkLogEntry(
       id: workLogs.id,
       ticketId: workLogs.ticketId,
       minutes: workLogs.minutes,
+      technicianId: workLogs.technicianId,
     })
     .from(workLogs)
     .where(eq(workLogs.id, workLogId))
@@ -190,10 +224,24 @@ export async function deleteWorkLogEntry(
     throw new ForbiddenError();
   }
 
-  await transactional(async (tx) => {
+  // Frozen history (req 3.5 / 4.6) — only the original author may delete their
+  // own entry, and only while still assigned to the ticket. See
+  // updateWorkLogEntry for the full rationale.
+  const stillAssigned =
+    ticket.assignedToId === user.id || ticket.assigneeIds.includes(user.id);
+  if (entry.technicianId !== user.id || !stillAssigned) {
+    return {
+      ok: false,
+      error:
+        "This work-log entry is read-only — it can only be changed by its author while they're assigned to the ticket.",
+    };
+  }
+
+  const affectedOrgId = await transactional(async (tx) => {
     await tx.delete(workLogs).where(eq(workLogs.id, workLogId));
-    await syncMonthlyPlanDeduction(tx, entry.ticketId);
+    return syncMonthlyPlanDeduction(tx, entry.ticketId);
   });
+  await notifyBalanceChanged([affectedOrgId]);
 
   await audit({
     actorId: user.id,
@@ -218,7 +266,11 @@ export async function listWorkLogsForTicket(ticketId: string) {
       serviceType: workLogs.serviceType,
       createdAt: workLogs.createdAt,
       technicianId: workLogs.technicianId,
-      technicianName: users.name,
+      // Prefer the live user name; fall back to the snapshot taken at insert so
+      // a removed/deleted technician's entries stay attributable (req 4.6).
+      technicianName: sql<
+        string | null
+      >`coalesce(${users.name}, ${workLogs.technicianName})`,
     })
     .from(workLogs)
     .leftJoin(users, eq(workLogs.technicianId, users.id))

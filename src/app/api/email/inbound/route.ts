@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { processedWebhookEvents } from "@/lib/db/schema/webhooks";
 import {
@@ -95,10 +96,28 @@ export async function POST(request: NextRequest): Promise<Response> {
     return new Response("OK", { status: 200 });
   }
 
-  await inngest.send({
-    name: EVENT_NAME,
-    data: { payload: normalized, eventId: id },
-  });
+  try {
+    await inngest.send({
+      name: EVENT_NAME,
+      data: { payload: normalized, eventId: id },
+    });
+  } catch (err) {
+    // Enqueue failed AFTER we recorded the idempotency marker. Roll the marker
+    // back so Resend's retry (same svix-id) is reprocessed instead of being
+    // treated as a duplicate and silently lost — then 500 to trigger that
+    // retry. (req 5.1 — no inbound reply should be dropped on a transient.)
+    console.error("[email/inbound] enqueue failed; rolling back idempotency", err);
+    await db
+      .delete(processedWebhookEvents)
+      .where(
+        and(
+          eq(processedWebhookEvents.provider, PROVIDER),
+          eq(processedWebhookEvents.eventId, id),
+        ),
+      )
+      .catch(() => {});
+    return new Response("Enqueue failed", { status: 500 });
+  }
 
   return new Response("OK", { status: 200 });
 }

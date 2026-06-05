@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { eventType } from "inngest";
 import { simpleParser } from "mailparser";
 import { audit } from "@/lib/audit";
@@ -16,6 +16,11 @@ import {
   extractTicketNumber,
   type NormalizedInboundEmail,
 } from "@/lib/email/inbound-payload";
+import {
+  classifyInboundSender,
+  upsertParticipant,
+} from "@/lib/tickets/participants";
+import { senderAuthVerdict } from "@/lib/email/auth-results";
 import { matchesMagicBytes } from "@/lib/storage/magic-bytes";
 import {
   isAllowedMimeType,
@@ -58,16 +63,32 @@ export const processInboundEmail = inngest.createFunction(
     id: "process-inbound-email",
     retries: 2,
     triggers: eventType("email/inbound.received"),
+    // Dedupe re-enqueued events by the provider event id, so a route-level
+    // enqueue retry (req 5.1 rollback path) can't double-post a reply.
+    idempotency: "event.data.eventId",
   },
   async ({ event, step }) => {
     const { payload, eventId } = event.data as EventData;
 
-    // 1. Filter
-    const decision = shouldAcceptInbound({
-      headers: new Map(Object.entries(payload.headers)),
-      subject: payload.subject,
-      text: payload.text,
-    });
+    const appUrl = getAppUrl();
+    const newTicketUrl = `${appUrl}/portal/submit`;
+
+    // Thread by the stable ticket token FIRST (req 5.1/5.2 — never thread by
+    // the sender's identity). Knowing whether this is a reply lets the filter
+    // keep quote-only replies that would otherwise be over-stripped to empty
+    // and silently dropped before the processor's raw-text fallback (req 5.1).
+    const ticketNumber = extractTicketNumber(payload);
+
+    // 1. Filter (auto-reply/bounce/list defenses always apply; the empty-body
+    //    rule is lenient for a reply to a known ticket).
+    const decision = shouldAcceptInbound(
+      {
+        headers: new Map(Object.entries(payload.headers)),
+        subject: payload.subject,
+        text: payload.text,
+      },
+      { isReply: Boolean(ticketNumber) },
+    );
     if (!decision.accept) {
       console.info(
         `[process-inbound-email] dropped (${decision.reason}) eventId=${eventId} from=${payload.fromEmail}`,
@@ -75,13 +96,7 @@ export const processInboundEmail = inngest.createFunction(
       return { status: "dropped", reason: decision.reason };
     }
 
-    const appUrl = getAppUrl();
-    const newTicketUrl = `${appUrl}/portal/submit`;
-
-    // 2. Find ticket — if no ticket number, this is a fresh email and
-    //    we open a new ticket from it (the standard "email to support"
-    //    flow that every mature ticketing system supports).
-    const ticketNumber = extractTicketNumber(payload);
+    // 2. No ticket token → fresh "email to support" → open a new ticket.
     if (!ticketNumber) {
       const result = await step.run("create-ticket-from-email", async () =>
         createTicketFromInbound(payload, appUrl),
@@ -98,6 +113,7 @@ export const processInboundEmail = inngest.createFunction(
           status: tickets.status,
           subject: tickets.subject,
           customerEmail: tickets.customerEmail,
+          organizationId: tickets.organizationId,
           assignedToId: tickets.assignedToId,
         })
         .from(tickets)
@@ -154,7 +170,43 @@ export const processInboundEmail = inngest.createFunction(
       return { status: "ticket-closed", ticketNumber };
     }
 
+    const fromEmail = payload.fromEmail.trim().toLowerCase();
+    const fromName = payload.fromName ?? payload.fromEmail;
+
+    // Classify the sender against the ticket's organization (req 5.2). We
+    // thread by the token but AUTHORIZE by domain: the original requester,
+    // recognized participants, and same-org colleagues post normally; anyone
+    // else is held for moderation below.
+    const classification = await step.run("classify-sender", async () => {
+      const base = await classifyInboundSender(
+        {
+          id: ticket.id,
+          customerEmail: ticket.customerEmail,
+          organizationId: ticket.organizationId,
+        },
+        fromEmail,
+      );
+      if (base === "foreign") {
+        return { relation: "foreign" as const, reason: "foreign-domain" as string };
+      }
+      // Anti-spoofing (req 5.2): the relation was derived from the FORGEABLE
+      // From: header. Before auto-posting, require a passing sender-auth verdict
+      // (DMARC/DKIM/SPF, from the provider's Authentication-Results); otherwise
+      // hold for moderation. Operators can relax via `inbound_require_auth`.
+      const requireAuth =
+        (await getSetting<boolean>("inbound_require_auth")) ?? true;
+      if (
+        requireAuth &&
+        senderAuthVerdict(payload.headers, fromEmail) !== "pass"
+      ) {
+        return { relation: "foreign" as const, reason: "unauthenticated" as string };
+      }
+      return { relation: base, reason: null as string | null };
+    });
+    const relation = classification.relation;
+
     // 5. Loop detection — same sender, same ticket, > threshold in window.
+    //    Case-insensitive so it counts historically mixed-case author rows.
     const since = new Date(Date.now() - LOOP_WINDOW_MS);
     const recent = await step.run("count-recent-from-sender", async () =>
       db
@@ -163,7 +215,7 @@ export const processInboundEmail = inngest.createFunction(
         .where(
           and(
             eq(messages.ticketId, ticket.id),
-            eq(messages.authorEmail, payload.fromEmail),
+            eq(sql`lower(${messages.authorEmail})`, fromEmail),
             gt(messages.createdAt, since),
           ),
         ),
@@ -175,23 +227,105 @@ export const processInboundEmail = inngest.createFunction(
       return { status: "loop-detected", ticketNumber };
     }
 
-    // 6. Insert message
+    // 6. Build the body — raw-text fallback so an over-stripped reply is never
+    //    lost (req 5.1).
     const stripped = stripQuotesAndSignatures(payload.text ?? "");
     const messageBody = stripped.length > 0 ? stripped : (payload.text ?? "");
 
+    // Attribute to a known account when the sender has one.
+    const [knownUser] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.email, fromEmail))
+      .limit(1);
+    const authorName = knownUser?.name ?? fromName;
+
+    // 6a. Foreign sender → HOLD for moderation (req 5.2). Stored but excluded
+    //     from the conversation thread until a coordinator approves it; notify
+    //     coordinators; do NOT notify the assigned tech, touch SLA, or ingest
+    //     attachments.
+    if (relation === "foreign") {
+      await step.run("hold-message", async () =>
+        db.insert(messages).values({
+          ticketId: ticket.id,
+          authorId: knownUser?.id ?? null,
+          authorEmail: fromEmail,
+          authorName,
+          authorType: "customer",
+          body: messageBody,
+          channel: "email",
+          moderationStatus: "held",
+          heldReason: classification.reason ?? "foreign-domain",
+        }),
+      );
+      await audit({
+        actorId: null,
+        action: "ticket.inbound_email",
+        targetType: "ticket",
+        targetId: ticket.ticketNumber,
+        after: {
+          from: fromEmail,
+          length: messageBody.length,
+          held: true,
+          reason: classification.reason ?? "foreign-domain",
+        },
+      });
+      await step.run("notify-moderators", async () => {
+        try {
+          await inngest.send({
+            name: "notification/dispatch",
+            data: {
+              type: "ticket.message_held",
+              recipientRoles: ["Coordinator"],
+              ticketId: ticket.id,
+              ticketNumber: ticket.ticketNumber,
+              inApp: {
+                titleArgs: { ticketNumber: ticket.ticketNumber },
+                bodyArgs: { sender: fromEmail },
+                linkUrl: "/admin/moderation",
+              },
+            },
+          });
+        } catch (err) {
+          console.error(
+            "[process-inbound-email] held-message notify failed:",
+            err,
+          );
+        }
+      });
+      return { status: "held", ticketNumber };
+    }
+
+    // 6b. Approved sender (original requester / participant / same-org
+    //     colleague) → post normally, attributed to the actual sender.
     const [insertedMsg] = await step.run("insert-message", async () =>
       db
         .insert(messages)
         .values({
           ticketId: ticket.id,
-          authorEmail: payload.fromEmail,
-          authorName: payload.fromName ?? payload.fromEmail,
+          authorId: knownUser?.id ?? null,
+          authorEmail: fromEmail,
+          authorName,
           authorType: "customer",
           body: messageBody,
           channel: "email",
+          moderationStatus: "approved",
         })
         .returning({ id: messages.id }),
     );
+
+    // A same-org colleague replying from a different address becomes an active
+    // participant so future updates reach them too (req 5.2).
+    if (relation === "org-domain") {
+      await step.run("add-participant", async () =>
+        upsertParticipant({
+          ticketId: ticket.id,
+          email: fromEmail,
+          name: knownUser?.name ?? payload.fromName ?? null,
+          addedVia: "domain_auto",
+        }),
+      );
+    }
 
     // 6b. Ingest attachments — only when raw MIME is supplied. We parse
     // with mailparser, then filter (allowed MIME + size + magic-byte
@@ -279,7 +413,7 @@ export const processInboundEmail = inngest.createFunction(
       action: "ticket.inbound_email",
       targetType: "ticket",
       targetId: ticket.ticketNumber,
-      after: { from: payload.fromEmail, length: messageBody.length },
+      after: { from: fromEmail, length: messageBody.length, relation },
     });
 
     // Notify the assigned tech via the dispatch fan-out. If the ticket
@@ -288,7 +422,7 @@ export const processInboundEmail = inngest.createFunction(
     // until someone happens to look at the queue.
     await step.run("notify-assignee", async () => {
       try {
-        const customerName = payload.fromName ?? payload.fromEmail;
+        const customerName = authorName;
         await inngest.send({
           name: "notification/dispatch",
           data: {
@@ -298,15 +432,16 @@ export const processInboundEmail = inngest.createFunction(
             ticketId: ticket.id,
             ticketNumber: ticket.ticketNumber,
             email: {
+              // Staff-voiced template — NOT the customer-facing `ticket_reply`,
+              // which would greet the technician by the customer's name (req 6.3).
               template: {
-                template: "ticket_reply",
+                template: "customer_replied_staff",
                 data: {
                   ticketNumber: ticket.ticketNumber,
                   customerName,
                   subject: ticket.subject,
-                  agentName: customerName,
                   body: messageBody,
-                  trackingUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+                  ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
                 },
               },
               ticketNumber: ticket.ticketNumber,
