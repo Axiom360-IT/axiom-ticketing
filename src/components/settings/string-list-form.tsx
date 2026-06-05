@@ -79,14 +79,14 @@ export function StringListForm({ settingKey, initial, i18nNamespace }: Props) {
           {items.map((v) => (
             <li
               key={v}
-              className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 text-xs"
+              className="inline-flex max-w-full min-w-0 items-center gap-2 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 text-xs"
             >
-              <span>{v}</span>
+              <span className="break-all">{v}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(v)}
                 disabled={isPending}
-                className="text-zinc-500 hover:text-red-600"
+                className="-mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:text-red-600"
                 aria-label={t("remove")}
               >
                 <Trash2 className="size-3" aria-hidden="true" />

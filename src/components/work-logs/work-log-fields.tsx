@@ -71,57 +71,60 @@ export function WorkLogFields({
         />
       </div>
 
-      {/* Labels share row 1, controls share row 2 — so the two field groups
-          line up no matter their individual heights. */}
-      <div className="grid w-fit grid-cols-[auto_auto] items-end gap-x-5 gap-y-1.5">
-        <Label htmlFor={`${idPrefix}-hours`}>{t("timeLabel")}</Label>
-        <Label htmlFor={`${idPrefix}-service`}>{t("serviceTypeLabel")}</Label>
-
-        <div className="flex items-center gap-1.5">
-          <Input
-            id={`${idPrefix}-hours`}
-            type="number"
-            min={0}
-            max={24}
-            value={value.hours}
-            onChange={(e) => onChange({ hours: e.target.value })}
-            className="w-14 text-center tabular-nums"
-            aria-label={t("hoursLabel")}
-            disabled={disabled}
-          />
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("hoursShort")}
-          </span>
-          <Input
-            id={`${idPrefix}-minutes`}
-            type="number"
-            min={0}
-            max={59}
-            value={value.minutes}
-            onChange={(e) => onChange({ minutes: e.target.value })}
-            className="w-14 text-center tabular-nums"
-            aria-label={t("minutesLabel")}
-            disabled={disabled}
-          />
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("minutesShort")}
-          </span>
+      {/* Two field groups, each label-over-control. Stacked on mobile (so the
+          modal never overflows), side by side and bottom-aligned from sm up. */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${idPrefix}-hours`}>{t("timeLabel")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Input
+              id={`${idPrefix}-hours`}
+              type="number"
+              min={0}
+              max={24}
+              value={value.hours}
+              onChange={(e) => onChange({ hours: e.target.value })}
+              className="w-14 text-center tabular-nums"
+              aria-label={t("hoursLabel")}
+              disabled={disabled}
+            />
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+              {t("hoursShort")}
+            </span>
+            <Input
+              id={`${idPrefix}-minutes`}
+              type="number"
+              min={0}
+              max={59}
+              value={value.minutes}
+              onChange={(e) => onChange({ minutes: e.target.value })}
+              className="w-14 text-center tabular-nums"
+              aria-label={t("minutesLabel")}
+              disabled={disabled}
+            />
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+              {t("minutesShort")}
+            </span>
+          </div>
         </div>
 
-        <Select
-          items={{ remote: t("serviceRemote"), onsite: t("serviceOnsite") }}
-          value={value.serviceType}
-          onValueChange={(v) => onChange({ serviceType: v ?? "remote" })}
-          disabled={disabled}
-        >
-          <SelectTrigger id={`${idPrefix}-service`} className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="remote">{t("serviceRemote")}</SelectItem>
-            <SelectItem value="onsite">{t("serviceOnsite")}</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${idPrefix}-service`}>{t("serviceTypeLabel")}</Label>
+          <Select
+            items={{ remote: t("serviceRemote"), onsite: t("serviceOnsite") }}
+            value={value.serviceType}
+            onValueChange={(v) => onChange({ serviceType: v ?? "remote" })}
+            disabled={disabled}
+          >
+            <SelectTrigger id={`${idPrefix}-service`} className="w-full sm:w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="remote">{t("serviceRemote")}</SelectItem>
+              <SelectItem value="onsite">{t("serviceOnsite")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
   );

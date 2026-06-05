@@ -71,10 +71,10 @@ export function MergedTechnicians({
                 type="button"
                 onClick={() => remove(tech.id)}
                 disabled={pending}
-                className="rounded-full p-0.5 hover:bg-zinc-200 disabled:opacity-50 dark:hover:bg-zinc-700"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full hover:bg-zinc-200 disabled:opacity-50 dark:hover:bg-zinc-700"
                 aria-label={t("removeLabel", { name: tech.name })}
               >
-                <X className="h-3 w-3" aria-hidden="true" />
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             ) : null}
           </li>

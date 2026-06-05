@@ -85,11 +85,12 @@ export function OrgTriageRow({
           ))}
         </SelectContent>
       </Select>
-      <Button size="sm" onClick={link} disabled={pending || !orgId}>
+      <Button size="sm" className="min-h-[36px]" onClick={link} disabled={pending || !orgId}>
         {pending ? t("linking") : t("link")}
       </Button>
       <Button
         size="sm"
+        className="min-h-[36px]"
         variant="ghost"
         nativeButton={false}
         render={<Link href={createHref} />}
@@ -101,7 +102,7 @@ export function OrgTriageRow({
         variant="ghost"
         onClick={dismiss}
         disabled={pending}
-        className="text-zinc-500"
+        className="min-h-[36px] text-zinc-500"
       >
         {t("dismiss")}
       </Button>

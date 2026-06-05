@@ -1725,6 +1725,8 @@
       "tagline": "Ticketing System",
       "buildLine": "v0.1.0 · MVP build",
       "mainNavLabel": "Main",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
       "navTickets": "Tickets",
       "navWorkLog": "Work Log",
       "navModeration": "Moderation",

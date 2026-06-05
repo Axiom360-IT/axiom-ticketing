@@ -290,36 +290,45 @@ export function AttachmentPicker({
             <li
               key={p.key}
               className={cn(
-                "flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md border",
+                "text-xs px-2.5 py-1.5 rounded-md border",
                 p.status === "failed"
                   ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
                   : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
               )}
             >
-              <FileText className="size-3.5" aria-hidden="true" />
-              <span className="font-medium truncate flex-1">{p.file.name}</span>
-              <span className="text-zinc-400 shrink-0">
-                {formatBytes(p.file.size)}
-              </span>
-              <span className="text-[10px] uppercase tracking-wide shrink-0">
-                {p.status === "uploading"
-                  ? t("uploadingShort")
-                  : p.status === "confirming"
-                    ? "Verifying…"
-                    : p.status === "ready"
-                      ? "Ready"
-                      : p.status === "failed"
-                        ? (p.error ?? "Failed")
-                        : "Queued"}
-              </span>
-              <button
-                type="button"
-                onClick={() => removePending(p.key)}
-                className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                aria-label={t("remove")}
-              >
-                <X className="size-3" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-2">
+                <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+                <span className="font-medium truncate flex-1">{p.file.name}</span>
+                <span className="text-zinc-400 shrink-0">
+                  {formatBytes(p.file.size)}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide shrink-0">
+                  {p.status === "uploading"
+                    ? t("uploadingShort")
+                    : p.status === "confirming"
+                      ? "Verifying…"
+                      : p.status === "ready"
+                        ? "Ready"
+                        : p.status === "failed"
+                          ? "Failed"
+                          : "Queued"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removePending(p.key)}
+                  className="p-1 -mr-1 shrink-0 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  aria-label={t("remove")}
+                >
+                  <X className="size-3" aria-hidden="true" />
+                </button>
+              </div>
+              {/* Failed error embeds the filename — give it its own wrapping
+                  line so a long name can't overflow the row. */}
+              {p.status === "failed" && p.error ? (
+                <p className="mt-1 break-words text-[11px] text-red-600 dark:text-red-400">
+                  {p.error}
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>

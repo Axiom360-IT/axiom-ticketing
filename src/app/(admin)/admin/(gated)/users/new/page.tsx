@@ -39,7 +39,7 @@ export default async function NewUserPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("subtitle")}
         </p>

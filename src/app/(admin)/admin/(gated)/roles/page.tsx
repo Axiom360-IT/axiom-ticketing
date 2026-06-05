@@ -60,9 +60,9 @@ export default async function RolesListPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("title")}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {t("subtitle")} · {t("count", { count: rows.length })}
           </p>

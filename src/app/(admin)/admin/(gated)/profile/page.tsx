@@ -52,7 +52,7 @@ export default async function ProfilePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{t("page.title")}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{t("page.title")}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("page.subtitle")}
         </p>

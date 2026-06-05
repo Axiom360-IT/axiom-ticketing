@@ -114,7 +114,7 @@ export default async function SettingsPage({
   return (
     <div className="space-y-6 max-w-4xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("subtitle")}
         </p>
@@ -122,7 +122,7 @@ export default async function SettingsPage({
 
       <nav
         aria-label={t("title")}
-        className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800 -mt-2"
+        className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800 -mt-2 overflow-x-auto"
       >
         <SettingsTabLink tab="operations" active={tab === "operations"} label={t("tabOperations")} />
         <SettingsTabLink tab="tickets" active={tab === "tickets"} label={t("tabTickets")} />
@@ -524,7 +524,7 @@ function SettingsTabLink({
       href={`/admin/settings?tab=${tab}`}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+        "shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
         active
           ? "border-blue-600 text-blue-700 dark:border-blue-500 dark:text-blue-400"
           : "border-transparent text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700",

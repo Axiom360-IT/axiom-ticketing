@@ -176,7 +176,7 @@ export function CustomerPasswordSection({ hasPassword }: Props) {
         <button
           type="submit"
           disabled={submitting}
-          className="px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="px-4 py-2.5 min-h-[44px] rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           {submitting
             ? t("submitting")

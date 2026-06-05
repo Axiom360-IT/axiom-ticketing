@@ -135,7 +135,7 @@ export function GlobalSearch() {
   }
 
   return (
-    <div className="relative flex-1 max-w-md">
+    <div className="relative flex-1 min-w-0 max-w-md">
       <label className="sr-only" htmlFor={`${dropdownId}-input`}>
         {t("topbarSearchAriaLabel")}
       </label>
@@ -165,7 +165,7 @@ export function GlobalSearch() {
             setTimeout(() => setOpen(false), 150);
           }}
           onKeyDown={handleKeyDown}
-          className="flex-1 bg-transparent outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+          className="flex-1 min-w-0 bg-transparent outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
         />
         <kbd className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 font-mono text-zinc-500">
           ⌘K

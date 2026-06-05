@@ -93,12 +93,12 @@ export function HolidaysList({ initial }: Props) {
               <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400 w-28">
                 {h.date}
               </span>
-              <span className="flex-1">{h.label}</span>
+              <span className="flex-1 min-w-0 break-words">{h.label}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(h.date)}
                 disabled={removing === h.date}
-                className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-red-600"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-red-600"
                 aria-label={t("remove")}
               >
                 <Trash2 className="size-3.5" aria-hidden="true" />

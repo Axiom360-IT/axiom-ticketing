@@ -156,9 +156,9 @@ export default async function WorkLogPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("title")}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {canViewAll ? t("subtitleAll") : t("subtitleOwn")}
           </p>
@@ -197,8 +197,8 @@ export default async function WorkLogPage({
         }}
       />
 
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
           {t("totalLabel")}
         </span>
         <span className="text-base font-semibold tabular-nums">

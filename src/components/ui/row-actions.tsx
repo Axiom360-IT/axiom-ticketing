@@ -84,7 +84,7 @@ export function RowActionIcons({ ariaLabelPrefix, view, edit, remove }: Props) {
   const isDestructive = remove?.variant !== "reactivate";
 
   return (
-    <div className="inline-flex items-center gap-0.5">
+    <div className="inline-flex items-center gap-1">
       {view ? (
         <IconButton
           onClick={view}
@@ -145,7 +145,7 @@ function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40 disabled:pointer-events-none",
+        "inline-flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40 disabled:pointer-events-none",
         toneClass,
       )}
     >

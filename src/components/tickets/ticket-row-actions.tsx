@@ -159,9 +159,9 @@ export function TicketRowActions({
             <dt className="text-zinc-500 dark:text-zinc-400">
               {tQueue("columns.customer")}
             </dt>
-            <dd>
+            <dd className="min-w-0">
               <div>{ticket.customerName}</div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 break-all">
                 {ticket.customerEmail}
               </div>
             </dd>

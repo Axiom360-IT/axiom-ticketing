@@ -140,8 +140,21 @@ async function main() {
     //    (user_roles.role_id is ON DELETE RESTRICT).
     await tx.delete(userRoles);
 
-    // 4. Drop custom (non-system) roles. role_permissions cascade.
-    await tx.delete(roles).where(eq(roles.isSystem, false));
+    // 4. Drop custom roles — anything that ISN'T one of the 5 canonical roles.
+    //    We match by NAME (not is_system) because a deployment may have flipped
+    //    is_system off to make the core roles editable in the UI; using
+    //    is_system here would wrongly delete the core roles.
+    await tx
+      .delete(roles)
+      .where(
+        notInArray(roles.name, [
+          "Super Admin",
+          "IT Director",
+          "Coordinator",
+          "Technician",
+          "Customer",
+        ]),
+      );
 
     // 5. Delete every user but the kept ones (accounts cascade).
     await tx.delete(users).where(notInArray(users.id, keepIds));
@@ -151,8 +164,18 @@ async function main() {
       .insert(userRoles)
       .values(keepIds.map((id) => ({ userId: id, roleId: sa.id })));
 
-    // 7. Reset the legacy ticket-number counter.
-    await tx.execute(sql`ALTER SEQUENCE ax_ticket_seq RESTART WITH 1`);
+    // 7. Reset the legacy ticket-number counter — guarded, since the sequence
+    //    may not exist on every deployment (a missing sequence would otherwise
+    //    fail the whole transaction and silently roll the reset back).
+    await tx.execute(sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_class WHERE relkind = 'S' AND relname = 'ax_ticket_seq'
+        ) THEN
+          ALTER SEQUENCE ax_ticket_seq RESTART WITH 1;
+        END IF;
+      END $$;
+    `);
   });
 
   // ── Report.

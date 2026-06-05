@@ -346,7 +346,7 @@ export default async function TicketDetailPage({
         </div>
       ) : null}
       <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold">{ticket.subject}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{ticket.subject}</h1>
         {ticket.isEscalated ? <EscalatedBadge /> : null}
       </div>
       <div className="flex items-center gap-2 flex-wrap text-sm text-zinc-500 dark:text-zinc-400">

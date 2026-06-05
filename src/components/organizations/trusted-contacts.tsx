@@ -52,7 +52,7 @@ export function TrustedContacts({
             key={c.email}
             className="flex items-center justify-between gap-3 py-2"
           >
-            <div className="min-w-0 text-sm">
+            <div className="min-w-0 truncate text-sm">
               {c.name ? (
                 <span className="text-zinc-800 dark:text-zinc-200">
                   {c.name}{" "}

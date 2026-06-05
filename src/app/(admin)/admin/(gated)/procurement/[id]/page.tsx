@@ -50,7 +50,7 @@ export default async function ProcurementDetailPage({
   return (
     <div className="space-y-6 max-w-3xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{r.itemName}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{r.itemName}</h1>
         <div className="flex items-center gap-2 flex-wrap text-sm text-zinc-500 dark:text-zinc-400">
           <ProcurementStatusBadge status={r.status} />
           <span>·</span>
@@ -125,7 +125,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="text-zinc-500 dark:text-zinc-400 w-32 shrink-0">
         {label}
       </span>
-      <span className="flex-1">{value}</span>
+      <span className="flex-1 min-w-0 break-words">{value}</span>
     </div>
   );
 }

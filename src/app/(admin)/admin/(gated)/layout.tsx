@@ -82,11 +82,13 @@ export default async function AdminGatedLayout({
             roles: [...user.roleNames],
             avatarUrl: displayAvatarUrl,
           }}
+          branding={branding}
+          permissions={[...user.permissions]}
         />
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 p-6 overflow-y-auto focus:outline-none"
+          className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none"
         >
           {children}
         </main>

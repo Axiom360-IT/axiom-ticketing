@@ -36,7 +36,7 @@ export default async function PortalHomePage() {
       {/* Header + primary CTA */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
             {t("title", { name: user.id.slice(0, 0) || "" })}
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">

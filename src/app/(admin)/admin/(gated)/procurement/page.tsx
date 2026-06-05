@@ -93,7 +93,7 @@ export default async function ProcurementListPage({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("subtitle")} · {t("count", { count: rows.length })}
         </p>

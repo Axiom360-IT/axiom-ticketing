@@ -37,7 +37,7 @@ export default async function EditRolePage({
   return (
     <div className="max-w-3xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{role.name}</h1>
+        <h1 className="text-xl font-semibold break-words sm:text-2xl">{role.name}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("subtitle")}
         </p>

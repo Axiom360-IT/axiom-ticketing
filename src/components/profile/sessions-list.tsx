@@ -58,8 +58,8 @@ export function SessionsList({ initial }: Props) {
             className="flex items-start gap-3 px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800"
           >
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap text-sm">
-                <span className="font-medium truncate">
+              <div className="flex items-center gap-2 flex-wrap text-sm min-w-0">
+                <span className="font-medium truncate min-w-0 max-w-full">
                   {s.userAgent ?? t("unknownDevice")}
                 </span>
                 {s.isCurrent ? (

@@ -15,7 +15,7 @@ export default async function PortalNewTicketPage() {
   ]);
   return (
     <section className="max-w-2xl mx-auto py-10 px-4">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
         {t("title")}
       </h1>
       <p className="mt-1 mb-6 text-sm text-zinc-600 dark:text-zinc-400">

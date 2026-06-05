@@ -59,7 +59,7 @@ export default async function GuestTicketViewPage({
 
   return (
     <article className="max-w-3xl mx-auto py-10 px-4">
-      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4 break-words">
         {tGuest("viewingAs", { email: verifiedEmail })}
       </p>
 

@@ -126,7 +126,7 @@ export function UserRowActions({
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{user.name}</DialogTitle>
-            <DialogDescription className="text-foreground text-sm">
+            <DialogDescription className="text-foreground text-sm break-all">
               {user.email}
             </DialogDescription>
           </DialogHeader>

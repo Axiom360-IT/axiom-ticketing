@@ -56,7 +56,7 @@ export default async function PortalTicketsPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
             {t("title")}
           </h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">

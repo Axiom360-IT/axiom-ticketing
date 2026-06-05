@@ -62,7 +62,7 @@ export function StatusControl({
         onValueChange={(v) => handleChange(v ?? "")}
         disabled={pending}
       >
-        <SelectTrigger className="w-60">
+        <SelectTrigger className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

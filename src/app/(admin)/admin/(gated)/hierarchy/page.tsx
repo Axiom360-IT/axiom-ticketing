@@ -120,7 +120,7 @@ export default async function HierarchyPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t("subtitle")}
         </p>
@@ -168,7 +168,7 @@ async function HierarchyRow({
       <Link
         href={`/admin/users/${node.id}`}
         className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
-        style={{ marginLeft: depth * 16 }}
+        style={{ marginLeft: Math.min(depth, 6) * 12 }}
       >
         <Avatar className="size-8 shrink-0">
           <AvatarFallback className="text-xs">{initials || "?"}</AvatarFallback>
@@ -176,7 +176,7 @@ async function HierarchyRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{node.name}</span>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0 max-w-full">
               {node.email}
             </span>
             <span

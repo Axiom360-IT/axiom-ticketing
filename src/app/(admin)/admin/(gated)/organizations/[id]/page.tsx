@@ -74,7 +74,7 @@ export default async function EditOrganizationPage({
   return (
     <div className="max-w-3xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="text-xl font-semibold break-words sm:text-2xl">
           {t("title", { name: org.name })}
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">

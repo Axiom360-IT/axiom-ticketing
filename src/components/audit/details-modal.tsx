@@ -140,10 +140,10 @@ export function AuditDetailsButton({ entryId }: Props) {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex gap-3">
-      <span className="text-zinc-500 dark:text-zinc-400 w-40 shrink-0 text-xs">
+      <span className="text-zinc-500 dark:text-zinc-400 w-28 sm:w-40 shrink-0 text-xs">
         {label}
       </span>
-      <span className="flex-1 break-all">{value}</span>
+      <span className="min-w-0 flex-1 break-all">{value}</span>
     </div>
   );
 }
@@ -194,13 +194,13 @@ function FieldsBlock({
       {isEmpty ? (
         <p className="text-xs text-zinc-400">{empty}</p>
       ) : isPlainObject ? (
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-2 text-xs">
+        <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-3 gap-y-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-2 text-xs">
           {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
             <Fragment key={k}>
               <dt className="text-zinc-500 dark:text-zinc-400">
                 {humanizeFieldKey(k)}
               </dt>
-              <dd className="break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
+              <dd className="min-w-0 break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
                 {renderFieldValue(v, userNames)}
               </dd>
             </Fragment>

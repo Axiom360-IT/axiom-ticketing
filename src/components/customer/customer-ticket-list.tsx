@@ -22,7 +22,7 @@ export function CustomerTicketList({ items }: Props) {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
                     {ticket.ticketNumber}
                   </span>
