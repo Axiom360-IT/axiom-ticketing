@@ -1,8 +1,10 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { type Database, type Tx, db } from "@/lib/db/client";
+import { organizationTrustedEmails } from "@/lib/db/schema/organization-trusted-emails";
 import { organizationDomains } from "@/lib/db/schema/organizations";
 import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
+import { tickets } from "@/lib/db/schema/tickets";
 import { emailDomain } from "./org";
 
 // ── Ticket participants (req 5.2) ─────────────────────────────────────
@@ -12,9 +14,10 @@ import { emailDomain } from "./org";
 
 export type SenderRelation =
   | "customer" // the original requester
-  | "participant" // an already-recognized external contributor
+  | "participant" // an already-recognized external contributor (this ticket)
+  | "org-trusted" // an email a moderator marked legit for the ticket's org
   | "org-domain" // same organization as the ticket (trusted by email domain)
-  | "foreign"; // unknown domain — hold for moderation
+  | "foreign"; // unknown — hold for moderation (unless moderation is off)
 
 type TicketLite = {
   id: string;
@@ -98,11 +101,70 @@ export async function classifyInboundSender(
     .limit(1);
   if (existing) return "participant";
 
+  // An address a moderator explicitly trusted for this ticket's organization
+  // (req 5.2 follow-up) — auto-posts on ANY ticket of that org until revoked.
+  if (
+    ticket.organizationId &&
+    (await isOrgTrustedEmail(ticket.organizationId, sender))
+  ) {
+    return "org-trusted";
+  }
+
   const domain = emailDomain(sender);
   if (domain && (await domainBelongsToTicketOrg(ticket, domain))) {
     return "org-domain";
   }
   return "foreign";
+}
+
+/** Whether `email` is on the organization's trusted-contacts allowlist. */
+async function isOrgTrustedEmail(
+  organizationId: string,
+  email: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: organizationTrustedEmails.id })
+    .from(organizationTrustedEmails)
+    .where(
+      and(
+        eq(organizationTrustedEmails.organizationId, organizationId),
+        eq(organizationTrustedEmails.email, email.trim().toLowerCase()),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+/** Mark an email as a trusted contact for an organization (moderator action).
+ *  Idempotent; pass a transaction executor to run inside an existing tx. */
+export async function addOrgTrustedEmail(
+  args: {
+    organizationId: string;
+    email: string;
+    name?: string | null;
+    addedById?: string | null;
+  },
+  executor: Database | Tx = db,
+): Promise<void> {
+  const email = args.email.trim().toLowerCase();
+  if (!email) return;
+  await executor
+    .insert(organizationTrustedEmails)
+    .values({
+      organizationId: args.organizationId,
+      email,
+      name: args.name ?? null,
+      addedById: args.addedById ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        organizationTrustedEmails.organizationId,
+        organizationTrustedEmails.email,
+      ],
+      set: {
+        name: sql`coalesce(${args.name ?? null}, ${organizationTrustedEmails.name})`,
+      },
+    });
 }
 
 /** Add (or re-activate) an external contributor as an active participant.
@@ -140,17 +202,43 @@ export async function upsertParticipant(
     });
 }
 
-/** Active external participants on a ticket (for CC-ing future updates). */
+/** External recipients on a ticket (for CC-ing future updates + the
+ *  "Participant" badge): the ticket's own active participants PLUS any of the
+ *  organization's trusted contacts. Including org-trusted here (rather than
+ *  minting participant rows) means revoking trust immediately drops them from
+ *  CC and re-moderates them — one source of truth. Deduped by email. */
 export async function listActiveParticipants(
   ticketId: string,
 ): Promise<{ email: string; name: string | null }[]> {
-  return db
-    .select({ email: ticketParticipants.email, name: ticketParticipants.name })
-    .from(ticketParticipants)
-    .where(
-      and(
-        eq(ticketParticipants.ticketId, ticketId),
-        eq(ticketParticipants.status, "active"),
+  const [participants, trusted] = await Promise.all([
+    db
+      .select({
+        email: ticketParticipants.email,
+        name: ticketParticipants.name,
+      })
+      .from(ticketParticipants)
+      .where(
+        and(
+          eq(ticketParticipants.ticketId, ticketId),
+          eq(ticketParticipants.status, "active"),
+        ),
       ),
-    );
+    db
+      .select({
+        email: organizationTrustedEmails.email,
+        name: organizationTrustedEmails.name,
+      })
+      .from(organizationTrustedEmails)
+      .innerJoin(
+        tickets,
+        eq(tickets.organizationId, organizationTrustedEmails.organizationId),
+      )
+      .where(eq(tickets.id, ticketId)),
+  ]);
+
+  const byEmail = new Map<string, { email: string; name: string | null }>();
+  for (const p of [...participants, ...trusted]) {
+    if (!byEmail.has(p.email)) byEmail.set(p.email, p);
+  }
+  return [...byEmail.values()];
 }

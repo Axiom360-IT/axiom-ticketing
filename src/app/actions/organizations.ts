@@ -8,6 +8,7 @@ import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { organizationTrustedEmails } from "@/lib/db/schema/organization-trusted-emails";
 import {
   organizationDomains,
   organizations,
@@ -696,6 +697,72 @@ export async function getOrganizationUsage(
     allTime,
     months,
   };
+}
+
+// ── Trusted email contacts (req 5.2 follow-up) ─────────────────────
+//
+// Individual external emails a moderator marked legit for the org (via the
+// moderation queue's "Approve & trust"). Listed/removable here so trust can be
+// REVOKED — a removed contact is moderated again on their next reply.
+
+export type TrustedContact = {
+  email: string;
+  name: string | null;
+  createdAt: Date;
+};
+
+export async function listOrganizationTrustedContacts(
+  organizationId: string,
+): Promise<TrustedContact[]> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "organizations.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  return db
+    .select({
+      email: organizationTrustedEmails.email,
+      name: organizationTrustedEmails.name,
+      createdAt: organizationTrustedEmails.createdAt,
+    })
+    .from(organizationTrustedEmails)
+    .where(eq(organizationTrustedEmails.organizationId, organizationId))
+    .orderBy(organizationTrustedEmails.email);
+}
+
+export async function removeOrganizationTrustedContact(
+  organizationId: string,
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "organizations.update", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  const normalized = (email ?? "").trim().toLowerCase();
+  if (!normalized) return { ok: false, error: "No email provided." };
+
+  await db
+    .delete(organizationTrustedEmails)
+    .where(
+      and(
+        eq(organizationTrustedEmails.organizationId, organizationId),
+        eq(organizationTrustedEmails.email, normalized),
+      ),
+    );
+
+  await audit({
+    actorId: caller.id,
+    action: "organization.untrust_contact",
+    targetType: "organization",
+    targetId: organizationId,
+    after: { email: normalized },
+  });
+
+  revalidatePath(`/admin/organizations/${organizationId}`);
+  return { ok: true };
 }
 
 /** Active organizations for staff dropdowns (e.g. create-on-behalf). */

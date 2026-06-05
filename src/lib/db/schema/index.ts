@@ -4,6 +4,7 @@
 export * from "./auth";
 export * from "./rbac";
 export * from "./organizations";
+export * from "./organization-trusted-emails";
 export * from "./tickets";
 export * from "./ticket-assignees";
 export * from "./ticket-participants";

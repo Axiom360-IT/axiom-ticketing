@@ -53,6 +53,10 @@ export const SETTING_SCHEMAS = {
     .toLowerCase()
     .regex(/^[a-z0-9.-]+\.[a-z]{2,}$/),
   inbound_sender_allowlist_only: z.boolean(),
+  // When true (default), inbound replies from senders NOT recognized as the
+  // ticket's customer/participant/org are HELD for moderation (req 5.2). When
+  // false, every reply posts straight to the conversation thread.
+  inbound_moderation_enabled: z.boolean(),
   default_sender_name: z.string().trim().min(1).max(120),
   default_sender_email: z.string().trim().toLowerCase().email(),
 

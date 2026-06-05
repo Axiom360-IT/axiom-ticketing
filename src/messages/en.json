@@ -935,6 +935,12 @@
       "planNegative": "Over plan by {hours}. The accountants have been notified.",
       "usageCardTitle": "Work by category"
     },
+    "trusted": {
+      "cardTitle": "Trusted email contacts",
+      "cardSubtitle": "People outside this organization's domains whose ticket replies you've chosen to trust. Their replies post automatically; remove someone to moderate them again.",
+      "empty": "No trusted contacts. Use “Approve & trust sender” in Moderation to add one.",
+      "remove": "Remove trust"
+    },
     "addHours": {
       "label": "Add hours to this plan",
       "placeholder": "e.g. 5",
@@ -1181,6 +1187,12 @@
       "remove": "Remove",
       "empty": "No accountant phone numbers configured yet."
     },
+    "moderation": {
+      "title": "Inbound reply moderation",
+      "description": "Controls what happens when someone who isn't the ticket's customer, a participant, or part of its organization replies to a ticket email.",
+      "toggle": "Hold unrecognized replies for moderation",
+      "toggleHint": "On (recommended): such replies are held in the Moderation queue for review. Off: every reply posts straight to the conversation thread."
+    },
     "branding": {
       "title": "Brand identity",
       "subtitle": "Wordmark, accent color, and background gradient used on sign-in and submit pages.",
@@ -1378,12 +1390,14 @@
   },
   "moderation": {
     "title": "Inbound moderation",
-    "subtitle": "Email replies from senders outside the ticket's organization are held here. Approve to post the reply and recognize the sender as a participant, or reject it.",
+    "subtitle": "Email replies from senders outside the ticket's organization are held here. Approve & post the reply, optionally trusting the sender so their future replies post automatically, or reject it.",
     "empty": "Nothing to moderate — no held replies.",
     "onTicket": "On ticket",
-    "heldNote": "Held: the sender's email domain doesn't belong to this ticket's organization.",
-    "approve": "Approve & post",
-    "reject": "Reject"
+    "heldNote": "Held: this sender isn't recognized as the ticket's customer, a participant, or part of its organization.",
+    "approveTrust": "Approve & trust sender",
+    "approveOnce": "Approve once",
+    "reject": "Reject",
+    "trustHint": "“Trust” posts this reply and lets future replies from this person post automatically for the ticket's organization (revoke anytime on the organization page). “Approve once” posts only this reply — they'll be moderated again next time."
   },
   "orgTriage": {
     "title": "Organization triage",

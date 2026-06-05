@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  approveAndTrustHeldMessage,
   approveHeldMessage,
   rejectHeldMessage,
 } from "@/app/actions/moderation";
@@ -28,13 +29,15 @@ export function HeldMessageCard({ message }: { message: HeldMessage }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function decide(kind: "approve" | "reject") {
+  function decide(kind: "approve" | "trust" | "reject") {
     setError(null);
     startTransition(async () => {
       const res =
-        kind === "approve"
-          ? await approveHeldMessage(message.id)
-          : await rejectHeldMessage(message.id);
+        kind === "trust"
+          ? await approveAndTrustHeldMessage(message.id)
+          : kind === "approve"
+            ? await approveHeldMessage(message.id)
+            : await rejectHeldMessage(message.id);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -75,9 +78,17 @@ export function HeldMessageCard({ message }: { message: HeldMessage }) {
           {t("heldNote")}
         </p>
 
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => decide("approve")} disabled={pending}>
-            {t("approve")}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => decide("trust")} disabled={pending}>
+            {t("approveTrust")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => decide("approve")}
+            disabled={pending}
+          >
+            {t("approveOnce")}
           </Button>
           <Button
             size="sm"
@@ -93,6 +104,7 @@ export function HeldMessageCard({ message }: { message: HeldMessage }) {
             </span>
           ) : null}
         </div>
+        <p className="text-xs text-zinc-400">{t("trustHint")}</p>
       </CardContent>
     </Card>
   );

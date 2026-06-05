@@ -103,8 +103,10 @@ const SIGNATURE_DELIM = /^-- ?$/m; // "-- " on its own line per RFC 3676
 
 // Common quote-block leaders. Matching is case-insensitive, multi-line.
 const QUOTE_LEADERS: RegExp[] = [
-  // Gmail / generic English
-  /^On .{1,200}wrote:$/im,
+  // Gmail / generic English. `[\s\S]` (not `.`) so a wrapped attribution line
+  // — e.g. "On … <a@b.com>\nwrote:" after HTML→text conversion — is still
+  // caught; non-greedy + `\s*$` to stop at the first "wrote:" line end.
+  /^On [\s\S]{1,200}?wrote:\s*$/im,
   // Outlook / Apple Mail "From: … Sent: … To: …" header block
   /^From: .{1,500}$/im,
   // Forwarded marker

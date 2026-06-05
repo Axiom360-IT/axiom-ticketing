@@ -133,6 +133,12 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "If true, only accept inbound emails from registered customer accounts",
     },
     {
+      key: "inbound_moderation_enabled",
+      value: true,
+      description:
+        "Hold inbound replies from unrecognized senders for moderation (false = post directly)",
+    },
+    {
       key: "default_sender_name",
       value: "Axiom360 Support",
       description: "Display name for outbound emails",

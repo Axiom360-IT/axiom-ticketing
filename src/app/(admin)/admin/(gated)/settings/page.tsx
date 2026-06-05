@@ -109,6 +109,7 @@ export default async function SettingsPage({
   const tVs = await getTranslations("settings.virusScan");
   const tRl = await getTranslations("settings.rateLimits");
   const tBill = await getTranslations("settings.billing");
+  const tMod = await getTranslations("settings.moderation");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -345,6 +346,21 @@ export default async function SettingsPage({
                 settingKey="inbound_sender_allowlist_only"
                 label={tEm("allowlistToggle")}
                 initial={bool(v["inbound_sender_allowlist_only"], false)}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tMod("title")}</CardTitle>
+              <CardDescription>{tMod("description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BooleanSettingForm
+                settingKey="inbound_moderation_enabled"
+                label={tMod("toggle")}
+                description={tMod("toggleHint")}
+                initial={bool(v["inbound_moderation_enabled"], true)}
               />
             </CardContent>
           </Card>

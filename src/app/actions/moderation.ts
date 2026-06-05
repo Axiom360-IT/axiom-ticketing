@@ -12,7 +12,10 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
-import { upsertParticipant } from "@/lib/tickets/participants";
+import {
+  addOrgTrustedEmail,
+  upsertParticipant,
+} from "@/lib/tickets/participants";
 import { inngest } from "@/inngest/client";
 
 // Inbound-moderation queue (req 5.2). Email replies from senders whose domain
@@ -89,16 +92,23 @@ async function loadHeldForModeration(messageId: string, user: SessionUser) {
   return { msg, ticket };
 }
 
-export async function approveHeldMessage(messageId: string): Promise<Result> {
-  const user = await requireSessionUser();
+// Post a held message. `trust: "none"` = approve THIS message only (the sender
+// stays moderated — "approve once"); `trust: "trust"` = also mark the sender as
+// legit so future replies auto-post — org-wide when the ticket has an
+// organization, else for this ticket only (guest fallback).
+async function applyApproval(
+  messageId: string,
+  user: SessionUser,
+  trust: "none" | "trust",
+): Promise<Result> {
   const { msg, ticket } = await loadHeldForModeration(messageId, user);
   if (msg.moderationStatus !== "held") {
     return { ok: false, error: "This message has already been reviewed." };
   }
 
   // Atomic: the status flip is CONDITIONAL on the row still being 'held' (so a
-  // concurrent approve/reject can't double-apply), and the participant upsert +
-  // ticket touch commit together with it.
+  // concurrent approve/reject can't double-apply), and the trust write + ticket
+  // touch commit together with it.
   let transitioned = false;
   await transactional(async (tx) => {
     const updated = await tx
@@ -115,17 +125,32 @@ export async function approveHeldMessage(messageId: string): Promise<Result> {
     if (updated.length === 0) return; // someone else reviewed it first
     transitioned = true;
 
-    // Approving an external sender recognizes them as a participant going forward.
-    await upsertParticipant(
-      {
-        ticketId: ticket.id,
-        email: msg.authorEmail,
-        name: msg.authorName,
-        addedVia: "moderation",
-        addedById: user.id,
-      },
-      tx,
-    );
+    if (trust === "trust") {
+      if (ticket.organizationId) {
+        // Org-wide trust — future replies to ANY ticket of this org auto-post.
+        await addOrgTrustedEmail(
+          {
+            organizationId: ticket.organizationId,
+            email: msg.authorEmail,
+            name: msg.authorName,
+            addedById: user.id,
+          },
+          tx,
+        );
+      } else {
+        // Guest ticket has no org — fall back to trusting for this ticket only.
+        await upsertParticipant(
+          {
+            ticketId: ticket.id,
+            email: msg.authorEmail,
+            name: msg.authorName,
+            addedVia: "moderation",
+            addedById: user.id,
+          },
+          tx,
+        );
+      }
+    }
 
     await tx
       .update(tickets)
@@ -142,7 +167,11 @@ export async function approveHeldMessage(messageId: string): Promise<Result> {
     action: "ticket.moderate_message",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { messageId, decision: "approved", from: msg.authorEmail },
+    after: {
+      messageId,
+      decision: trust === "trust" ? "approved_trusted" : "approved",
+      from: msg.authorEmail,
+    },
   });
 
   // The message is now live — notify the assignee like any customer reply.
@@ -185,6 +214,21 @@ export async function approveHeldMessage(messageId: string): Promise<Result> {
   revalidatePath("/admin/moderation");
   revalidatePath(`/admin/tickets/${ticket.id}`);
   return { ok: true };
+}
+
+/** Post this held message only — the sender remains moderated ("approve once"). */
+export async function approveHeldMessage(messageId: string): Promise<Result> {
+  const user = await requireSessionUser();
+  return applyApproval(messageId, user, "none");
+}
+
+/** Post this held message AND trust the sender so future replies auto-post
+ *  (org-wide, or this ticket for a guest ticket). */
+export async function approveAndTrustHeldMessage(
+  messageId: string,
+): Promise<Result> {
+  const user = await requireSessionUser();
+  return applyApproval(messageId, user, "trust");
 }
 
 export async function rejectHeldMessage(messageId: string): Promise<Result> {

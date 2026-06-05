@@ -205,6 +205,13 @@ export const processInboundEmail = inngest.createFunction(
     });
     const relation = classification.relation;
 
+    // Master switch (Super Admin): when moderation is OFF, an unrecognized
+    // ("foreign") sender's reply posts straight to the thread instead of being
+    // held (req 5.2 follow-up). Default ON.
+    const moderate = await step.run("moderation-enabled", async () =>
+      (await getSetting<boolean>("inbound_moderation_enabled")) ?? true,
+    );
+
     // 5. Loop detection — same sender, same ticket, > threshold in window.
     //    Case-insensitive so it counts historically mixed-case author rows.
     const since = new Date(Date.now() - LOOP_WINDOW_MS);
@@ -240,11 +247,11 @@ export const processInboundEmail = inngest.createFunction(
       .limit(1);
     const authorName = knownUser?.name ?? fromName;
 
-    // 6a. Foreign sender → HOLD for moderation (req 5.2). Stored but excluded
-    //     from the conversation thread until a coordinator approves it; notify
-    //     coordinators; do NOT notify the assigned tech, touch SLA, or ingest
-    //     attachments.
-    if (relation === "foreign") {
+    // 6a. Foreign sender → HOLD for moderation (req 5.2), UNLESS the master
+    //     moderation switch is off (then it falls through and posts normally).
+    //     Stored but excluded from the conversation thread until a moderator
+    //     approves it; notify moderators; do NOT touch SLA or ingest attachments.
+    if (relation === "foreign" && moderate) {
       await step.run("hold-message", async () =>
         db.insert(messages).values({
           ticketId: ticket.id,
@@ -276,7 +283,14 @@ export const processInboundEmail = inngest.createFunction(
             name: "notification/dispatch",
             data: {
               type: "ticket.message_held",
-              recipientRoles: ["Coordinator"],
+              // Whoever moderates needs to see this: the Coordinator queue +
+              // Super Admins (oversight) + the ticket's own assignee (so a held
+              // reply on their ticket isn't missed). Previously Coordinators
+              // only — invisible to a Super Admin / the assignee.
+              recipientUserIds: ticket.assignedToId
+                ? [ticket.assignedToId]
+                : undefined,
+              recipientRoles: ["Coordinator", "Super Admin"],
               ticketId: ticket.id,
               ticketNumber: ticket.ticketNumber,
               inApp: {

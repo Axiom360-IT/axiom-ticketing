@@ -229,6 +229,19 @@ final word`;
     expect(stripQuotesAndSignatures(text)).toBe("Right answer:\nfinal word");
   });
 
+  it("strips a Gmail attribution line that wrapped across two lines", () => {
+    // HTML→text conversion can put "wrote:" on its own line after the email
+    // address — the stripper must still catch the whole attribution.
+    const text = `thank you for picking up my tikcet
+
+On Fri, Jun 5, 2026 at 10:11 PM Axiom360 Support <ops@support.axiom360.it>
+wrote:
+> Your ticket has been assigned.`;
+    expect(stripQuotesAndSignatures(text)).toBe(
+      "thank you for picking up my tikcet",
+    );
+  });
+
   it("returns empty string for input that's only a quote", () => {
     const text = `On Mon, Jan 8, 2026, Priya wrote:
 > hi`;

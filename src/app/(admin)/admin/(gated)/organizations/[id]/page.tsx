@@ -1,12 +1,20 @@
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { AddHoursControl } from "@/components/organizations/add-hours-control";
 import { OrganizationForm } from "@/components/organizations/organization-form";
 import { OrgUsageBreakdown } from "@/components/organizations/org-usage-breakdown";
+import { TrustedContacts } from "@/components/organizations/trusted-contacts";
 import {
   getOrganizationDetail,
   getOrganizationUsage,
+  listOrganizationTrustedContacts,
 } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -49,8 +57,10 @@ export default async function EditOrganizationPage({
   );
 
   const usage = await getOrganizationUsage(id);
+  const trustedContacts = await listOrganizationTrustedContacts(id);
 
   const t = await getTranslations("organizations.edit");
+  const tTrusted = await getTranslations("organizations.trusted");
 
   const includedMinutes = org.monthlyMinutesIncluded ?? 0;
   const balanceMinutes = org.monthlyMinutesBalance ?? 0;
@@ -174,6 +184,20 @@ export default async function EditOrganizationPage({
         </CardHeader>
         <CardContent>
           <OrgUsageBreakdown usage={usage} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{tTrusted("cardTitle")}</CardTitle>
+          <CardDescription>{tTrusted("cardSubtitle")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TrustedContacts
+            organizationId={org.id}
+            initial={trustedContacts}
+            canRemove={canUpdate}
+          />
         </CardContent>
       </Card>
     </div>
