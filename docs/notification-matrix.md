@@ -100,7 +100,7 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 | `ticket.created` | E·S·A | New ticket arrived — broadcast for oversight (with Coordinator + IT Director). |
 | `ticket.closed_staff` | E·S·A | A ticket was closed — oversight (with Coordinator + IT Director). |
 | `ticket.reassigned` | E·S·A | Every true reassignment, oversight (req 3.2). |
-| `ticket.escalated` | E·S·A | When explicitly selected as the escalation target. |
+| `ticket.escalated` | E·S·A | **Always** — Super Admin receives every escalation for oversight (in addition to the chosen target / the IT Director + Coordinator default). |
 
 `targetRole` for escalation is validated server-side against
 `{IT Director, Coordinator, Super Admin}` so a client can't broadcast a

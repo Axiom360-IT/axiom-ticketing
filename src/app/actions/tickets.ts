@@ -2195,11 +2195,17 @@ export async function escalateTicket(
       name: "notification/dispatch",
       data: {
         type: "ticket.escalated",
-        // Notify the specific role the ticket was escalated to (CR-14); fall
-        // back to the standard supervisory roles when none was selected.
-        recipientRoles: targetRoleClean
-          ? [targetRoleClean]
-          : ["IT Director", "Coordinator"],
+        // Notify the role the ticket was escalated to (CR-14), or the standard
+        // supervisory pair when none was selected. Super Admin is ALWAYS
+        // included for oversight (deduped if it's also the chosen target).
+        recipientRoles: [
+          ...new Set([
+            ...(targetRoleClean
+              ? [targetRoleClean]
+              : ["IT Director", "Coordinator"]),
+            "Super Admin",
+          ]),
+        ],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
