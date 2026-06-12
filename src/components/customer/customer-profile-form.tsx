@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
-import PhoneInput from "react-phone-number-input";
+import { PhoneField } from "@/components/ui/phone-field";
 import { updateProfile } from "@/app/actions/profile";
 
 type Props = {
@@ -83,11 +83,8 @@ export function CustomerProfileForm({ initial }: Props) {
             {t("phoneOptional")}
           </span>
         </label>
-        <PhoneInput
+        <PhoneField
           id="profile-phone"
-          defaultCountry="PK"
-          international
-          autoComplete="tel"
           value={phone || undefined}
           onChange={(v) => setPhone(v ?? "")}
           placeholder={t("phonePlaceholder")}

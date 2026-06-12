@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
-import PhoneInput from "react-phone-number-input";
+import { PhoneField } from "@/components/ui/phone-field";
 import { requestSignUpMagicLink } from "@/app/actions/customer-portal";
 import { PasswordInput } from "@/components/ui/password-input";
 
@@ -123,14 +123,8 @@ export function SignUpForm() {
             {t("phoneOptional")}
           </span>
         </label>
-        <PhoneInput
+        <PhoneField
           id="phone"
-          // Default to Pakistan (matches the current deployment). Users
-          // in other countries can change the dropdown — react-phone-
-          // number-input remembers the choice for the session.
-          defaultCountry="PK"
-          international
-          autoComplete="tel"
           value={phone || undefined}
           onChange={(v) => setPhone(v ?? "")}
           placeholder={t("phonePlaceholder")}

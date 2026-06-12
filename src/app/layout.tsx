@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
 import { Geist_Mono, Roboto } from "next/font/google";
+import { CountryProvider } from "@/components/ui/phone-field";
+import { getRequestCountry } from "@/lib/request-country";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -27,13 +29,16 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const country = await getRequestCountry();
   return (
     <html
       lang={locale}
       className={`${roboto.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider>
+          <CountryProvider country={country}>{children}</CountryProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

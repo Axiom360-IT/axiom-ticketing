@@ -3,7 +3,7 @@
 import { type FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import PhoneInput from "react-phone-number-input";
+import { PhoneField } from "@/components/ui/phone-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,11 +69,8 @@ export function AccountForm({ initial }: Props) {
               {t("phoneOptional")}
             </span>
           </Label>
-          <PhoneInput
+          <PhoneField
             id="profile-phone"
-            defaultCountry="PK"
-            international
-            autoComplete="tel"
             value={phone || undefined}
             onChange={(v) => setPhone(v ?? "")}
             placeholder={t("phonePlaceholder")}
