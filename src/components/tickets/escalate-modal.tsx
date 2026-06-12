@@ -144,7 +144,7 @@ export function EscalateModal({
               onValueChange={(v) => setReason((v ?? "") as EscalationReason | "")}
               disabled={isPending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={tModal("reasonPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
@@ -166,7 +166,7 @@ export function EscalateModal({
               onValueChange={(v) => setTargetRole(v ?? "")}
               disabled={isPending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={tModal("targetRolePlaceholder")} />
               </SelectTrigger>
               <SelectContent>

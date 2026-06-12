@@ -137,7 +137,7 @@ export function DeactivateModal({
                 value={reassignTo}
                 onValueChange={(v) => setReassignTo(v ?? "")}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder={tDeactivate("reassignPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>

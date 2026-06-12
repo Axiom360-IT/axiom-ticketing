@@ -226,7 +226,7 @@ export function TicketRowActions({
               onValueChange={(v) => setAssignValue(v ?? "")}
               disabled={pending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 {/* Base UI's SelectValue does NOT mirror SelectItem text —
                     without this map it renders the raw UUID. */}
                 <SelectValue placeholder={tDialog("selectTechnician")}>

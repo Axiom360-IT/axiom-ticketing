@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RowActionIcons } from "@/components/ui/row-actions";
+import { permissionLabel } from "@/lib/auth/permission-label";
 import { deleteRole, getRoleDetail, updateRole } from "@/app/actions/roles";
 
 export type RoleRowSummary = {
@@ -151,7 +152,7 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
                       key={p}
                       className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
                     >
-                      {tPermLabel(p.replace(/\./g, "__"))}
+                      {permissionLabel(p, tPermLabel)}
                     </span>
                   ))}
                 </div>

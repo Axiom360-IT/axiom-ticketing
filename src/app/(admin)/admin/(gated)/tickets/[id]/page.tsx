@@ -377,8 +377,8 @@ export default async function TicketDetailPage({
         ) : null}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="md:col-span-2 space-y-6 min-w-0">
           {/* Work Log sits ABOVE the conversation (Meeting-2, CR-12) so it's
               the first thing a technician records against the ticket. */}
           <Card>
@@ -527,7 +527,7 @@ export default async function TicketDetailPage({
           ) : null}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">{t("customerTitle")}</CardTitle>
