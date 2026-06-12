@@ -28,6 +28,12 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.ticket.created.title",
     bodyKey: "notifications.ticket.created.body",
   },
+  // Staff-facing "a ticket was closed" — oversight copy for Coordinators / IT
+  // Directors / Super Admins (the customer-facing copy is `ticket.closed`).
+  "ticket.closed_staff": {
+    titleKey: "notifications.ticket.closed_staff.title",
+    bodyKey: "notifications.ticket.closed_staff.body",
+  },
   // Customer-facing assignment: neutral wording that names the technician
   // (req 6.2). Distinct from `ticket.assigned` so the customer's bell never
   // shows the tech-oriented "assigned to you" copy (req 6.1).

@@ -88,6 +88,11 @@ export type NotificationEventType =
   // inbound email). Broadcast to Coordinators + IT Directors + Super Admins so
   // it gets triaged/assigned instead of sitting unseen in the queue.
   | "ticket.created"
+  // A ticket was CLOSED (CSAT-confirmed or auto-closed). Staff-facing copy
+  // broadcast to Coordinators + IT Directors + Super Admins for oversight —
+  // distinct from the customer-facing `ticket.closed` so the bell wording is
+  // correct for each audience.
+  | "ticket.closed_staff"
   // Delivered to the newly-assigned technician ("Ticket … assigned to you").
   | "ticket.assigned"
   // Fired only on a TRUE reassignment (the ticket already had a different

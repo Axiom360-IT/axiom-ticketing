@@ -100,6 +100,10 @@ import {
   type TicketCreatedStaffProps,
 } from "./templates/ticket-created-staff";
 import {
+  TicketClosedStaffEmail,
+  type TicketClosedStaffProps,
+} from "./templates/ticket-closed-staff";
+import {
   TicketReopenedEmail,
   type TicketReopenedProps,
 } from "./templates/ticket-reopened";
@@ -120,6 +124,10 @@ export type EmailTemplate =
   | {
       template: "ticket_created_staff";
       data: Omit<TicketCreatedStaffProps, "locale">;
+    }
+  | {
+      template: "ticket_closed_staff";
+      data: Omit<TicketClosedStaffProps, "locale">;
     }
   | { template: "ticket_assigned"; data: Omit<TicketAssignedProps, "locale"> }
   | { template: "ticket_reply"; data: Omit<TicketReplyProps, "locale"> }
@@ -235,6 +243,10 @@ async function renderTemplate(
       return await render(
         <TicketCreatedStaffEmail {...t.data} locale={locale} />,
       );
+    case "ticket_closed_staff":
+      return await render(
+        <TicketClosedStaffEmail {...t.data} locale={locale} />,
+      );
     case "ticket_assigned":
       return await render(<TicketAssignedEmail {...t.data} locale={locale} />);
     case "ticket_reply":
@@ -327,6 +339,7 @@ async function renderTemplate(
 const TEMPLATE_NAMESPACE = {
   ticket_created: "emails.ticketCreated",
   ticket_created_staff: "emails.ticketCreatedStaff",
+  ticket_closed_staff: "emails.ticketClosedStaff",
   ticket_assigned: "emails.ticketAssigned",
   ticket_reply: "emails.ticketReply",
   ticket_resolved: "emails.ticketResolved",

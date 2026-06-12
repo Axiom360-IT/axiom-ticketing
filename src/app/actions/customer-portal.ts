@@ -35,6 +35,7 @@ import {
 import { verifyGuestToken } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
+import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
 
 const emailSchema = z.string().trim().toLowerCase().email();
 const nameSchema = z.string().trim().min(1).max(120);
@@ -1001,6 +1002,19 @@ export async function submitCsatFromPortal(
       before: { status: "resolved" },
       after: { status: "closed", csatResponse: "satisfied", source: "portal" },
     });
+
+    // Staff oversight notification that the ticket closed.
+    try {
+      await dispatchTicketClosedStaff({
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        reason: "csat",
+        appUrl: getAppUrl(),
+      });
+    } catch (err) {
+      console.error("[customerSubmitCsat] staff close notification failed:", err);
+    }
   } else {
     // Unsatisfied → reopen. If still assigned, go to in_progress;
     // otherwise back to open. Matches the email-link route handler.

@@ -6,6 +6,7 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
 import { inngest } from "../client";
+import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
 
 // Hourly cron — finds tickets resolved more than 24h ago that the customer
 // never confirmed via the CSAT email, closes them, and sends the
@@ -143,6 +144,26 @@ export const autoCloseResolvedTickets = inngest.createFunction(
         } catch (err) {
           console.error(
             `[auto-close-resolved-tickets] notify failed for ${t.ticketNumber}:`,
+            err,
+          );
+        }
+      });
+
+      // Staff oversight notification (Coordinators / IT Directors / Super
+      // Admins) that the ticket closed. Separate step so a notify failure
+      // can't roll back the close.
+      await step.run(`notify-staff-${t.id}`, async () => {
+        try {
+          await dispatchTicketClosedStaff({
+            ticketId: t.id,
+            ticketNumber: t.ticketNumber,
+            subject: t.subject,
+            reason: "auto",
+            appUrl,
+          });
+        } catch (err) {
+          console.error(
+            `[auto-close-resolved-tickets] staff notify failed for ${t.ticketNumber}:`,
             err,
           );
         }

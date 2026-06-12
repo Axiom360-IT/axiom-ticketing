@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
 import { ticketTrackingUrl, verifyCsatToken } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
+import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
 
 // One-click CSAT confirmation. The link in the resolved-email HMAC-encodes
 // (ticketNumber, response) so a single GET is enough — no DB lookup is
@@ -119,6 +120,19 @@ export async function GET(request: NextRequest): Promise<Response> {
       });
     } catch (err) {
       console.error("[csat/confirm] ticket_closed email failed:", err);
+    }
+
+    // Staff oversight notification that the ticket closed.
+    try {
+      await dispatchTicketClosedStaff({
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        reason: "csat",
+        appUrl,
+      });
+    } catch (err) {
+      console.error("[csat/confirm] staff close notification failed:", err);
     }
 
     redirect("/csat/result?status=ok&response=satisfied");

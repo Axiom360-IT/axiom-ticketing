@@ -1580,6 +1580,7 @@
       "headerSms": "SMS",
       "events": {
         "ticket__created": "New ticket received",
+        "ticket__closed_staff": "Ticket closed",
         "ticket__assigned": "Ticket assigned to me",
         "ticket__reassigned": "A ticket was reassigned (Superadmin)",
         "ticket__customer_replied": "Customer replied to my ticket",
@@ -1611,6 +1612,10 @@
       "created": {
         "title": "New ticket {ticketNumber}",
         "body": "{customerName}: {subject}"
+      },
+      "closed_staff": {
+        "title": "{ticketNumber} closed",
+        "body": "{subject}"
       },
       "assigned_customer": {
         "title": "Your ticket {ticketNumber} has been assigned",
@@ -1699,6 +1704,9 @@
   "sms": {
     "ticketCreated": {
       "body": "{ticketNumber}: New ticket received. View: {ticketUrl}"
+    },
+    "ticketClosedStaff": {
+      "body": "{ticketNumber}: Ticket closed. View: {ticketUrl}"
     },
     "ticketAssigned": {
       "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
@@ -1909,6 +1917,16 @@
       "view": "Open ticket",
       "trailerLine": "Assign or triage this ticket from the admin console.",
       "subject": "[{ticketNumber}] New ticket: {subject}"
+    },
+    "ticketClosedStaff": {
+      "preview": "Ticket {ticketNumber} closed",
+      "title": "Ticket closed",
+      "body": "Ticket {ticketNumber} has been closed.",
+      "metaSubject": "Subject: {subject}",
+      "reason": "{reason, select, csat {Closed after the customer confirmed the resolution.} auto {Auto-closed after 24 hours with no customer response.} other {Closed.}}",
+      "view": "Open ticket",
+      "trailerLine": "View the closed ticket in the admin console.",
+      "subject": "[{ticketNumber}] Ticket closed: {subject}"
     },
     "ticketAssigned": {
       "preview": "Your ticket {ticketNumber} is now being worked on",

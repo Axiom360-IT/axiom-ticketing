@@ -15,6 +15,7 @@ const TEMPLATE_NAMESPACE = {
   accountant_negative_balance: "sms.accountantNegativeBalance",
   // Staff-facing
   ticket_created: "sms.ticketCreated",
+  ticket_closed_staff: "sms.ticketClosedStaff",
   ticket_assigned: "sms.ticketAssigned",
   ticket_reassigned: "sms.ticketReassigned",
   ticket_escalated: "sms.ticketEscalated",
