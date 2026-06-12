@@ -46,6 +46,7 @@ import {
   sanitizeMessageHtml,
 } from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
+import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import {
@@ -295,6 +296,7 @@ export async function createTicket(
   });
 
   let ticketNumber: string;
+  let ticketId: string;
 
   // 8. Either promote a draft (if the client uploaded attachments before
   // submitting) or insert a fresh ticket.
@@ -324,6 +326,7 @@ export async function createTicket(
     // final number reflects the company (CR-07). Nothing references the draft
     // number before promotion (attachments link by ticket id, not number).
     ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
+    ticketId = draft.id;
 
     await transactional(async (tx) => {
       await tx
@@ -374,7 +377,7 @@ export async function createTicket(
     });
   } else {
     ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
-    await transactional(async (tx) => {
+    ticketId = await transactional(async (tx) => {
       const [ticket] = await tx
         .insert(tickets)
         .values({
@@ -405,6 +408,7 @@ export async function createTicket(
         body: data.description,
         channel: "portal",
       });
+      return ticket.id;
     });
   }
 
@@ -454,8 +458,19 @@ export async function createTicket(
     console.error("[createTicket] failed to send confirmation email:", err);
   }
 
-  // 11. Emit Inngest event so async listeners (notifications, future jobs) can react
-  // (Skipped here for Phase A; notification fan-out lands in M11.)
+  // 11. Alert staff (Coordinators / IT Directors / Super Admins) that a new
+  // ticket needs triage/assignment. Best-effort — never fail the submission.
+  try {
+    await dispatchTicketCreated({
+      ticketId,
+      ticketNumber,
+      customerName: data.customerName,
+      subject: data.subject,
+      appUrl: getAppUrl(),
+    });
+  } catch (err) {
+    console.error("[createTicket] new-ticket dispatch failed:", err);
+  }
 
   return { ok: true, ticketNumber };
 }
@@ -518,7 +533,7 @@ export async function createTicketOnBehalf(
     priority: data.priority as Priority,
   });
 
-  await transactional(async (tx) => {
+  const ticketId = await transactional(async (tx) => {
     const [ticket] = await tx
       .insert(tickets)
       .values({
@@ -550,6 +565,7 @@ export async function createTicketOnBehalf(
       body: data.description,
       channel: "portal",
     });
+    return ticket.id;
   });
 
   await audit({
@@ -587,6 +603,20 @@ export async function createTicketOnBehalf(
     });
   } catch (err) {
     console.error("[createTicketOnBehalf] confirmation email failed:", err);
+  }
+
+  // Alert staff (Coordinators / IT Directors / Super Admins) that a new ticket
+  // exists — fired for on-behalf creations too. Best-effort.
+  try {
+    await dispatchTicketCreated({
+      ticketId,
+      ticketNumber,
+      customerName: data.customerName,
+      subject: data.subject,
+      appUrl: getAppUrl(),
+    });
+  } catch (err) {
+    console.error("[createTicketOnBehalf] new-ticket dispatch failed:", err);
   }
 
   revalidatePath("/admin/tickets");

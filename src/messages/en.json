@@ -1232,7 +1232,9 @@
     "businessHours": {
       "title": "Business hours",
       "subtitle": "SLA timers honor these for priorities flagged respect_business_hours.",
-      "timezone": "Timezone (IANA)",
+      "timezone": "Timezone",
+      "timezoneHint": "Used for business hours, SLA timers, and all dates & times shown across the app.",
+      "currentTime": "Current time",
       "startHour": "Start hour (0-23)",
       "endHour": "End hour (0-24)",
       "workingDays": "Working days"
@@ -1565,6 +1567,7 @@
       "headerEmail": "Email",
       "headerSms": "SMS",
       "events": {
+        "ticket__created": "New ticket received",
         "ticket__assigned": "Ticket assigned to me",
         "ticket__reassigned": "A ticket was reassigned (Superadmin)",
         "ticket__customer_replied": "Customer replied to my ticket",
@@ -1593,6 +1596,10 @@
       "unreadAriaLive": "{count, plural, =1 {You have 1 unread notification} other {You have # unread notifications}}"
     },
     "ticket": {
+      "created": {
+        "title": "New ticket {ticketNumber}",
+        "body": "{customerName}: {subject}"
+      },
       "assigned_customer": {
         "title": "Your ticket {ticketNumber} has been assigned",
         "body": "{technicianName} is now handling your request."
@@ -1678,6 +1685,9 @@
     }
   },
   "sms": {
+    "ticketCreated": {
+      "body": "{ticketNumber}: New ticket received. View: {ticketUrl}"
+    },
     "ticketAssigned": {
       "body": "{ticketNumber}: New ticket assigned. View: {ticketUrl}"
     },
@@ -1878,6 +1888,15 @@
       "view": "View your ticket",
       "fallback": "If the link above doesn't work, copy and paste this URL into your browser:",
       "subject": "[{ticketNumber}] We've received your ticket: {subject}"
+    },
+    "ticketCreatedStaff": {
+      "preview": "New ticket {ticketNumber} from {customerName}",
+      "title": "New ticket received",
+      "body": "{customerName} submitted a new ticket {ticketNumber}. Triage it and assign a technician.",
+      "metaSubject": "Subject: {subject}",
+      "view": "Open ticket",
+      "trailerLine": "Assign or triage this ticket from the admin console.",
+      "subject": "[{ticketNumber}] New ticket: {subject}"
     },
     "ticketAssigned": {
       "preview": "Your ticket {ticketNumber} is now being worked on",

@@ -84,6 +84,10 @@ export type NotificationEventType =
   | "ticket.reopened"
   | "ticket.closed"
   // ── Staff-facing ──
+  // A brand-new ticket arrived from a customer (portal, guest web form, or
+  // inbound email). Broadcast to Coordinators + IT Directors + Super Admins so
+  // it gets triaged/assigned instead of sitting unseen in the queue.
+  | "ticket.created"
   // Delivered to the newly-assigned technician ("Ticket … assigned to you").
   | "ticket.assigned"
   // Fired only on a TRUE reassignment (the ticket already had a different

@@ -1,13 +1,12 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useTranslations } from "next-intl";
 import { signInWithLockout } from "@/app/actions/sign-in";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   // Only accept same-origin admin paths so a phishing link with
   // `?from=https://evil.example` can't trick the post-login redirect.
@@ -55,8 +54,12 @@ export function LoginForm() {
       return;
     }
 
-    router.push(fromPath);
-    router.refresh();
+    // Hard navigation (not router.push + refresh): after the session cookie is
+    // set, a full load guarantees the new cookie is sent and busts the client
+    // router/prefetch cache — which avoids the intermittent post-login 404/blank
+    // caused by a stale prefetch of the destination (fetched while logged out)
+    // and the push+refresh race.
+    window.location.assign(fromPath);
   }
 
   return (

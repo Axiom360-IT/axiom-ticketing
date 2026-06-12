@@ -38,6 +38,7 @@ import {
 } from "@/lib/storage/upload";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { inngest } from "../client";
+import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 
 // Inbound email processor. Runs on every `email/inbound.received` event
 // emitted by `app/api/email/inbound/route.ts`. Decisions in order:
@@ -101,6 +102,19 @@ export const processInboundEmail = inngest.createFunction(
       const result = await step.run("create-ticket-from-email", async () =>
         createTicketFromInbound(payload, appUrl),
       );
+      if (result.status === "created") {
+        // Alert staff (Coordinators / IT Directors / Super Admins) that a new
+        // email-originated ticket needs triage/assignment.
+        await step.run("notify-new-ticket-created", async () => {
+          await dispatchTicketCreated({
+            ticketId: result.ticketId,
+            ticketNumber: result.ticketNumber,
+            customerName: result.customerName,
+            subject: result.subject,
+            appUrl,
+          });
+        });
+      }
       return result;
     }
 
@@ -506,7 +520,13 @@ async function createTicketFromInbound(
   payload: NormalizedInboundEmail,
   appUrl: string,
 ): Promise<
-  | { status: "created"; ticketNumber: string }
+  | {
+      status: "created";
+      ticketNumber: string;
+      ticketId: string;
+      customerName: string;
+      subject: string;
+    }
   | { status: "blocked-allowlist" }
   | { status: "no-body" }
 > {
@@ -579,7 +599,7 @@ async function createTicketFromInbound(
     { createdAt, priority: DEFAULT_INBOUND_PRIORITY },
   );
 
-  await transactional(async (tx) => {
+  const ticketId = await transactional(async (tx) => {
     const [t] = await tx
       .insert(tickets)
       .values({
@@ -608,6 +628,7 @@ async function createTicketFromInbound(
       body,
       channel: "email",
     });
+    return t.id;
   });
 
   await audit({
@@ -657,5 +678,11 @@ async function createTicketFromInbound(
     );
   }
 
-  return { status: "created", ticketNumber };
+  return {
+    status: "created",
+    ticketNumber,
+    ticketId,
+    customerName: knownUser?.name ?? fromName,
+    subject,
+  };
 }

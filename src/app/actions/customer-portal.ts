@@ -34,6 +34,7 @@ import {
 } from "@/lib/messages/sanitize";
 import { verifyGuestToken } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
+import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 
 const emailSchema = z.string().trim().toLowerCase().email();
 const nameSchema = z.string().trim().min(1).max(120);
@@ -881,6 +882,20 @@ export async function customerCreateTicket(
       promotedFromDraft: !!data.draftTicketId,
     },
   });
+
+  // Alert staff (Coordinators / IT Directors / Super Admins) that a new ticket
+  // needs triage/assignment. Best-effort — never block the customer's submit.
+  try {
+    await dispatchTicketCreated({
+      ticketId,
+      ticketNumber,
+      customerName: profile.name,
+      subject: data.subject,
+      appUrl: getAppUrl(),
+    });
+  } catch (err) {
+    console.error("[customerCreateTicket] new-ticket dispatch failed:", err);
+  }
 
   revalidatePath("/portal/tickets");
   revalidatePath("/admin/tickets");

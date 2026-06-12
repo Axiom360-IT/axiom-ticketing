@@ -22,6 +22,12 @@ export type InAppDescriptor = {
 };
 
 const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
+  // A new ticket arrived (portal / guest form / inbound email) — routed to
+  // Coordinators, IT Directors and Super Admins for triage/assignment.
+  "ticket.created": {
+    titleKey: "notifications.ticket.created.title",
+    bodyKey: "notifications.ticket.created.body",
+  },
   // Customer-facing assignment: neutral wording that names the technician
   // (req 6.2). Distinct from `ticket.assigned` so the customer's bell never
   // shows the tech-oriented "assigned to you" copy (req 6.1).

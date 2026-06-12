@@ -75,6 +75,7 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 
 | Event | Channels | Notes |
 |---|---|---|
+| `ticket.created` | E·S·A | **New ticket arrived** (portal / guest web form / inbound email) — broadcast for triage/assignment. Also goes to IT Director + Super Admin. Fired by `dispatchTicketCreated` from all three customer create paths. |
 | `ticket.customer_replied` | E·A | Only when the ticket is **unassigned** (fallback). |
 | `ticket.message_held` | A | Inbound reply from outside the org held for moderation (5.2). |
 | `ticket.csat_unsatisfied` | E·A | Always (alongside the assignee). |
@@ -87,12 +88,14 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 
 | Event | Channels | Notes |
 |---|---|---|
+| `ticket.created` | E·S·A | New ticket arrived — broadcast for triage/awareness (with Coordinator + Super Admin). |
 | `ticket.escalated` | E·S·A | Default escalation target (with Coordinator) and when explicitly selected. |
 
 ### Super Admin
 
 | Event | Channels | Notes |
 |---|---|---|
+| `ticket.created` | E·S·A | New ticket arrived — broadcast for oversight (with Coordinator + IT Director). |
 | `ticket.reassigned` | E·S·A | Every true reassignment, oversight (req 3.2). |
 | `ticket.escalated` | E·S·A | When explicitly selected as the escalation target. |
 

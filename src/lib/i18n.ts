@@ -30,11 +30,42 @@ export function pickLocale(
 // next-intl invokes this once per request. It receives `requestLocale` from
 // any `[locale]` URL segment (we don't use one — admin is English-only for
 // MVP) plus an optional explicit locale passed by `getTranslations`.
+/** True if `tz` is a usable IANA zone (Intl throws on unknown zones). */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The zone the app falls back to when the setting is missing/invalid or the
+// DB is unreachable (build-time). Matches the seeded `business_hours.timezone`.
+const FALLBACK_TIME_ZONE = "America/Toronto";
+
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
   const locale = pickLocale(requested);
+
+  // Resolve the display time zone from settings so EVERY date/time the app
+  // renders — via the next-intl formatter, on the server AND in client
+  // components (the provider inherits this) — uses the configured zone (e.g.
+  // America/Toronto) instead of the server's UTC default. The dynamic import
+  // keeps the DB client out of any client bundle that imports this module's
+  // helpers (pickLocale, etc.).
+  let timeZone = FALLBACK_TIME_ZONE;
+  try {
+    const { getSetting } = await import("./settings");
+    const configured = await getSetting<string>("business_hours.timezone");
+    if (configured && isValidTimeZone(configured)) timeZone = configured;
+  } catch {
+    // No DB (build-time) or lookup failed — keep the fallback.
+  }
+
   return {
     locale,
+    timeZone,
     messages: (await import(`@/messages/${locale}.json`)).default,
   };
 });

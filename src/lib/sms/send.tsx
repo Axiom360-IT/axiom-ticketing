@@ -14,6 +14,7 @@ const TEMPLATE_NAMESPACE = {
   // Accountant-facing (configured contacts, not app users)
   accountant_negative_balance: "sms.accountantNegativeBalance",
   // Staff-facing
+  ticket_created: "sms.ticketCreated",
   ticket_assigned: "sms.ticketAssigned",
   ticket_reassigned: "sms.ticketReassigned",
   ticket_escalated: "sms.ticketEscalated",

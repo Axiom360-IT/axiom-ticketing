@@ -21,6 +21,7 @@ export type SmsTemplate =
       data: AccountantBalanceSmsData;
     }
   // Staff-facing
+  | { template: "ticket_created"; data: SmsTemplateData }
   | { template: "ticket_assigned"; data: SmsTemplateData }
   | { template: "ticket_reassigned"; data: SmsTemplateData }
   | { template: "ticket_escalated"; data: SmsTemplateData }

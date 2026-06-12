@@ -26,6 +26,7 @@ import type { NotificationEventType } from "@/inngest/client";
  * customer's assignment event is `ticket.assigned_customer` below.
  */
 export const STAFF_EVENT_TYPES = [
+  "ticket.created",
   "ticket.assigned",
   "ticket.reassigned",
   "ticket.customer_replied",

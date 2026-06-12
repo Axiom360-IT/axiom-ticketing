@@ -82,8 +82,10 @@ export function SignInForm() {
         }
         return;
       }
-      router.push("/portal/tickets");
-      router.refresh();
+      // Hard navigation after the session cookie is set — avoids the
+      // intermittent post-login 404/blank from a stale prefetch + the
+      // push+refresh race (same fix as the admin login).
+      window.location.assign("/portal/tickets");
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.error("[sign-in/password] action threw:", err);
