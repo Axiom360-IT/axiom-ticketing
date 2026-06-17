@@ -244,7 +244,7 @@ export default async function SettingsPage({
                 label={tUa("thresholdLabel")}
                 hint={tUa("thresholdHint")}
                 initial={num(v["unassigned_alert.threshold_minutes"], 120)}
-                min={1}
+                min={20}
               />
               <NumberSettingForm
                 settingKey="unassigned_alert.repeat_minutes"

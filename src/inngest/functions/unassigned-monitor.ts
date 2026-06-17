@@ -6,7 +6,10 @@ import { getAppUrl } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
 import { inngest } from "../client";
 
-// Unassigned-ticket monitor — runs every 5 minutes.
+// Unassigned-ticket monitor — runs every 20 minutes. (Matches the SLA
+// monitor cadence; widened from 5 min so the database can idle between runs
+// and stay within Neon's free compute tier. The threshold setting is floored
+// at 20 minutes to match — a smaller value couldn't be honored by this cron.)
 //
 // Emails the admin roles (Coordinator / IT Director / Super Admin) about any
 // open ticket that has sat with no technician assigned past the configured
@@ -29,7 +32,7 @@ const FALLBACK_THRESHOLD_MINUTES = 120;
 export const unassignedMonitor = inngest.createFunction(
   {
     id: "unassigned-ticket-monitor",
-    triggers: cron("*/5 * * * *"),
+    triggers: cron("*/20 * * * *"),
   },
   async ({ step }) => {
     const cfg = await step.run("load-config", async () => {

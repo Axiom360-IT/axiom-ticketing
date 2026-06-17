@@ -1307,9 +1307,9 @@
       "enabledLabel": "Email admins about unassigned tickets",
       "enabledHint": "When on, Coordinators, IT Directors and Super Admins are emailed about tickets left without an owner.",
       "thresholdLabel": "Alert after (minutes unassigned)",
-      "thresholdHint": "How long a ticket may sit unassigned before the first alert. Default 120 (2 hours).",
+      "thresholdHint": "How long a ticket may sit unassigned before the first alert. Minimum 20 minutes (the check runs every 20 min); default 120 (2 hours).",
       "repeatLabel": "Repeat every (minutes)",
-      "repeatHint": "Re-send the alert this often until the ticket is assigned. Set 0 to alert only once."
+      "repeatHint": "Re-send the alert this often until the ticket is assigned. Set 0 to alert only once, or 20+ minutes to repeat."
     },
     "emails": {
       "title": "Email configuration",

@@ -6,7 +6,10 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { getAppUrl } from "@/lib/request";
 import { inngest } from "../client";
 
-// SLA monitor — runs every 5 minutes per ARCHITECTURE §27.
+// SLA monitor — runs every 20 minutes. (Widened from 5 min to keep the
+// database idle enough between runs for Neon's free compute tier; SLA
+// windows are measured in hours, so a 20-minute detection granularity is
+// immaterial. The unassigned-ticket monitor runs on the same cadence.)
 //
 // For every ticket that's still in flight (status NOT IN
 // ('resolved','closed')) we check elapsed time against the response and
@@ -26,7 +29,7 @@ const TICKET_BATCH_LIMIT = 500;
 export const slaMonitor = inngest.createFunction(
   {
     id: "sla-monitor",
-    triggers: cron("*/5 * * * *"),
+    triggers: cron("*/20 * * * *"),
   },
   async ({ step }) => {
     const now = new Date();
