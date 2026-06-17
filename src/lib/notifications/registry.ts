@@ -34,6 +34,12 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.ticket.closed_staff.title",
     bodyKey: "notifications.ticket.closed_staff.body",
   },
+  // Recurring "still unassigned" nudge — routed to Coordinators / IT Directors
+  // / Super Admins until a technician is assigned.
+  "ticket.unassigned_reminder": {
+    titleKey: "notifications.ticket.unassigned_reminder.title",
+    bodyKey: "notifications.ticket.unassigned_reminder.body",
+  },
   // Customer-facing assignment: neutral wording that names the technician
   // (req 6.2). Distinct from `ticket.assigned` so the customer's bell never
   // shows the tech-oriented "assigned to you" copy (req 6.1).

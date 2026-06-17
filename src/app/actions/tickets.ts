@@ -47,7 +47,11 @@ import {
 } from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
-import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
+import {
+  computeDueTimesForNewTicket,
+  recomputeSlaForTicket,
+  type Priority,
+} from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
 import {
   guestTicketUrl,
@@ -2020,6 +2024,57 @@ export async function setTicketStatus(
     targetId: ticket.ticketNumber,
     before: { status: ticket.status },
     after: { status },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+// ── Priority ─────────────────────────────────────────────────────────
+//
+// Customers can't set priority (it's removed from their forms — every
+// customer/guest/email ticket defaults to "medium"), so staff set it here.
+// Changing it recomputes the SLA due times because the targets are
+// per-priority. Gated by the same `tickets.update` the assignee holds.
+export async function setTicketPriority(
+  ticketId: string,
+  priority: Priority,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!TICKET_PRIORITIES.includes(priority)) {
+    return { ok: false, error: "Invalid priority." };
+  }
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (ticket.priority === priority) return { ok: true };
+
+  await db
+    .update(tickets)
+    .set({ priority, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  // Priority drives the SLA targets — recompute the response/resolution due
+  // times so the clock reflects the new urgency (no-op if resolved/closed).
+  await recomputeSlaForTicket(ticketId);
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.priority_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { priority: ticket.priority },
+    after: { priority },
   });
 
   revalidatePath("/admin/tickets");

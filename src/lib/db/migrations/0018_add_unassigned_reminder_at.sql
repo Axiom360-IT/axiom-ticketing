@@ -1,0 +1,1 @@
+ALTER TABLE "tickets" ADD COLUMN "unassigned_reminder_at" timestamp with time zone;

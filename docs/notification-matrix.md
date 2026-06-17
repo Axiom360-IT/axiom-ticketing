@@ -68,7 +68,7 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 | `ticket.csat_unsatisfied` | E·A | Customer rejected the resolution. Also goes to Coordinators. |
 | `sla.warning_50` | A | Heads-up. |
 | `sla.warning_80` | S·A | Approaching breach. |
-| `sla.breached` | S·A | Breached. |
+| `sla.breached` | E·S·A | Breached — `sla_breached_staff` email + SMS + bell. Also broadcast to Super Admin + IT Director + Coordinator. |
 | `attachment.quarantined` | E·A | Infected upload on their ticket — `/admin` link, signature detail. |
 
 ### Coordinator (triage / queue owner)
@@ -77,12 +77,14 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 |---|---|---|
 | `ticket.created` | E·S·A | **New ticket arrived** (portal / guest web form / inbound email) — broadcast for triage/assignment. Also goes to IT Director + Super Admin. Fired by `dispatchTicketCreated` from all three customer create paths. |
 | `ticket.closed_staff` | E·S·A | A ticket was **closed** (CSAT-confirmed or auto-closed after 24h) — oversight copy, also to IT Director + Super Admin. Fired by `dispatchTicketClosedStaff` from the CSAT-confirm + auto-close paths (separate from the customer-facing `ticket.closed`). |
+| `ticket.unassigned_reminder` | E·A | A ticket has sat **unassigned** past the threshold — recurring nudge (with IT Director + Super Admin). Settings-driven (`unassigned_alert.*`); fired by the unassigned-ticket monitor cron. |
 | `ticket.customer_replied` | E·A | Only when the ticket is **unassigned** (fallback). |
 | `ticket.message_held` | A | Inbound reply from outside the org held for moderation (5.2). |
 | `ticket.csat_unsatisfied` | E·A | Always (alongside the assignee). |
 | `ticket.escalated` | E·S·A | Default escalation target (with IT Director) and when explicitly selected. |
 | `procurement.submitted` | E·A | New procurement request to action. |
-| `sla.*` | A (+S on 80/breach only if it became the de-facto owner) | Only when the ticket is **unassigned** (fallback) — closes the unowned-breach blind spot. |
+| `sla.warning_*` | A (+S at 80% if it became the de-facto owner) | Warnings only when the ticket is **unassigned** (fallback). |
+| `sla.breached` | E·S·A | **Always** on breach (assigned or not) — oversight, alongside Super Admin + IT Director + the assignee. |
 | `attachment.quarantined` | E·A | Only when no assignee/staff uploader is attributable (fallback). |
 
 ### IT Director
@@ -91,7 +93,9 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 |---|---|---|
 | `ticket.created` | E·S·A | New ticket arrived — broadcast for triage/awareness (with Coordinator + Super Admin). |
 | `ticket.closed_staff` | E·S·A | A ticket was closed — oversight (with Coordinator + Super Admin). |
+| `ticket.unassigned_reminder` | E·A | Ticket left **unassigned** past the threshold — nudge (with Coordinator + Super Admin). |
 | `ticket.escalated` | E·S·A | Default escalation target (with Coordinator) and when explicitly selected. |
+| `sla.breached` | E·S·A | **Always** on breach — oversight (with Super Admin + Coordinator + the assignee). |
 
 ### Super Admin
 
@@ -99,8 +103,10 @@ SMS. A customer **never** receives: `ticket.assigned` (tech copy),
 |---|---|---|
 | `ticket.created` | E·S·A | New ticket arrived — broadcast for oversight (with Coordinator + IT Director). |
 | `ticket.closed_staff` | E·S·A | A ticket was closed — oversight (with Coordinator + IT Director). |
+| `ticket.unassigned_reminder` | E·A | Ticket left **unassigned** past the threshold — nudge (with Coordinator + IT Director). |
 | `ticket.reassigned` | E·S·A | Every true reassignment, oversight (req 3.2). |
 | `ticket.escalated` | E·S·A | **Always** — Super Admin receives every escalation for oversight (in addition to the chosen target / the IT Director + Coordinator default). |
+| `sla.breached` | E·S·A | **Always** on breach — Super Admin receives every SLA breach for oversight (with IT Director + Coordinator + the assignee). |
 
 `targetRole` for escalation is validated server-side against
 `{IT Director, Coordinator, Super Admin}` so a client can't broadcast a

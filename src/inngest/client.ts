@@ -93,6 +93,10 @@ export type NotificationEventType =
   // distinct from the customer-facing `ticket.closed` so the bell wording is
   // correct for each audience.
   | "ticket.closed_staff"
+  // A ticket has sat UNASSIGNED past the configured threshold (settings:
+  // unassigned_alert.*). Recurring nudge broadcast to Coordinators + IT
+  // Directors + Super Admins so no incoming ticket is left without an owner.
+  | "ticket.unassigned_reminder"
   // Delivered to the newly-assigned technician ("Ticket … assigned to you").
   | "ticket.assigned"
   // Fired only on a TRUE reassignment (the ticket already had a different

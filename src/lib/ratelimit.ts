@@ -64,6 +64,10 @@ export const ratelimits = {
   authCreateRole: makeLimiter(20, "1 d"),
   authManageOrganization: makeLimiter(100, "1 d"),
   authUpdateSetting: makeLimiter(100, "1 d"),
+  /** Confirmation SMS on profile phone-change: 5 per user per hour. Caps
+   * abuse of the profile phone field as a way to SMS-bomb an arbitrary
+   * number (toll fraud / harassment) — far above any legitimate need. */
+  authConfirmationSms: makeLimiter(5, "1 h"),
 
   // ── Customer portal ──────────────────────────────────────────
   /** Magic-link request: 3 per email per hour. */

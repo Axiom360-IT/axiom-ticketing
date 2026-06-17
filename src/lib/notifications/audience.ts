@@ -28,6 +28,7 @@ import type { NotificationEventType } from "@/inngest/client";
 export const STAFF_EVENT_TYPES = [
   "ticket.created",
   "ticket.closed_staff",
+  "ticket.unassigned_reminder",
   "ticket.assigned",
   "ticket.reassigned",
   "ticket.customer_replied",

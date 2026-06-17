@@ -104,6 +104,7 @@ export default async function SettingsPage({
   const tDom = await getTranslations("settings.domains");
   const tProc = await getTranslations("settings.procurement");
   const tRw = await getTranslations("settings.responseWindow");
+  const tUa = await getTranslations("settings.unassignedAlert");
   const tEm = await getTranslations("settings.emails");
   const tFu = await getTranslations("settings.fileUpload");
   const tVs = await getTranslations("settings.virusScan");
@@ -222,6 +223,35 @@ export default async function SettingsPage({
                 label={tRw("label")}
                 initial={num(v["customer_response_window_hours"], 24)}
                 min={1}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tUa("title")}</CardTitle>
+              <CardDescription>{tUa("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <BooleanSettingForm
+                settingKey="unassigned_alert.enabled"
+                label={tUa("enabledLabel")}
+                description={tUa("enabledHint")}
+                initial={bool(v["unassigned_alert.enabled"], true)}
+              />
+              <NumberSettingForm
+                settingKey="unassigned_alert.threshold_minutes"
+                label={tUa("thresholdLabel")}
+                hint={tUa("thresholdHint")}
+                initial={num(v["unassigned_alert.threshold_minutes"], 120)}
+                min={1}
+              />
+              <NumberSettingForm
+                settingKey="unassigned_alert.repeat_minutes"
+                label={tUa("repeatLabel")}
+                hint={tUa("repeatHint")}
+                initial={num(v["unassigned_alert.repeat_minutes"], 0)}
+                min={0}
               />
             </CardContent>
           </Card>

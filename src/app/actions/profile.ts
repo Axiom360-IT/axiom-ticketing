@@ -10,6 +10,8 @@ import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { notificationPreferences } from "@/lib/db/schema/notifications";
+import { checkRateLimit } from "@/lib/ratelimit";
+import { sendSms } from "@/lib/sms/send";
 import { matchesMagicBytes } from "@/lib/storage/magic-bytes";
 import {
   deleteObject,
@@ -65,7 +67,13 @@ const profileSchema = z.object({
 
 export type UpdateProfileInput = z.infer<typeof profileSchema>;
 export type UpdateProfileResult =
-  | { ok: true }
+  | {
+      ok: true;
+      // Present only when the phone number changed and we attempted a
+      // confirmation SMS. `sent` is false when Twilio rejected it — the
+      // profile still saved either way.
+      smsNotice?: { sent: boolean };
+    }
   | { ok: false; error: string };
 
 export async function updateProfile(
@@ -79,6 +87,15 @@ export async function updateProfile(
     };
   }
   const user = await requireSessionUser();
+
+  // Snapshot the current phone (+ locale) before the write so we can tell
+  // whether the number actually changed — we only fire a confirmation SMS
+  // when a new, non-empty number is set or changed (not on every save).
+  const [before] = await db
+    .select({ phone: users.phone, language: users.language })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
 
   // Empty-string phone → null in DB (no phone configured).
   const phoneValue =
@@ -108,9 +125,39 @@ export async function updateProfile(
     },
   });
 
+  // Confirmation SMS to the NEW number whenever it's set or changed. This
+  // doubles as a delivery test: a number is only useful for alerts if
+  // Twilio can actually reach it. Sent directly (not via the dispatcher)
+  // because it must ignore per-event prefs and report its outcome inline.
+  // Best-effort — a Twilio failure must never fail the save; we surface the
+  // reason to the UI instead. Skipped when the number was cleared/unchanged.
+  let smsNotice: { sent: boolean } | undefined;
+  if (phoneValue && phoneValue !== before?.phone) {
+    // Anti-abuse: cap confirmation texts per user so the profile phone field
+    // can't be used to SMS-bomb an arbitrary number (toll fraud / harassment).
+    // When over the limit we silently skip the text — the profile still saves.
+    // Fails open in dev (no Upstash) so local testing is unaffected.
+    const { allowed } = await checkRateLimit("authConfirmationSms", user.id);
+    if (allowed) {
+      try {
+        const result = await sendSms({
+          to: phoneValue,
+          locale: before?.language ?? undefined,
+          template: { template: "phone_changed", data: {} },
+        });
+        smsNotice = { sent: result !== null };
+      } catch {
+        // Best-effort: a Twilio failure never fails the save. The user sees a
+        // friendly "couldn't send" notice; the underlying delivery error is
+        // visible in Twilio's own logs, not surfaced to the user.
+        smsNotice = { sent: false };
+      }
+    }
+  }
+
   revalidatePath("/admin/profile");
   revalidatePath("/portal/profile");
-  return { ok: true };
+  return { ok: true, ...(smsNotice ? { smsNotice } : {}) };
 }
 
 // ── Password set / change ───────────────────────────────────────

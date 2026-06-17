@@ -25,6 +25,7 @@
     "db:backfill-customers": "tsx --env-file=.env.local src/lib/db/backfill-customer-ids.ts",
     "db:backfill-org-domains": "tsx --env-file=.env.local src/lib/db/backfill-org-domains.ts",
     "db:backfill-category-prefix": "tsx --env-file=.env.local src/lib/db/backfill-category-prefix.ts",
+    "db:add-unassigned-column": "tsx --env-file=.env.local src/lib/db/add-unassigned-reminder-column.ts",
     "db:reset-for-production": "tsx --env-file=.env.local src/lib/db/reset-for-production.ts",
     "db:list-users": "tsx --env-file=.env.local src/lib/db/list-users.ts"
   },

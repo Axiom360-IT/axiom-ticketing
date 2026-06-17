@@ -19,11 +19,13 @@ export function CustomerProfileForm({ initial }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [smsNotice, setSmsNotice] = useState<{ sent: boolean } | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setSmsNotice(null);
     setSubmitting(true);
     const result = await updateProfile({
       name: name.trim(),
@@ -35,6 +37,7 @@ export function CustomerProfileForm({ initial }: Props) {
       return;
     }
     setSaved(true);
+    setSmsNotice(result.smsNotice ?? null);
     router.refresh();
   }
 
@@ -112,6 +115,22 @@ export function CustomerProfileForm({ initial }: Props) {
         >
           {t("saved")}
         </div>
+      ) : null}
+
+      {smsNotice ? (
+        smsNotice.sent ? (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            {t("smsConfirmSent")}
+          </p>
+        ) : (
+          <p
+            role="alert"
+            aria-live="polite"
+            className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-md px-3 py-2"
+          >
+            {t("smsConfirmFailed")}
+          </p>
+        )
       ) : null}
 
       <button

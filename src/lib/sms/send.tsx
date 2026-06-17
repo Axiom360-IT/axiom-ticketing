@@ -23,6 +23,8 @@ const TEMPLATE_NAMESPACE = {
   csat_unsatisfied_staff: "sms.csatUnsatisfiedStaff",
   sla_warning_80: "sms.slaWarning80",
   sla_breached: "sms.slaBreached",
+  // Account-facing (sent to the number being saved)
+  phone_changed: "sms.phoneChanged",
   // Customer-facing
   ticket_assigned_customer: "sms.ticketAssignedCustomer",
   agent_replied: "sms.agentReplied",

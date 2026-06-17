@@ -26,6 +26,7 @@ import { MergeModal } from "@/components/tickets/merge-modal";
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
+import { PriorityControl } from "@/components/tickets/priority-control";
 import { StatusControl } from "@/components/tickets/status-control";
 import { WorkLog } from "@/components/tickets/work-log";
 import { TicketProcurementSection } from "@/components/procurement/ticket-section";
@@ -479,6 +480,12 @@ export default async function TicketDetailPage({
               <CardContent className="space-y-4">
                 {canUpdate ? (
                   <StatusControl ticketId={ticket.id} current={ticket.status} />
+                ) : null}
+                {canUpdate ? (
+                  <PriorityControl
+                    ticketId={ticket.id}
+                    current={ticket.priority}
+                  />
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   {canResolve ? (

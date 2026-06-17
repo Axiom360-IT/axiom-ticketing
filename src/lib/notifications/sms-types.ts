@@ -14,6 +14,11 @@ export type AccountantBalanceSmsData = {
   overHours: string;
 };
 
+// Phone-change confirmation — sent to the NEW number when a user sets or
+// changes their phone in their profile. Doubles as a Twilio reachability
+// test; carries no template data.
+export type PhoneChangedSmsData = Record<string, never>;
+
 export type SmsTemplate =
   // Accountant-facing (configured contacts, not app users)
   | {
@@ -30,6 +35,8 @@ export type SmsTemplate =
   | { template: "csat_unsatisfied_staff"; data: SmsTemplateData }
   | { template: "sla_warning_80"; data: SmsTemplateData }
   | { template: "sla_breached"; data: SmsTemplateData }
+  // Account-facing (sent to the number being saved)
+  | { template: "phone_changed"; data: PhoneChangedSmsData }
   // Customer-facing — different wording from the staff variants because
   // the link target is the customer portal and the message describes
   // events from the customer's POV.

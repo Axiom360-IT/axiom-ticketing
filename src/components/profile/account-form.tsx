@@ -21,12 +21,14 @@ export function AccountForm({ initial }: Props) {
   const [phone, setPhone] = useState(initial.phone);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [smsNotice, setSmsNotice] = useState<{ sent: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setSmsNotice(null);
     startTransition(async () => {
       const res = await updateProfile({ name, phone: phone.trim() });
       if (!res.ok) {
@@ -34,6 +36,7 @@ export function AccountForm({ initial }: Props) {
         return;
       }
       setSaved(true);
+      setSmsNotice(res.smsNotice ?? null);
       router.refresh();
     });
   }
@@ -95,6 +98,20 @@ export function AccountForm({ initial }: Props) {
           </span>
         ) : null}
       </div>
+      {smsNotice ? (
+        smsNotice.sent ? (
+          <p className="text-xs text-green-700 dark:text-green-400">
+            {t("smsConfirmSent")}
+          </p>
+        ) : (
+          <p
+            role="alert"
+            className="text-xs text-amber-700 dark:text-amber-400"
+          >
+            {t("smsConfirmFailed")}
+          </p>
+        )
+      ) : null}
     </form>
   );
 }

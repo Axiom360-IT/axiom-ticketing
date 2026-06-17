@@ -157,6 +157,26 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "Cost above which procurement requires Super Admin approval (0 = single-step Coordinator approval only)",
     },
 
+    // Unassigned-ticket alerts (email admins when a ticket has no owner)
+    {
+      key: "unassigned_alert.enabled",
+      value: true,
+      description:
+        "Email admins (Coordinator/IT Director/Super Admin) when a ticket sits unassigned past the threshold",
+    },
+    {
+      key: "unassigned_alert.threshold_minutes",
+      value: 120,
+      description:
+        "Minutes a ticket may sit unassigned before the first admin alert",
+    },
+    {
+      key: "unassigned_alert.repeat_minutes",
+      value: 0,
+      description:
+        "Re-alert cadence in minutes while still unassigned (0 = alert once)",
+    },
+
     // Billing / accountant notifications (reqs 8.6–8.9)
     {
       key: "billing.accountant_emails",

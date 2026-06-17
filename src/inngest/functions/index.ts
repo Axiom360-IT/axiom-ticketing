@@ -22,12 +22,14 @@ import { sendEmailNotification } from "./send-email-notification";
 import { sendInAppNotification } from "./send-in-app-notification";
 import { sendSmsNotification } from "./send-sms-notification";
 import { slaMonitor } from "./sla-monitor";
+import { unassignedMonitor } from "./unassigned-monitor";
 
 export const functions = [
   autoCloseResolvedTickets,
   processInboundEmail,
   scanAttachment,
   slaMonitor,
+  unassignedMonitor,
   dispatchNotification,
   sendEmailNotification,
   sendSmsNotification,

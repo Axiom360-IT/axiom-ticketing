@@ -104,6 +104,14 @@ import {
   type TicketClosedStaffProps,
 } from "./templates/ticket-closed-staff";
 import {
+  SlaBreachedStaffEmail,
+  type SlaBreachedStaffProps,
+} from "./templates/sla-breached-staff";
+import {
+  TicketUnassignedStaffEmail,
+  type TicketUnassignedStaffProps,
+} from "./templates/ticket-unassigned-staff";
+import {
   TicketReopenedEmail,
   type TicketReopenedProps,
 } from "./templates/ticket-reopened";
@@ -146,6 +154,14 @@ export type EmailTemplate =
   | {
       template: "csat_unsatisfied_staff";
       data: Omit<CsatUnsatisfiedStaffProps, "locale">;
+    }
+  | {
+      template: "sla_breached_staff";
+      data: Omit<SlaBreachedStaffProps, "locale">;
+    }
+  | {
+      template: "ticket_unassigned_staff";
+      data: Omit<TicketUnassignedStaffProps, "locale">;
     }
   | {
       template: "customer_replied_staff";
@@ -271,6 +287,14 @@ async function renderTemplate(
       return await render(
         <CsatUnsatisfiedStaffEmail {...t.data} locale={locale} />,
       );
+    case "sla_breached_staff":
+      return await render(
+        <SlaBreachedStaffEmail {...t.data} locale={locale} />,
+      );
+    case "ticket_unassigned_staff":
+      return await render(
+        <TicketUnassignedStaffEmail {...t.data} locale={locale} />,
+      );
     case "customer_replied_staff":
       return await render(
         <CustomerRepliedStaffEmail {...t.data} locale={locale} />,
@@ -349,6 +373,8 @@ const TEMPLATE_NAMESPACE = {
   escalation_alert: "emails.escalationAlert",
   ticket_reassigned: "emails.ticketReassigned",
   csat_unsatisfied_staff: "emails.csatUnsatisfiedStaff",
+  sla_breached_staff: "emails.slaBreachedStaff",
+  ticket_unassigned_staff: "emails.ticketUnassignedStaff",
   customer_replied_staff: "emails.customerRepliedStaff",
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",

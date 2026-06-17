@@ -273,6 +273,8 @@
       "save": "Save changes",
       "saving": "Saving…",
       "saved": "Profile updated.",
+      "smsConfirmSent": "Confirmation text sent to your new number.",
+      "smsConfirmFailed": "Saved, but we couldn't send a confirmation text to that number. Please check it can receive SMS.",
       "password": {
         "setTitle": "Set a password",
         "setSubtitle": "Optional — once set, you can sign in with a password instead of waiting for a magic link.",
@@ -578,6 +580,9 @@
     },
     "statusControl": {
       "label": "Set status"
+    },
+    "priorityControl": {
+      "label": "Set priority"
     },
     "workLog": {
       "title": "Work log",
@@ -1296,6 +1301,16 @@
       "title": "Customer response window",
       "label": "Hours before resolved tickets auto-close without CSAT response"
     },
+    "unassignedAlert": {
+      "title": "Unassigned-ticket alerts",
+      "subtitle": "Email admins when a ticket sits with no technician assigned.",
+      "enabledLabel": "Email admins about unassigned tickets",
+      "enabledHint": "When on, Coordinators, IT Directors and Super Admins are emailed about tickets left without an owner.",
+      "thresholdLabel": "Alert after (minutes unassigned)",
+      "thresholdHint": "How long a ticket may sit unassigned before the first alert. Default 120 (2 hours).",
+      "repeatLabel": "Repeat every (minutes)",
+      "repeatHint": "Re-send the alert this often until the ticket is assigned. Set 0 to alert only once."
+    },
     "emails": {
       "title": "Email configuration",
       "supportEmail": "Support email (public-facing)",
@@ -1544,6 +1559,8 @@
       "save": "Save changes",
       "saving": "Saving…",
       "saved": "Saved.",
+      "smsConfirmSent": "Confirmation text sent to your new number.",
+      "smsConfirmFailed": "Saved, but we couldn't send a confirmation text to that number. Please check it can receive SMS.",
       "errorGeneric": "Save failed."
     },
     "password": {
@@ -1581,6 +1598,7 @@
       "events": {
         "ticket__created": "New ticket received",
         "ticket__closed_staff": "Ticket closed",
+        "ticket__unassigned_reminder": "Ticket still unassigned",
         "ticket__assigned": "Ticket assigned to me",
         "ticket__reassigned": "A ticket was reassigned (Superadmin)",
         "ticket__customer_replied": "Customer replied to my ticket",
@@ -1616,6 +1634,10 @@
       "closed_staff": {
         "title": "{ticketNumber} closed",
         "body": "{subject}"
+      },
+      "unassigned_reminder": {
+        "title": "{ticketNumber} still unassigned",
+        "body": "Waiting with no technician: {subject}"
       },
       "assigned_customer": {
         "title": "Your ticket {ticketNumber} has been assigned",
@@ -1743,6 +1765,9 @@
     },
     "slaBreached": {
       "body": "{ticketNumber}: SLA BREACHED. Action needed. {ticketUrl}"
+    },
+    "phoneChanged": {
+      "body": "Axiom360: this number is now set for your account alerts. If you didn't do this, contact your administrator."
     },
     "accountantNegativeBalance": {
       "body": "{orgName} is {overHours} over its monthly support plan. Over-plan hours are billable."
@@ -1917,6 +1942,23 @@
       "view": "Open ticket",
       "trailerLine": "Assign or triage this ticket from the admin console.",
       "subject": "[{ticketNumber}] New ticket: {subject}"
+    },
+    "slaBreachedStaff": {
+      "preview": "SLA breached on ticket {ticketNumber}",
+      "title": "SLA breached",
+      "body": "Ticket {ticketNumber} has missed its {kind} SLA target and needs immediate attention.",
+      "view": "Open ticket",
+      "trailerLine": "Reassign, escalate, or respond from the admin console.",
+      "subject": "[{ticketNumber}] SLA BREACHED — action needed"
+    },
+    "ticketUnassignedStaff": {
+      "preview": "Ticket {ticketNumber} is still unassigned",
+      "title": "Ticket still unassigned",
+      "body": "Ticket {ticketNumber} has been waiting with no technician assigned. Please assign someone.",
+      "metaSubject": "Subject: {subject}",
+      "view": "Assign ticket",
+      "trailerLine": "Assign a technician from the admin console.",
+      "subject": "[{ticketNumber}] Still unassigned — needs an owner"
     },
     "ticketClosedStaff": {
       "preview": "Ticket {ticketNumber} closed",

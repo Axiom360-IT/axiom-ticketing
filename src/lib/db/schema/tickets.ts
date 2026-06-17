@@ -91,6 +91,12 @@ export const tickets = pgTable(
     slaWarning50At: timestamp("sla_warning_50_at", { withTimezone: true }),
     slaWarning80At: timestamp("sla_warning_80_at", { withTimezone: true }),
     slaBreachedAt: timestamp("sla_breached_at", { withTimezone: true }),
+    // Last time the unassigned-ticket monitor alerted admins about this
+    // ticket having no owner. NULL = never alerted. Used for idempotency and
+    // the configurable re-nag cadence (settings: unassigned_alert.*).
+    unassignedReminderAt: timestamp("unassigned_reminder_at", {
+      withTimezone: true,
+    }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     reopenedCount: integer("reopened_count").notNull().default(0),

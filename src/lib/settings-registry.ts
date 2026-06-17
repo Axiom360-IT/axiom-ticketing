@@ -63,6 +63,21 @@ export const SETTING_SCHEMAS = {
   // Procurement
   procurement_approval_threshold: z.number().nonnegative().max(1_000_000),
 
+  // Unassigned-ticket alerts — email admins (Coordinator / IT Director /
+  // Super Admin) when a ticket sits with no technician past the threshold.
+  // `repeat_minutes` of 0 means alert once; >0 re-nags on that cadence.
+  "unassigned_alert.enabled": z.boolean(),
+  "unassigned_alert.threshold_minutes": z
+    .number()
+    .int()
+    .positive()
+    .max(60 * 24 * 14),
+  "unassigned_alert.repeat_minutes": z
+    .number()
+    .int()
+    .min(0)
+    .max(60 * 24 * 14),
+
   // Billing / accountant notifications (reqs 8.6–8.9). Accountants are OUR
   // platform's accountants (not per-organization contacts) — a global list of
   // email addresses (for negative-balance + ticket-billing alerts) and phone

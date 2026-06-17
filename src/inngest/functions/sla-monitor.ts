@@ -143,22 +143,29 @@ async function dispatch(
   kind: "response" | "resolution",
   type: "sla.warning_50" | "sla.warning_80" | "sla.breached",
 ): Promise<void> {
-  // 50% is in-app only (low-noise heads-up). 80% and breach also fire
-  // an SMS to the assignee if they have one configured. None of the
-  // SLA events have a dedicated email template yet — the dispatcher
-  // only sends the email leg when `email` is supplied here.
+  // Warnings are low-noise: routed to the assignee (or the Coordinator
+  // queue when the ticket is still unowned, req 6.3), in-app always, and
+  // SMS only at 80% when there's a named owner to text.
   //
-  // Recipient: the assignee when the ticket is owned, otherwise the
-  // Coordinator queue (req 6.3). Previously an unassigned ticket returned
-  // early here, so a ticket that breached its SLA while still in triage
-  // notified NOBODY — exactly the unowned-SLA case the monitor exists to
-  // catch. SMS stays scoped to a named assignee (we don't SMS-blast the
-  // whole Coordinator role); the Coordinator fallback is in-app only.
+  // A BREACH is the management-visibility event. It always broadcasts to
+  // the oversight roles — Super Admin, IT Director, Coordinator — PLUS the
+  // assignee, across all three channels (email + SMS + in-app). Previously
+  // a breach only pinged the assignee/Coordinator in-app with no email at
+  // all, so a missed deadline could reach nobody who could act on it.
   const appUrl = getAppUrl();
   const ticketUrl = `${appUrl}/admin/tickets/${t.id}`;
+  const isBreach = type === "sla.breached";
 
-  const wantsSms =
-    !!t.assignedToId && (type === "sla.warning_80" || type === "sla.breached");
+  const recipientRoles = isBreach
+    ? ["Super Admin", "IT Director", "Coordinator"]
+    : t.assignedToId
+      ? undefined
+      : ["Coordinator"];
+  const recipientUserIds = t.assignedToId ? [t.assignedToId] : undefined;
+
+  // SMS: every breach recipient who has a phone (the dispatcher gates on
+  // it); warnings keep their assignee-only 80% text.
+  const wantsSms = isBreach || (type === "sla.warning_80" && !!t.assignedToId);
   const smsTemplate =
     type === "sla.warning_80" ? "sla_warning_80" : "sla_breached";
 
@@ -167,10 +174,23 @@ async function dispatch(
       name: "notification/dispatch",
       data: {
         type,
-        recipientUserIds: t.assignedToId ? [t.assignedToId] : undefined,
-        recipientRoles: t.assignedToId ? undefined : ["Coordinator"],
-        ticketId: t.id,
-        ticketNumber: t.ticketNumber,
+        recipientUserIds,
+        recipientRoles,
+        ...(isBreach
+          ? {
+              email: {
+                template: {
+                  template: "sla_breached_staff",
+                  data: {
+                    ticketNumber: t.ticketNumber,
+                    kind,
+                    adminUrl: ticketUrl,
+                  },
+                },
+                ticketNumber: t.ticketNumber,
+              },
+            }
+          : {}),
         ...(wantsSms
           ? {
               sms: {
