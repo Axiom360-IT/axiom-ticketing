@@ -9,12 +9,20 @@ import { signInWithLockout } from "@/app/actions/sign-in";
 export function LoginForm() {
   const searchParams = useSearchParams();
   // Only accept same-origin admin paths so a phishing link with
-  // `?from=https://evil.example` can't trick the post-login redirect.
+  // `?from=https://evil.example` can't trick the post-login redirect. We also
+  // refuse the auth pages themselves — sending the user back to /admin/login,
+  // /admin/setup, or the (non-existent) /admin/sign-in after a successful
+  // login is how a stray `from` turned into a post-login 404. Default to the
+  // dashboard in any of those cases.
   const rawFrom = searchParams.get("from");
-  const fromPath =
-    rawFrom && (rawFrom === "/admin" || rawFrom.startsWith("/admin/"))
-      ? rawFrom
-      : "/admin";
+  const isSafeFrom =
+    rawFrom != null &&
+    (rawFrom === "/admin" || rawFrom.startsWith("/admin/")) &&
+    !rawFrom.startsWith("/admin/login") &&
+    !rawFrom.startsWith("/admin/setup") &&
+    !rawFrom.startsWith("/admin/sign-in") &&
+    !rawFrom.startsWith("/admin/signin");
+  const fromPath = isSafeFrom ? rawFrom : "/admin";
   const t = useTranslations("admin.login");
 
   const [email, setEmail] = useState("");

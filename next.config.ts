@@ -3,6 +3,25 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  async redirects() {
+    return [
+      // `/admin/sign-in` is NOT a real route — the admin login lives at
+      // `/admin/login` (only the customer portal uses `/sign-in`). People and
+      // stale bookmarks hit the `/sign-in` variant out of habit; alias it so
+      // they land on the real login page instead of a 404. These run before
+      // the proxy, so the bad path never enters the `?from=` redirect loop.
+      {
+        source: "/admin/sign-in",
+        destination: "/admin/login",
+        permanent: false,
+      },
+      {
+        source: "/admin/signin",
+        destination: "/admin/login",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
