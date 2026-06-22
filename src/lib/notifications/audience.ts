@@ -44,6 +44,63 @@ export const STAFF_EVENT_TYPES = [
   "attachment.quarantined",
 ] as const satisfies readonly NotificationEventType[];
 
+// ── Per-role scoping of the staff set (req 6.4) ──────────────────────
+//
+// STAFF_EVENT_TYPES above is the FULL staff catalogue. A given staff member
+// should only see — and tune — the events their role actually receives, so a
+// Technician isn't shown triage/oversight toggles for notifications that only
+// ever route to Coordinators/Directors/Super Admins (and vice versa).
+//
+// Split into two tiers:
+//   BASE       — events ANY staff member can receive: as the assignee of a
+//                ticket (assignment, customer reply, CSAT, SLA, quarantine) or
+//                as the requester of a procurement (approved/rejected/delivered).
+//   MANAGEMENT — triage/oversight events that route ONLY to the management
+//                roles (new ticket, closed, unassigned nudge, reassignment,
+//                escalation, procurement to approve).
+// BASE ∪ MANAGEMENT == STAFF_EVENT_TYPES exactly.
+
+const BASE_STAFF_EVENT_TYPES = [
+  "ticket.assigned",
+  "ticket.customer_replied",
+  "ticket.csat_unsatisfied",
+  "sla.warning_50",
+  "sla.warning_80",
+  "sla.breached",
+  "attachment.quarantined",
+  "procurement.approved",
+  "procurement.rejected",
+  "procurement.delivered",
+] as const satisfies readonly NotificationEventType[];
+
+const MANAGEMENT_EVENT_TYPES = [
+  "ticket.created",
+  "ticket.closed_staff",
+  "ticket.unassigned_reminder",
+  "ticket.reassigned",
+  "ticket.escalated",
+  "procurement.submitted",
+] as const satisfies readonly NotificationEventType[];
+
+const MANAGEMENT_ROLES = ["Coordinator", "IT Director", "Super Admin"] as const;
+
+/**
+ * The staff notification events a user may tune, scoped to their role(s). A
+ * user holding any management role additionally sees the triage/oversight
+ * events. Erring toward over-inclusion (never hides an event a role might
+ * receive); preserves STAFF_EVENT_TYPES ordering for a stable grid (req 6.4).
+ */
+export function staffEventsForRoles(
+  roleNames: Iterable<string>,
+): readonly NotificationEventType[] {
+  const names = roleNames instanceof Set ? roleNames : new Set(roleNames);
+  const allowed = new Set<NotificationEventType>(BASE_STAFF_EVENT_TYPES);
+  if (MANAGEMENT_ROLES.some((r) => names.has(r))) {
+    for (const e of MANAGEMENT_EVENT_TYPES) allowed.add(e);
+  }
+  return STAFF_EVENT_TYPES.filter((e) => allowed.has(e));
+}
+
 /**
  * Customer-tunable events (ticket owner). Every entry is written for the
  * customer's point of view — none of the staff-oriented wording (req 6.2).

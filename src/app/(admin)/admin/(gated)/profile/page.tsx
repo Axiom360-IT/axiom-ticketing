@@ -17,6 +17,7 @@ import {
   listMyNotificationPreferences,
   listMySessions,
 } from "@/app/actions/profile";
+import { staffEventsForRoles } from "@/lib/notifications/audience";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -39,9 +40,13 @@ export default async function ProfilePage() {
     .limit(1);
   if (!me) redirect("/admin/login");
 
+  // Scope the notification grid to the events this user's role(s) actually
+  // receive — a Technician shouldn't see Coordinator/Director-only toggles
+  // (req 6.4). Customers are already scoped to CUSTOMER_EVENT_TYPES on the
+  // portal profile.
   const [sessions, prefs] = await Promise.all([
     listMySessions(),
-    listMyNotificationPreferences(),
+    listMyNotificationPreferences(staffEventsForRoles(user.roleNames)),
   ]);
 
   // image stores the R2 storage key; sign with 1h TTL for browser caching.
