@@ -397,6 +397,9 @@ export async function customerReply(
             },
           },
           ticketNumber: ticket.ticketNumber,
+          // Tag the alert so a technician can reply to it from their inbox
+          // and have it land on the ticket (req 5.3).
+          replyToTicket: true,
         },
         sms: {
           template: {
@@ -585,6 +588,9 @@ export async function guestReply(input: {
             },
           },
           ticketNumber: ticket.ticketNumber,
+          // Tag the alert so a technician can reply to it from their inbox
+          // and have it land on the ticket (req 5.3).
+          replyToTicket: true,
         },
         sms: {
           template: {

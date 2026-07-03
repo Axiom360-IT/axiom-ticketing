@@ -405,6 +405,8 @@
       "actionsTitle": "Actions",
       "customerTitle": "Customer",
       "companyLabel": "Company (as entered)",
+      "phoneLabel": "Phone",
+      "phoneNotProvided": "No phone on file",
       "orgUnverified": "Organization unverified",
       "assigneeTitle": "Assign to a technician",
       "assigneeHelp": "Choose which technician owns this ticket. Reassigning hands it off to a colleague; you can also add extra technicians who collaborate on it below.",
@@ -583,6 +585,11 @@
     },
     "priorityControl": {
       "label": "Set priority"
+    },
+    "propertiesForm": {
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saved": "Saved"
     },
     "workLog": {
       "title": "Work log",
@@ -2063,8 +2070,9 @@
       "title": "New customer reply",
       "body": "{customerName} added a new message to ticket {ticketNumber}.",
       "metaSubject": "Re: {subject}",
+      "replyHint": "You can reply directly to this email to respond to the customer — your reply will be added to the ticket and sent to them.",
       "view": "Open ticket",
-      "trailerLine": "Reply from the ticket in the admin console to respond to {ticketNumber}.",
+      "trailerLine": "Or reply from the ticket in the admin console to respond to {ticketNumber}.",
       "subject": "[{ticketNumber}] Customer replied"
     },
     "inboundBounce": {

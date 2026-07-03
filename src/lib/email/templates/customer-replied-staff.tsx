@@ -58,6 +58,10 @@ export async function CustomerRepliedStaffEmail({
         ))}
       </Section>
 
+      <Text style={{ ...textStyles.body, fontWeight: 600 }}>
+        {t("replyHint")}
+      </Text>
+
       <Link href={ticketUrl} style={textStyles.button}>
         {t("view")}
       </Link>

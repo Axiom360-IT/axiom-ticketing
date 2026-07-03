@@ -26,8 +26,7 @@ import { MergeModal } from "@/components/tickets/merge-modal";
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
-import { PriorityControl } from "@/components/tickets/priority-control";
-import { StatusControl } from "@/components/tickets/status-control";
+import { TicketActionsControl } from "@/components/tickets/ticket-actions-control";
 import { WorkLog } from "@/components/tickets/work-log";
 import { TicketProcurementSection } from "@/components/procurement/ticket-section";
 import { listProcurementForTicket } from "@/app/actions/procurement";
@@ -91,6 +90,19 @@ export default async function TicketDetailPage({
     .where(eq(tickets.id, id))
     .limit(1);
   if (!ticket) notFound();
+
+  // Customer's contact number (from their profile) so a technician can call
+  // them directly while working the ticket. Only registered customers have a
+  // profile — guest / email-only tickets have no phone on file.
+  const customerPhone = ticket.customerId
+    ? ((
+        await db
+          .select({ phone: users.phone })
+          .from(users)
+          .where(eq(users.id, ticket.customerId))
+          .limit(1)
+      )[0]?.phone ?? null)
+    : null;
 
   // Collaborators (so a strict-tech collaborator isn't 404'd here) and whether
   // the viewer has logged work on this ticket (grants read-only carry-over
@@ -479,12 +491,10 @@ export default async function TicketDetailPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 {canUpdate ? (
-                  <StatusControl ticketId={ticket.id} current={ticket.status} />
-                ) : null}
-                {canUpdate ? (
-                  <PriorityControl
+                  <TicketActionsControl
                     ticketId={ticket.id}
-                    current={ticket.priority}
+                    currentStatus={ticket.status}
+                    currentPriority={ticket.priority}
                   />
                 ) : null}
                 <div className="flex flex-wrap gap-2">
@@ -543,6 +553,19 @@ export default async function TicketDetailPage({
               <div>{ticket.customerName}</div>
               <div className="text-zinc-500 dark:text-zinc-400">
                 {ticket.customerEmail}
+              </div>
+              <div className="text-zinc-500 dark:text-zinc-400">
+                {t("phoneLabel")}:{" "}
+                {customerPhone ? (
+                  <a
+                    href={`tel:${customerPhone}`}
+                    className="text-blue-700 hover:underline dark:text-blue-400"
+                  >
+                    {customerPhone}
+                  </a>
+                ) : (
+                  <span className="italic">{t("phoneNotProvided")}</span>
+                )}
               </div>
               {ticket.customerCompany ? (
                 <div className="pt-1 text-zinc-500 dark:text-zinc-400">

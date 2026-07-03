@@ -6,6 +6,7 @@ import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { attachments } from "@/lib/db/schema/attachments";
 import { messages } from "@/lib/db/schema/messages";
+import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import {
@@ -18,6 +19,7 @@ import {
 } from "@/lib/email/inbound-payload";
 import {
   classifyInboundSender,
+  listActiveParticipants,
   upsertParticipant,
 } from "@/lib/tickets/participants";
 import { senderAuthVerdict } from "@/lib/email/auth-results";
@@ -27,7 +29,7 @@ import {
   MAX_FILE_BYTES,
   sanitizeFilename,
 } from "@/lib/storage/mime";
-import { ticketTrackingUrl } from "@/lib/tokens";
+import { guestTicketUrl, ticketTrackingUrl } from "@/lib/tokens";
 import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
@@ -58,6 +60,19 @@ type EventData = {
   payload: NormalizedInboundEmail;
   eventId: string;
 };
+
+// True if the user holds any non-customer role — i.e. they're one of OUR staff
+// (Technician / Coordinator / IT Director / Super Admin / …) rather than a
+// registered customer. Lets an inbound email from a staff address be treated
+// as an AGENT reply instead of a customer message.
+async function isStaffUser(userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ name: roles.name })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(eq(userRoles.userId, userId));
+  return rows.some((r) => r.name !== "Customer");
+}
 
 export const processInboundEmail = inngest.createFunction(
   {
@@ -127,6 +142,8 @@ export const processInboundEmail = inngest.createFunction(
           status: tickets.status,
           subject: tickets.subject,
           customerEmail: tickets.customerEmail,
+          customerId: tickets.customerId,
+          customerName: tickets.customerName,
           organizationId: tickets.organizationId,
           assignedToId: tickets.assignedToId,
         })
@@ -260,6 +277,171 @@ export const processInboundEmail = inngest.createFunction(
       .where(eq(users.email, fromEmail))
       .limit(1);
     const authorName = knownUser?.name ?? fromName;
+
+    // 6·staff. Staff reply by email (req 5.3). If the sender is one of OUR
+    // staff (a user holding any non-customer role), this email is an AGENT
+    // reply, not a customer message — record it as `agent` and deliver it to
+    // the customer, exactly like a portal reply. The From: header is forgeable,
+    // so we still require a passing sender-auth verdict (unless the operator
+    // turned `inbound_require_auth` off); a spoofed staff address falls through
+    // to the normal moderation path below instead of impersonating an agent.
+    const senderIsStaff = knownUser ? await isStaffUser(knownUser.id) : false;
+    if (knownUser && senderIsStaff) {
+      const requireAuthForStaff =
+        (await getSetting<boolean>("inbound_require_auth")) ?? true;
+      const staffAuthOk =
+        !requireAuthForStaff ||
+        senderAuthVerdict(payload.headers, fromEmail) === "pass";
+      if (staffAuthOk) {
+        const staffUser = knownUser;
+        const wasOpen = ticket.status === "open";
+        await step.run("insert-agent-reply", async () => {
+          await db.insert(messages).values({
+            ticketId: ticket.id,
+            authorId: staffUser.id,
+            authorEmail: fromEmail,
+            authorName,
+            authorType: "agent",
+            body: messageBody,
+            channel: "email",
+            moderationStatus: "approved",
+          });
+          // First agent reply stamps first_response_at (SLA, mirrors the
+          // portal reply path).
+          const update: Partial<typeof tickets.$inferInsert> = {
+            updatedAt: new Date(),
+          };
+          if (wasOpen) update.firstResponseAt = new Date();
+          await db
+            .update(tickets)
+            .set(update)
+            .where(eq(tickets.id, ticket.id));
+        });
+
+        await audit({
+          actorId: staffUser.id,
+          action: "ticket.reply",
+          targetType: "ticket",
+          targetId: ticket.ticketNumber,
+          after: { reply: messageBody, via: "email" },
+        });
+
+        // Deliver to the customer (+ external participants), same as a portal
+        // reply: registered customers go through the dispatcher, guests get a
+        // direct email. Best-effort — a send failure never fails the ingest.
+        await step.run("deliver-agent-reply", async () => {
+          try {
+            const trackingUrl = ticketTrackingUrl({
+              appUrl,
+              ticketNumber: ticket.ticketNumber,
+              customerEmail: ticket.customerEmail,
+              customerId: ticket.customerId,
+            });
+            if (ticket.customerId) {
+              await inngest.send({
+                name: "notification/dispatch",
+                data: {
+                  type: "ticket.agent_replied",
+                  recipientUserIds: [ticket.customerId],
+                  ticketId: ticket.id,
+                  ticketNumber: ticket.ticketNumber,
+                  email: {
+                    template: {
+                      template: "ticket_reply",
+                      data: {
+                        ticketNumber: ticket.ticketNumber,
+                        customerName: ticket.customerName,
+                        subject: ticket.subject,
+                        agentName: authorName,
+                        body: messageBody,
+                        trackingUrl,
+                      },
+                    },
+                    ticketNumber: ticket.ticketNumber,
+                    replyToTicket: true,
+                  },
+                  sms: {
+                    template: {
+                      template: "agent_replied",
+                      data: {
+                        ticketNumber: ticket.ticketNumber,
+                        ticketUrl: trackingUrl,
+                      },
+                    },
+                  },
+                  inApp: {
+                    titleArgs: { ticketNumber: ticket.ticketNumber },
+                    bodyArgs: {},
+                    linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+                  },
+                },
+              });
+            } else {
+              await sendEmail({
+                to: ticket.customerEmail,
+                template: {
+                  template: "ticket_reply",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    customerName: ticket.customerName,
+                    subject: ticket.subject,
+                    agentName: authorName,
+                    body: messageBody,
+                    trackingUrl,
+                  },
+                },
+                ticketNumber: ticket.ticketNumber,
+                replyToTicket: true,
+                fromActorName: authorName,
+              });
+            }
+
+            // CC active external participants (same-org colleagues looped in).
+            const participants = await listActiveParticipants(ticket.id);
+            for (const p of participants) {
+              if (p.email === ticket.customerEmail.toLowerCase()) continue;
+              try {
+                await sendEmail({
+                  to: p.email,
+                  template: {
+                    template: "ticket_reply",
+                    data: {
+                      ticketNumber: ticket.ticketNumber,
+                      customerName: p.name ?? p.email,
+                      subject: ticket.subject,
+                      agentName: authorName,
+                      body: messageBody,
+                      trackingUrl: guestTicketUrl(
+                        appUrl,
+                        ticket.ticketNumber,
+                        p.email,
+                      ),
+                    },
+                  },
+                  ticketNumber: ticket.ticketNumber,
+                  replyToTicket: true,
+                  fromActorName: authorName,
+                });
+              } catch (err) {
+                console.error(
+                  `[process-inbound-email] staff-reply participant CC failed (${p.email}):`,
+                  err,
+                );
+              }
+            }
+          } catch (err) {
+            console.error(
+              "[process-inbound-email] staff-reply delivery failed:",
+              err,
+            );
+          }
+        });
+
+        return { status: "agent-reply", ticketNumber };
+      }
+      // Staff address but auth FAILED → treat as a potential spoof: fall
+      // through to the moderation path below (held, not posted as an agent).
+    }
 
     // 6a. Foreign sender → HOLD for moderation (req 5.2), UNLESS the master
     //     moderation switch is off (then it falls through and posts normally).
@@ -473,6 +655,9 @@ export const processInboundEmail = inngest.createFunction(
                 },
               },
               ticketNumber: ticket.ticketNumber,
+              // Tag the alert so a technician can reply to it straight from
+              // their inbox and have it land on the ticket (req 5.3).
+              replyToTicket: true,
             },
             sms: {
               template: {
