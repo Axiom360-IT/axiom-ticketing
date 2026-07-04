@@ -99,7 +99,7 @@ export function SidebarContent({
             // most brand logos are drawn for a white background and would
             // otherwise vanish on the dark surface. eslint-disable: a signed R2
             // URL doesn't fit next/image's static remotePatterns.
-            <div className="w-full overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5">
+            <div className="w-full overflow-hidden rounded-lg bg-white px-4 py-1.5 shadow-sm ring-1 ring-black/5">
               {/* object-cover crops the logo file's baked-in transparent
                   margins (many exports are padded to a square) so the mark
                   fills the plate. eslint-disable: signed R2 URL. */}
