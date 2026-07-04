@@ -27,6 +27,7 @@ import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
 import { ResolveModal } from "@/components/tickets/resolve-modal";
 import { TicketActionsControl } from "@/components/tickets/ticket-actions-control";
+import { EditCustomerControl } from "@/components/tickets/edit-customer-control";
 import { WorkLog } from "@/components/tickets/work-log";
 import { TicketProcurementSection } from "@/components/procurement/ticket-section";
 import { listProcurementForTicket } from "@/app/actions/procurement";
@@ -579,6 +580,13 @@ export default async function TicketDetailPage({
                 <p className="mt-1 inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
                   {t("orgUnverified")}
                 </p>
+              ) : null}
+              {canUpdate ? (
+                <EditCustomerControl
+                  ticketId={ticket.id}
+                  currentName={ticket.customerName}
+                  currentEmail={ticket.customerEmail}
+                />
               ) : null}
             </CardContent>
           </Card>

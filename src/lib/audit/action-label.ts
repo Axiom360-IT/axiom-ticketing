@@ -44,6 +44,8 @@ const ACTION_LABELS: Record<string, string> = {
   "ticket.customer_reply": "Customer replied",
   "ticket.internal_note": "Added an internal note",
   "ticket.status_change": "Changed the ticket status",
+  "ticket.priority_change": "Changed the priority",
+  "ticket.customer_change": "Changed the customer",
   "ticket.set_billable": "Set the billable category",
   "ticket.log_work": "Logged work",
   "ticket.update_work_log": "Edited a work-log entry",

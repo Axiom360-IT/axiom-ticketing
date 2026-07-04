@@ -990,7 +990,10 @@ export async function submitCsatFromPortal(
 
   if (parsed.data.response === "satisfied") {
     newStatus = "closed";
-    await db
+    // Atomic guard (mirrors the email-link route): only close if the ticket is
+    // still resolved and unanswered, so a rapid double-submit can't race a
+    // reopen and fire both a "closed" and "reopened" email.
+    const won = await db
       .update(tickets)
       .set({
         csatResponse: "satisfied",
@@ -999,7 +1002,20 @@ export async function submitCsatFromPortal(
         closedAt: now,
         updatedAt: now,
       })
-      .where(eq(tickets.id, ticket.id));
+      .where(
+        and(
+          eq(tickets.id, ticket.id),
+          eq(tickets.status, "resolved"),
+          isNull(tickets.csatResponse),
+        ),
+      )
+      .returning({ id: tickets.id });
+    if (won.length === 0) {
+      return {
+        ok: false,
+        error: "You've already given feedback on this ticket.",
+      };
+    }
     await audit({
       actorId: user.id,
       action: "ticket.csat.satisfied",
@@ -1028,8 +1044,11 @@ export async function submitCsatFromPortal(
 
     const trimmedComment = parsed.data.comment?.trim() ?? "";
 
-    await transactional(async (tx) => {
-      await tx
+    // Atomic guard (mirrors the email-link route): the conditional update only
+    // matches if the ticket is still resolved and unanswered, so the loser of a
+    // race reopens nothing and posts no comment.
+    const won = await transactional(async (tx) => {
+      const updated = await tx
         .update(tickets)
         .set({
           csatResponse: "unsatisfied",
@@ -1039,7 +1058,15 @@ export async function submitCsatFromPortal(
           reopenedCount: sql`${tickets.reopenedCount} + 1`,
           updatedAt: now,
         })
-        .where(eq(tickets.id, ticket.id));
+        .where(
+          and(
+            eq(tickets.id, ticket.id),
+            eq(tickets.status, "resolved"),
+            isNull(tickets.csatResponse),
+          ),
+        )
+        .returning({ id: tickets.id });
+      if (updated.length === 0) return false;
 
       // Persist the customer's "still not fixed" comment as a real
       // message on the thread so the assigned tech sees it in context.
@@ -1057,7 +1084,15 @@ export async function submitCsatFromPortal(
           channel: "portal",
         });
       }
+      return true;
     });
+
+    if (!won) {
+      return {
+        ok: false,
+        error: "You've already given feedback on this ticket.",
+      };
+    }
 
     await audit({
       actorId: user.id,

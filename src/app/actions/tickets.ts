@@ -2082,6 +2082,86 @@ export async function setTicketPriority(
   return { ok: true };
 }
 
+// ── Change the ticket's customer ─────────────────────────────────────
+//
+// When a staff member forwards a customer's email into the system, the ticket
+// is created with the FORWARDER as the customer. This lets a technician correct
+// it — set the real customer's name + email — so the ticket shows who it's
+// actually for and, crucially, all future notifications (replies, status,
+// resolution) go to THAT person, because the notification fan-out keys off the
+// ticket's customer. If the email matches an existing account we link it (they
+// get in-app + preference-scoped notifications); otherwise the customer is a
+// guest and gets direct email.
+
+const setCustomerSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(120),
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+});
+
+export async function setTicketCustomer(
+  ticketId: string,
+  input: { name: string; email: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = setCustomerSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const { name, email } = parsed.data;
+
+  // Link to an existing account when one has this email so the customer gets
+  // in-app + preference-scoped notifications; otherwise null → guest (direct
+  // email to the address on the ticket). Emails are stored lowercase.
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  const customerId = existing?.id ?? null;
+
+  await db
+    .update(tickets)
+    .set({
+      customerName: name,
+      customerEmail: email,
+      customerId,
+      // The old "company as entered" belonged to the previous customer — clear
+      // it rather than show a stale company for the new one.
+      customerCompany: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.customer_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { name: ticket.customerName, email: ticket.customerEmail },
+    after: { name, email, linkedAccount: customerId != null },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
 // ── Billable categorization (Meeting-2, CR-16/17/18/19) ──────────────
 //
 // Set per individual ticket (not hardcoded per org). The boss's call:

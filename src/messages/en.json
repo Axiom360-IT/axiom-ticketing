@@ -591,6 +591,14 @@
       "saving": "Saving…",
       "saved": "Saved"
     },
+    "editCustomer": {
+      "button": "Change customer",
+      "nameLabel": "Customer name",
+      "emailLabel": "Customer email",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel"
+    },
     "workLog": {
       "title": "Work log",
       "totalLabel": "Total time logged",

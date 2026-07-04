@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
@@ -83,7 +83,12 @@ export async function GET(request: NextRequest): Promise<Response> {
   const appUrl = getAppUrl();
 
   if (response === "satisfied") {
-    await db
+    // Atomic guard: only close if the ticket is STILL resolved and hasn't
+    // already been CSAT-answered. This is what prevents the reopen/close race
+    // when two CSAT links are hit at nearly the same time (e.g. a link scanner
+    // prefetching both the "satisfied" and "unsatisfied" buttons) — only the
+    // first request's UPDATE matches a row, so only one action + one email.
+    const won = await db
       .update(tickets)
       .set({
         csatResponse: "satisfied",
@@ -92,7 +97,20 @@ export async function GET(request: NextRequest): Promise<Response> {
         closedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(tickets.id, ticket.id));
+      .where(
+        and(
+          eq(tickets.id, ticket.id),
+          eq(tickets.status, "resolved"),
+          isNull(tickets.csatResponse),
+        ),
+      )
+      .returning({ id: tickets.id });
+
+    if (won.length === 0) {
+      // A concurrent CSAT request already handled this ticket — don't
+      // double-act or double-email. Idempotent redirect.
+      redirect(`/csat/result?status=already&response=${response}`);
+    }
 
     await audit({
       actorId: null,
@@ -141,7 +159,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   // unsatisfied — reopen
   const newStatus = ticket.assignedToId ? "in_progress" : "open";
 
-  await db
+  // Same atomic guard as the satisfied branch — the loser of a concurrent
+  // race matches no row and bails out without reopening or emailing.
+  const won = await db
     .update(tickets)
     .set({
       csatResponse: "unsatisfied",
@@ -151,7 +171,18 @@ export async function GET(request: NextRequest): Promise<Response> {
       reopenedCount: sql`${tickets.reopenedCount} + 1`,
       updatedAt: new Date(),
     })
-    .where(eq(tickets.id, ticket.id));
+    .where(
+      and(
+        eq(tickets.id, ticket.id),
+        eq(tickets.status, "resolved"),
+        isNull(tickets.csatResponse),
+      ),
+    )
+    .returning({ id: tickets.id });
+
+  if (won.length === 0) {
+    redirect(`/csat/result?status=already&response=${response}`);
+  }
 
   await audit({
     actorId: null,
