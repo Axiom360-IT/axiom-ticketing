@@ -99,12 +99,12 @@ export function SidebarContent({
             // most brand logos are drawn for a white background and would
             // otherwise vanish on the dark surface. eslint-disable: a signed R2
             // URL doesn't fit next/image's static remotePatterns.
-            <div className="w-full rounded-md bg-white px-3 py-2">
+            <div className="w-full rounded-lg bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={branding.logoUrl}
                 alt={branding.brandName}
-                className="mx-auto max-h-10 w-full object-contain"
+                className="mx-auto h-auto w-full max-h-16 object-contain"
               />
             </div>
           ) : (
