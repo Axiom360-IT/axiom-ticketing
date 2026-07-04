@@ -593,6 +593,9 @@
     },
     "editCustomer": {
       "button": "Change customer",
+      "searchLabel": "Find an existing customer",
+      "searchPlaceholder": "Search by name or email…",
+      "orNew": "…or enter a new customer below:",
       "nameLabel": "Customer name",
       "emailLabel": "Customer email",
       "save": "Save",

@@ -23,6 +23,7 @@ import { db, transactional } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
+import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { tickets } from "@/lib/db/schema/tickets";
 import { workLogs } from "@/lib/db/schema/work-logs";
@@ -2160,6 +2161,35 @@ export async function setTicketCustomer(
   revalidatePath("/admin/tickets");
   revalidatePath(`/admin/tickets/${ticketId}`);
   return { ok: true };
+}
+
+// Type-ahead lookup for the "change customer" picker: existing customer
+// accounts matching a name/email fragment. Staff-gated (returns customer PII).
+// Picking a result links the account so notifications + phone flow through.
+export type CustomerSearchHit = { id: string; name: string; email: string };
+
+export async function searchTicketCustomers(
+  query: string,
+): Promise<CustomerSearchHit[]> {
+  const user = await requireSessionUser();
+  if (!user.permissions.has("tickets.update")) return [];
+
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const like = `%${q}%`;
+
+  return db
+    .selectDistinct({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .innerJoin(userRoles, eq(userRoles.userId, users.id))
+    .innerJoin(roles, eq(roles.id, userRoles.roleId))
+    .where(
+      and(
+        eq(roles.name, "Customer"),
+        or(ilike(users.name, like), ilike(users.email, like)),
+      ),
+    )
+    .limit(10);
 }
 
 // ── Billable categorization (Meeting-2, CR-16/17/18/19) ──────────────
