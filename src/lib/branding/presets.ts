@@ -117,6 +117,8 @@ export type BrandingConfig = {
   brandAccent: string;
   accentColor: AccentKey;
   gradientPreset: GradientKey;
+  /** Signed URL of the uploaded logo, or null to fall back to the wordmark. */
+  logoUrl?: string | null;
 };
 
 export const DEFAULT_BRANDING: BrandingConfig = {
@@ -124,6 +126,7 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   brandAccent: "360",
   accentColor: "blue",
   gradientPreset: "blue",
+  logoUrl: null,
 };
 
 export function isAccentKey(v: unknown): v is AccentKey {

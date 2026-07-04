@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandingForm } from "@/components/settings/branding-form";
+import { LogoUpload } from "@/components/settings/logo-upload";
+import { loadBranding } from "@/lib/branding/load";
 import { BusinessHoursForm } from "@/components/settings/business-hours-form";
 import { HolidaysList } from "@/components/settings/holidays-list";
 import { RateLimitForm } from "@/components/settings/rate-limit-form";
@@ -96,6 +98,10 @@ export default async function SettingsPage({
 
   const snapshot = await loadSettingsSnapshot();
   const v = snapshot.values;
+
+  // Current logo (signed URL) for the branding tab's uploader.
+  const brandingLogoUrl =
+    tab === "branding" ? ((await loadBranding()).logoUrl ?? null) : null;
 
   const t = await getTranslations("settings.page");
   const tBh = await getTranslations("settings.businessHours");
@@ -508,10 +514,12 @@ export default async function SettingsPage({
               {(await getTranslations("settings.branding"))("subtitle")}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <BrandingForm
-              initial={(() => {
-                const raw = v["branding"];
+          <CardContent className="space-y-6">
+            <LogoUpload currentLogoUrl={brandingLogoUrl} />
+            <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+              <BrandingForm
+                initial={(() => {
+                  const raw = v["branding"];
                 const obj = raw && typeof raw === "object" && !Array.isArray(raw)
                   ? (raw as Record<string, unknown>)
                   : {};
@@ -531,8 +539,9 @@ export default async function SettingsPage({
                     ? obj.gradientPreset
                     : DEFAULT_BRANDING.gradientPreset,
                 };
-              })()}
-            />
+                })()}
+              />
+            </div>
           </CardContent>
         </Card>
       ) : null}

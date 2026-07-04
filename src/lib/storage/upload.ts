@@ -53,6 +53,16 @@ export function avatarStorageKey(userId: string, ext: string): string {
 }
 
 /**
+ * Build the storage key for the app's branding logo (a single global asset).
+ * Timestamp suffix busts caches when a new logo replaces the old one.
+ *   <env>/branding/logo-<timestamp>.<ext>
+ */
+export function logoStorageKey(ext: string): string {
+  const safeExt = ext.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 5);
+  return `${r2EnvPrefix()}/branding/logo-${Date.now()}.${safeExt}`;
+}
+
+/**
  * Generate a presigned PUT URL the client can upload to directly.
  * The Server Action that creates the attachment row controls all the
  * inputs to this — there is no caller-supplied content type from the

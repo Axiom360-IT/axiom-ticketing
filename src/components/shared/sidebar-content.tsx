@@ -9,6 +9,7 @@ import {
   Clock,
   GitBranch,
   History,
+  LayoutDashboard,
   MailWarning,
   Settings,
   Shield,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 type NavItem = {
   href: string;
   labelKey:
+    | "navDashboard"
     | "navTickets"
     | "navWorkLog"
     | "navModeration"
@@ -38,11 +40,13 @@ type NavItem = {
   icon: typeof Ticket;
   /** Permission required to see this link. Matches the gate enforced by the
    *  underlying page's `redirect("/admin")` so the sidebar never advertises a
-   *  destination the user can't reach. */
-  requires: Permission;
+   *  destination the user can't reach. Omitted for the Dashboard, which every
+   *  admin can reach. */
+  requires?: Permission;
 };
 
 export const NAV_ITEMS: NavItem[] = [
+  { href: "/admin", labelKey: "navDashboard", icon: LayoutDashboard },
   { href: "/admin/tickets", labelKey: "navTickets", icon: Ticket, requires: "tickets.view" },
   { href: "/admin/work-log", labelKey: "navWorkLog", icon: Clock, requires: "tickets.update" },
   { href: "/admin/moderation", labelKey: "navModeration", icon: MailWarning, requires: "tickets.update" },
@@ -72,7 +76,9 @@ export function SidebarContent({
   onNavigate?: () => void;
 }) {
   const permSet = new Set(permissions);
-  const visibleItems = NAV_ITEMS.filter((item) => permSet.has(item.requires));
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.requires || permSet.has(item.requires),
+  );
   const pathname = usePathname();
   const t = useTranslations("admin.shell");
   const badge = ACCENT_CLASSES[branding.accentColor].darkBadge;
@@ -88,22 +94,35 @@ export function SidebarContent({
           onClick={onNavigate}
           className="flex items-center gap-2 text-base font-semibold tracking-tight"
         >
-          <span
-            className={cn(
-              "inline-flex w-7 h-7 rounded-md border items-center justify-center text-xs font-bold",
-              badge,
-            )}
-          >
-            {initial}
-          </span>
-          <Wordmark
-            brandName={branding.brandName}
-            brandAccent={branding.brandAccent}
-            accentColor={branding.accentColor}
-            size="md"
-            onDark
-            className="!text-base"
-          />
+          {branding.logoUrl ? (
+            // Uploaded logo replaces the wordmark. eslint-disable: a signed R2
+            // URL doesn't fit next/image's static remotePatterns.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logoUrl}
+              alt={branding.brandName}
+              className="h-8 w-auto max-w-[170px] object-contain"
+            />
+          ) : (
+            <>
+              <span
+                className={cn(
+                  "inline-flex w-7 h-7 rounded-md border items-center justify-center text-xs font-bold",
+                  badge,
+                )}
+              >
+                {initial}
+              </span>
+              <Wordmark
+                brandName={branding.brandName}
+                brandAccent={branding.brandAccent}
+                accentColor={branding.accentColor}
+                size="md"
+                onDark
+                className="!text-base"
+              />
+            </>
+          )}
         </Link>
         <p className="text-[11px] text-slate-500 mt-1 ml-9">{t("tagline")}</p>
       </div>
@@ -114,8 +133,13 @@ export function SidebarContent({
       >
         <ul className="space-y-0.5">
           {visibleItems.map((item) => {
+            // Every admin page lives under /admin, so the Dashboard link is
+            // only "active" on an exact match — not on every sub-page.
             const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+              item.href === "/admin"
+                ? pathname === "/admin"
+                : pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
             return (
               <li key={item.href}>

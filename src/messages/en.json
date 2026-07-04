@@ -1231,6 +1231,19 @@
     "branding": {
       "title": "Brand identity",
       "subtitle": "Wordmark, accent color, and background gradient used on sign-in and submit pages.",
+      "logo": {
+        "title": "Logo",
+        "upload": "Upload logo",
+        "replace": "Replace logo",
+        "remove": "Remove",
+        "none": "No logo",
+        "alt": "Brand logo",
+        "hint": "PNG, JPEG, GIF or WEBP, up to 2 MB. Replaces the wordmark in the sidebar.",
+        "fileInputLabel": "Choose a logo image",
+        "errorType": "Use a PNG, JPEG, GIF, or WEBP image.",
+        "errorTooLarge": "Image is too large — max {maxMb} MB.",
+        "errorUploadFailed": "Upload failed. Please try again."
+      },
       "brandNameLabel": "Brand name",
       "brandNameHint": "Main part of the wordmark, rendered in foreground color.",
       "brandAccentLabel": "Accent suffix",
@@ -1800,6 +1813,7 @@
       "mainNavLabel": "Main",
       "openMenu": "Open menu",
       "closeMenu": "Close menu",
+      "navDashboard": "Dashboard",
       "navTickets": "Tickets",
       "navWorkLog": "Work Log",
       "navModeration": "Moderation",
