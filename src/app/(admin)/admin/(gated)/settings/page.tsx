@@ -525,7 +525,7 @@ export default async function SettingsPage({
                   : {};
                 return {
                   brandName:
-                    typeof obj.brandName === "string" && obj.brandName.length > 0
+                    typeof obj.brandName === "string"
                       ? obj.brandName
                       : DEFAULT_BRANDING.brandName,
                   brandAccent:

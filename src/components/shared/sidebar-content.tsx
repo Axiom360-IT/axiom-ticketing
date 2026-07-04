@@ -95,14 +95,18 @@ export function SidebarContent({
           className="flex items-center gap-2 text-base font-semibold tracking-tight"
         >
           {branding.logoUrl ? (
-            // Uploaded logo replaces the wordmark. eslint-disable: a signed R2
+            // The sidebar surface is dark, so back the logo with a light plate:
+            // most brand logos are drawn for a white background and would
+            // otherwise vanish on the dark surface. eslint-disable: a signed R2
             // URL doesn't fit next/image's static remotePatterns.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={branding.logoUrl}
-              alt={branding.brandName}
-              className="h-8 w-auto max-w-[170px] object-contain"
-            />
+            <div className="w-full rounded-md bg-white px-3 py-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={branding.logoUrl}
+                alt={branding.brandName}
+                className="mx-auto max-h-10 w-full object-contain"
+              />
+            </div>
           ) : (
             <>
               <span

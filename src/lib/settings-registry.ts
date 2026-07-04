@@ -155,7 +155,8 @@ export const SETTING_SCHEMAS = {
   // Branding (public sign-in / submit pages). Atomic object so the
   // four fields move together — no half-updated brand mid-render.
   branding: z.object({
-    brandName: z.string().trim().min(1).max(40),
+    // Optional — a customer can rely on an uploaded logo instead of a wordmark.
+    brandName: z.string().trim().max(40),
     brandAccent: z.string().trim().max(20),
     accentColor: z.enum(ACCENT_KEYS as unknown as [string, ...string[]]),
     gradientPreset: z.enum(GRADIENT_KEYS as unknown as [string, ...string[]]),

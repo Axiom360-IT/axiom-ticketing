@@ -75,7 +75,6 @@ export function BrandingForm({ initial }: Props) {
             value={brandName}
             onChange={(e) => setBrandName(e.target.value)}
             maxLength={40}
-            required
           />
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {t("brandNameHint")}
