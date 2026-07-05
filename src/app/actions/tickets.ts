@@ -23,6 +23,7 @@ import { db, transactional } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
+import { organizations } from "@/lib/db/schema/organizations";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
 import { tickets } from "@/lib/db/schema/tickets";
@@ -2130,24 +2131,80 @@ export async function setTicketCustomer(
   // in-app + preference-scoped notifications; otherwise null → guest (direct
   // email to the address on the ticket). Emails are stored lowercase.
   const [existing] = await db
-    .select({ id: users.id })
+    .select({ id: users.id, organizationId: users.organizationId })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
   const customerId = existing?.id ?? null;
 
-  await db
-    .update(tickets)
-    .set({
-      customerName: name,
-      customerEmail: email,
-      customerId,
-      // The old "company as entered" belonged to the previous customer — clear
-      // it rather than show a stale company for the new one.
-      customerCompany: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(tickets.id, ticket.id));
+  // The ticket adopts the new customer's ORGANIZATION too, so reports/billing
+  // follow the real customer instead of the AX/staff fallback a forward
+  // created. Only when the customer belongs to a real, existing org that
+  // differs from the ticket's current one. The ticket NUMBER is never touched
+  // — it stays frozen so existing email threads keep working.
+  let newOrgId: string | null = null;
+  if (existing?.organizationId) {
+    const [org] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, existing.organizationId))
+      .limit(1);
+    newOrgId = org?.id ?? null;
+  }
+  const changeOrg = newOrgId != null && newOrgId !== ticket.organizationId;
+
+  const affectedOrgIds: string[] = [];
+  await transactional(async (tx) => {
+    if (changeOrg) {
+      // Refund any Monthly-Plan deduction sitting on the OLD org before the
+      // ticket moves, so a plan balance is never double-counted across orgs.
+      const [before] = await tx
+        .select({
+          organizationId: tickets.organizationId,
+          deducted: tickets.monthlyPlanDeductedMinutes,
+        })
+        .from(tickets)
+        .where(eq(tickets.id, ticket.id))
+        .limit(1);
+      if (before?.organizationId && before.deducted > 0) {
+        await tx
+          .update(organizations)
+          .set({
+            monthlyMinutesBalance: sql`coalesce(${organizations.monthlyMinutesBalance}, 0) + ${before.deducted}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(organizations.id, before.organizationId));
+        affectedOrgIds.push(before.organizationId);
+      }
+    }
+
+    await tx
+      .update(tickets)
+      .set({
+        customerName: name,
+        customerEmail: email,
+        customerId,
+        // The old "company as entered" belonged to the previous customer.
+        customerCompany: null,
+        ...(changeOrg
+          ? {
+              organizationId: newOrgId,
+              orgMatchStatus: "staff" as const,
+              monthlyPlanDeductedMinutes: 0,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(tickets.id, ticket.id));
+
+    if (changeOrg) {
+      // Re-apply the deduction against the NEW org — a no-op unless the ticket
+      // is billed Monthly Plan and the new org is on a monthly plan.
+      const affected = await syncMonthlyPlanDeduction(tx, ticket.id);
+      if (affected) affectedOrgIds.push(affected);
+    }
+  });
+  if (affectedOrgIds.length > 0) await notifyBalanceChanged(affectedOrgIds);
 
   await audit({
     actorId: user.id,
@@ -2155,7 +2212,12 @@ export async function setTicketCustomer(
     targetType: "ticket",
     targetId: ticket.ticketNumber,
     before: { name: ticket.customerName, email: ticket.customerEmail },
-    after: { name, email, linkedAccount: customerId != null },
+    after: {
+      name,
+      email,
+      linkedAccount: customerId != null,
+      ...(changeOrg ? { organizationId: newOrgId } : {}),
+    },
   });
 
   revalidatePath("/admin/tickets");
