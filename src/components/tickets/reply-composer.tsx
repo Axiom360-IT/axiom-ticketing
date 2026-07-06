@@ -126,26 +126,24 @@ export function ReplyComposer({
     }
     setPendingFiles((prev) => [...prev, ...next]);
 
-    // Kick off uploads for the queued ones.
+    // Kick off uploads for the queued ones. Pass the File object directly —
+    // the freshly-picked files aren't in `pendingFiles` yet (that setState
+    // hasn't flushed), so re-reading the file from state inside uploadOne
+    // races and silently bails, leaving the row stuck on "uploading" forever.
     for (const p of next) {
-      if (p.status === "queued") void uploadOne(p.key);
+      if (p.status === "queued") void uploadOne(p.key, p.file);
     }
   }
 
-  async function uploadOne(key: string) {
-    const target = pendingFiles.find((p) => p.key === key);
-    // Find the current snapshot via setState callback to avoid stale state.
-    // We use a tiny "load by key from latest state" pattern.
-    let current: Pending | undefined;
-    setPendingFiles((prev) => {
-      current = prev.find((p) => p.key === key);
-      if (!current) return prev;
-      return prev.map((p) =>
-        p.key === key ? { ...p, status: "uploading" } : p,
-      );
-    });
-    if (!current && !target) return;
-    const file = (current ?? target)!.file;
+  async function uploadOne(key: string, file: File) {
+    // Mark the row "uploading" — fire-and-forget. We deliberately do NOT read
+    // the File back out of state here: a just-picked file isn't in
+    // `pendingFiles` yet and the setState updater doesn't run synchronously, so
+    // deriving `file` from state races and can bail before the upload starts
+    // (the bug that left rows stuck on "uploading"). The caller passes the File.
+    setPendingFiles((prev) =>
+      prev.map((p) => (p.key === key ? { ...p, status: "uploading" } : p)),
+    );
 
     try {
       const presign = await generateUploadUrl({
@@ -158,11 +156,22 @@ export function ReplyComposer({
         markFailed(key, presign.error);
         return;
       }
-      const put = await fetch(presign.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
+      // Bound the direct-to-R2 PUT with a timeout. Without this, a dropped
+      // connection mid-upload leaves the request hanging forever (stuck on
+      // "uploading…") instead of failing so the user can retry.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120_000);
+      let put: Response;
+      try {
+        put = await fetch(presign.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!put.ok) {
         markFailed(key, `Upload failed (${put.status})`);
         return;
@@ -189,7 +198,13 @@ export function ReplyComposer({
         prev.map((p) => (p.key === key ? { ...p, status: "ready" } : p)),
       );
     } catch (err) {
-      markFailed(key, err instanceof Error ? err.message : "Upload failed");
+      const message =
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Upload timed out — please remove the file and try again."
+          : err instanceof Error
+            ? err.message
+            : "Upload failed";
+      markFailed(key, message);
     }
   }
 
