@@ -305,7 +305,7 @@ export function ReplyComposer({
                   : p.status === "confirming"
                     ? "Verifying…"
                     : p.status === "ready"
-                      ? "Ready"
+                      ? "Uploaded"
                       : p.status === "failed"
                         ? p.error ?? "Failed"
                         : "Queued"}
