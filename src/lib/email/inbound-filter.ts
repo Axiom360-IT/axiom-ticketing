@@ -84,7 +84,7 @@ export function shouldAcceptInbound(
   if (opts?.isReply) {
     if (raw.trim().length === 0) return { accept: false, reason: "empty-body" };
   } else {
-    const stripped = stripQuotesAndSignatures(raw);
+    const stripped = stripQuotesAndSignatures(raw, { subject: email.subject });
     if (stripped.trim().length === 0) {
       return { accept: false, reason: "empty-body" };
     }
@@ -120,12 +120,50 @@ const QUOTE_LEADERS: RegExp[] = [
 
 const QUOTE_LINE = /^[ \t]*>/;
 
+// A forwarded email is fundamentally different from a reply: the content we
+// want is the FORWARDED body (below the marker), not any text above it. Detect
+// via the subject prefix (Fwd:/FW:) OR an in-body forward marker — some clients
+// set only one (Outlook forwards often carry just the "FW:" subject).
+const FORWARD_SUBJECT = /^\s*(fwd?|fw)\s*:/i;
+const FORWARD_MARKERS: RegExp[] = [
+  /^\s*-+\s*Forwarded message\s*-+/im, // Gmail / generic
+  /^\s*Begin forwarded message:/im, // Apple Mail
+];
+
+/** True when the message is a forwarded email rather than a reply. */
+export function looksForwarded(
+  subject: string | null | undefined,
+  text: string,
+): boolean {
+  if (subject && FORWARD_SUBJECT.test(subject)) return true;
+  return FORWARD_MARKERS.some((re) => re.test(text));
+}
+
 /**
  * Strips quoted reply history and trailing signatures from a plaintext
  * email body. Returns the (presumed) new content the sender wrote.
+ *
+ * Pass the `subject` so forwards can be told apart from replies: for a REPLY
+ * the new content is above the quote block (truncate there), but for a FORWARD
+ * the content we want is the forwarded body BELOW the marker — truncating would
+ * discard the actual request and leave only the forwarder's note/signature
+ * (req 5.x). Forwards are therefore never truncated.
  */
-export function stripQuotesAndSignatures(text: string): string {
+export function stripQuotesAndSignatures(
+  text: string,
+  opts?: { subject?: string | null },
+): string {
   if (!text) return "";
+
+  // Forward: preserve the body. Only drop nested `>` quotes + trailing
+  // whitespace — never truncate at the forward/From markers.
+  if (looksForwarded(opts?.subject, text)) {
+    return text
+      .split(/\r?\n/)
+      .filter((line) => !QUOTE_LINE.test(line))
+      .join("\n")
+      .replace(/\s+$/g, "");
+  }
 
   // 1. Truncate at the earliest known quote-block leader.
   let cutAt = text.length;

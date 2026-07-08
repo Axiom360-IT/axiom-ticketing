@@ -73,7 +73,11 @@ export default async function GuestTicketViewPage({
       </div>
 
       {messages.length > 0 ? (
-        <CustomerMessageThread messages={messages} />
+        <CustomerMessageThread
+          messages={messages}
+          guestToken={token}
+          ticketNumber={ticketNumber}
+        />
       ) : null}
 
       {ticket.status === "closed" ? (

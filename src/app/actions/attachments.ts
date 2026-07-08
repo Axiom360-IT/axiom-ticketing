@@ -32,6 +32,7 @@ import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { tickets } from "@/lib/db/schema/tickets";
 import { verifyDraftUploadToken, verifyGuestToken } from "@/lib/tokens";
+import { getGuestTicket } from "@/lib/customer/queries";
 
 // ── generateUploadUrl ───────────────────────────────────────────────
 
@@ -385,6 +386,79 @@ export async function getDownloadUrl(
     if (msg?.isInternalNote) {
       throw new ForbiddenError();
     }
+  }
+
+  if (att.scanStatus === "quarantined") {
+    return { ok: false, error: "This attachment has been quarantined." };
+  }
+  if (!att.uploadConfirmedAt) {
+    return { ok: false, error: "Upload is still being processed." };
+  }
+
+  const url = await getSignedDownloadUrl(att.storageKey, {
+    disposition: downloadDispositionFor(att.mimeType),
+    filename: att.fileName,
+  });
+  return { ok: true, url };
+}
+
+// ── getGuestDownloadUrl ──────────────────────────────────────────────
+//
+// Token-authenticated download for the GUEST portal (no session). Mirrors the
+// guest ticket view's auth: verify the HMAC token for this ticket number, then
+// confirm the attachment belongs to that ticket AND rides on a customer-visible
+// message (never an internal note / held reply). Every failure returns the same
+// generic "not found" so a guessed id can't probe internal content.
+
+const guestDownloadSchema = z.object({
+  ticketNumber: z.string().min(1).max(64),
+  token: z.string().min(1).max(4096),
+  attachmentId: z.string().uuid(),
+});
+
+export async function getGuestDownloadUrl(
+  input: z.infer<typeof guestDownloadSchema>,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const parsed = guestDownloadSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Attachment not found." };
+  const { ticketNumber, token, attachmentId } = parsed.data;
+
+  const verifiedEmail = verifyGuestToken(token, ticketNumber);
+  if (!verifiedEmail) return { ok: false, error: "Attachment not found." };
+  const ticket = await getGuestTicket(ticketNumber, verifiedEmail);
+  if (!ticket) return { ok: false, error: "Attachment not found." };
+
+  const [att] = await db
+    .select({
+      id: attachments.id,
+      ticketId: attachments.ticketId,
+      messageId: attachments.messageId,
+      storageKey: attachments.storageKey,
+      mimeType: attachments.mimeType,
+      fileName: attachments.fileName,
+      scanStatus: attachments.scanStatus,
+      uploadConfirmedAt: attachments.uploadConfirmedAt,
+    })
+    .from(attachments)
+    .where(eq(attachments.id, attachmentId))
+    .limit(1);
+  if (!att || att.ticketId !== ticket.id) {
+    return { ok: false, error: "Attachment not found." };
+  }
+
+  // Guests only ever see customer-visible messages — never internal notes or
+  // unmoderated (held) replies. A message-less attachment is a pending upload.
+  if (!att.messageId) return { ok: false, error: "Attachment not found." };
+  const [msg] = await db
+    .select({
+      isInternalNote: messages.isInternalNote,
+      moderationStatus: messages.moderationStatus,
+    })
+    .from(messages)
+    .where(eq(messages.id, att.messageId))
+    .limit(1);
+  if (!msg || msg.isInternalNote || msg.moderationStatus !== "approved") {
+    return { ok: false, error: "Attachment not found." };
   }
 
   if (att.scanStatus === "quarantined") {

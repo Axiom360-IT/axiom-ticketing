@@ -16,6 +16,9 @@ export type NormalizedInboundEmail = {
   headers: Record<string, string>;
   /** Optional raw MIME — when present, processor parses with mailparser to ingest attachments. */
   raw?: string;
+  /** Resend receiving-email id. The webhook is metadata-only, so attachments
+   *  are pulled from the Receiving API by this id at ingest time (req 5.x). */
+  providerEmailId?: string;
 };
 
 // ── Resend adapter ───────────────────────────────────────────────────
@@ -125,6 +128,7 @@ export function normalizeResendInbound(
     html: data.html ?? null,
     headers: headersToMap(data.headers),
     raw: data.raw ?? data.raw_mime,
+    providerEmailId: data.email_id ?? data.id,
   };
 }
 

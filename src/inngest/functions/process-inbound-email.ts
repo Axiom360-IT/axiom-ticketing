@@ -1,6 +1,5 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { eventType } from "inngest";
-import { simpleParser } from "mailparser";
 import { audit } from "@/lib/audit";
 import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -13,6 +12,10 @@ import {
   shouldAcceptInbound,
   stripQuotesAndSignatures,
 } from "@/lib/email/inbound-filter";
+import {
+  downloadInboundAttachment,
+  fetchResendInboundAttachments,
+} from "@/lib/email/fetch-inbound";
 import {
   extractTicketNumber,
   type NormalizedInboundEmail,
@@ -74,6 +77,78 @@ async function isStaffUser(userId: string): Promise<boolean> {
   return rows.some((r) => r.name !== "Customer");
 }
 
+// Ingest a received email's attachments onto a ticket message. Lists them from
+// Resend (fresh signed URLs), then for each enforces the MIME allowlist + size
+// cap + magic-byte verify, uploads to R2, and records the row — identical
+// guarantees to the browser direct-upload path (ARCHITECTURE §11). Best-effort:
+// a failure on one attachment never throws, so the message body always stands
+// and the caller's step is never forced to retry (which could double-post).
+async function ingestInboundAttachments(opts: {
+  ticketId: string;
+  messageId: string;
+  providerEmailId: string | undefined;
+  fromEmail: string;
+}): Promise<void> {
+  const { ticketId, messageId, providerEmailId, fromEmail } = opts;
+  if (!providerEmailId) return;
+
+  let list;
+  try {
+    list = await fetchResendInboundAttachments(providerEmailId);
+  } catch (err) {
+    console.error("[process-inbound-email] attachment list failed:", err);
+    return;
+  }
+
+  for (const meta of list) {
+    try {
+      const declared = meta.contentType.toLowerCase();
+      if (!isAllowedMimeType(declared)) continue;
+      if (meta.sizeBytes > MAX_FILE_BYTES) continue;
+
+      const buf = await downloadInboundAttachment(meta.downloadUrl, MAX_FILE_BYTES);
+      if (!buf) continue;
+      if (!matchesMagicBytes(declared, new Uint8Array(buf.subarray(0, 16)))) {
+        continue;
+      }
+
+      const sanitized = sanitizeFilename(meta.filename || "attachment");
+      const [row] = await db
+        .insert(attachments)
+        .values({
+          ticketId,
+          messageId,
+          uploadedById: null,
+          uploadedByEmail: fromEmail,
+          fileName: sanitized,
+          originalFileName: meta.filename,
+          storageKey: "",
+          mimeType: declared,
+          sizeBytes: buf.byteLength,
+          scanStatus: "pending",
+        })
+        .returning({ id: attachments.id });
+      const storageKey = attachmentStorageKey(ticketId, row.id, sanitized);
+      try {
+        await uploadObject(storageKey, new Uint8Array(buf), declared);
+        await db
+          .update(attachments)
+          .set({ storageKey, uploadConfirmedAt: new Date() })
+          .where(eq(attachments.id, row.id));
+        await inngest.send({
+          name: "attachment/uploaded",
+          data: { attachmentId: row.id },
+        });
+      } catch (err) {
+        console.error("[process-inbound-email] attachment upload failed:", err);
+        await db.delete(attachments).where(eq(attachments.id, row.id));
+      }
+    } catch (err) {
+      console.error("[process-inbound-email] attachment ingest failed:", err);
+    }
+  }
+}
+
 export const processInboundEmail = inngest.createFunction(
   {
     id: "process-inbound-email",
@@ -118,6 +193,17 @@ export const processInboundEmail = inngest.createFunction(
         createTicketFromInbound(payload, appUrl),
       );
       if (result.status === "created") {
+        // Attach any files that rode in on the email (forwarded or direct).
+        // Separate step from ticket creation so a retry here can't re-create
+        // the ticket. Best-effort inside the helper.
+        await step.run("ingest-new-ticket-attachments", async () =>
+          ingestInboundAttachments({
+            ticketId: result.ticketId,
+            messageId: result.messageId,
+            providerEmailId: payload.providerEmailId,
+            fromEmail: payload.fromEmail,
+          }),
+        );
         // Alert staff (Coordinators / IT Directors / Super Admins) that a new
         // email-originated ticket needs triage/assignment.
         await step.run("notify-new-ticket-created", async () => {
@@ -266,8 +352,11 @@ export const processInboundEmail = inngest.createFunction(
     }
 
     // 6. Build the body — raw-text fallback so an over-stripped reply is never
-    //    lost (req 5.1).
-    const stripped = stripQuotesAndSignatures(payload.text ?? "");
+    //    lost (req 5.1). Pass the subject so a forward keeps its forwarded body
+    //    instead of being truncated down to the forwarder's note (req 5.x).
+    const stripped = stripQuotesAndSignatures(payload.text ?? "", {
+      subject: payload.subject,
+    });
     const messageBody = stripped.length > 0 ? stripped : (payload.text ?? "");
 
     // Attribute to a known account when the sender has one.
@@ -537,79 +626,17 @@ export const processInboundEmail = inngest.createFunction(
       );
     }
 
-    // 6b. Ingest attachments — only when raw MIME is supplied. We parse
-    // with mailparser, then filter (allowed MIME + size + magic-byte
-    // verify) and upload directly to R2. Per ARCHITECTURE §11.
-    if (payload.raw) {
-      await step.run("ingest-attachments", async () => {
-        try {
-          const parsed = await simpleParser(payload.raw!);
-          const items = parsed.attachments ?? [];
-          for (const a of items) {
-            const declared = (a.contentType ?? "").toLowerCase();
-            const fileName = a.filename ?? "attachment";
-            if (!isAllowedMimeType(declared)) continue;
-            const buf = a.content;
-            if (!Buffer.isBuffer(buf)) continue;
-            if (buf.byteLength === 0 || buf.byteLength > MAX_FILE_BYTES)
-              continue;
-            if (!matchesMagicBytes(declared, new Uint8Array(buf.subarray(0, 16))))
-              continue;
-
-            const sanitized = sanitizeFilename(fileName);
-            const [row] = await db
-              .insert(attachments)
-              .values({
-                ticketId: ticket.id,
-                messageId: insertedMsg.id,
-                uploadedById: null,
-                uploadedByEmail: payload.fromEmail,
-                fileName: sanitized,
-                originalFileName: fileName,
-                storageKey: "",
-                mimeType: declared,
-                sizeBytes: buf.byteLength,
-                scanStatus: "pending",
-              })
-              .returning({ id: attachments.id });
-            const storageKey = attachmentStorageKey(
-              ticket.id,
-              row.id,
-              sanitized,
-            );
-            try {
-              await uploadObject(
-                storageKey,
-                new Uint8Array(buf),
-                declared,
-              );
-              await db
-                .update(attachments)
-                .set({
-                  storageKey,
-                  uploadConfirmedAt: new Date(),
-                })
-                .where(eq(attachments.id, row.id));
-              await inngest.send({
-                name: "attachment/uploaded",
-                data: { attachmentId: row.id },
-              });
-            } catch (err) {
-              console.error(
-                "[process-inbound-email] attachment upload failed:",
-                err,
-              );
-              await db.delete(attachments).where(eq(attachments.id, row.id));
-            }
-          }
-        } catch (err) {
-          console.error(
-            "[process-inbound-email] attachment ingest failed:",
-            err,
-          );
-        }
-      });
-    }
+    // 6b. Ingest attachments — pulled from Resend's Receiving API by the
+    // provider email id (the webhook is metadata-only), filtered (allowed MIME
+    // + size + magic-byte verify) and uploaded to R2. Per ARCHITECTURE §11.
+    await step.run("ingest-attachments", async () =>
+      ingestInboundAttachments({
+        ticketId: ticket.id,
+        messageId: insertedMsg.id,
+        providerEmailId: payload.providerEmailId,
+        fromEmail: payload.fromEmail,
+      }),
+    );
 
     await step.run("touch-ticket", async () =>
       db
@@ -709,6 +736,7 @@ async function createTicketFromInbound(
       status: "created";
       ticketNumber: string;
       ticketId: string;
+      messageId: string;
       customerName: string;
       subject: string;
     }
@@ -720,8 +748,11 @@ async function createTicketFromInbound(
 
   // Body must be non-trivial after stripping quoted history / signatures.
   // Without this, every "thanks!" reply with no Reply-To header would
-  // open a new ticket — which would be noise, not signal.
-  const stripped = stripQuotesAndSignatures(payload.text ?? "");
+  // open a new ticket — which would be noise, not signal. Subject is passed so
+  // a forwarded email keeps its forwarded body (the actual request) intact.
+  const stripped = stripQuotesAndSignatures(payload.text ?? "", {
+    subject: payload.subject,
+  });
   const body = stripped.length > 0 ? stripped : (payload.text ?? "").trim();
   if (body.length === 0) {
     if (process.env.NODE_ENV !== "production") {
@@ -784,7 +815,7 @@ async function createTicketFromInbound(
     { createdAt, priority: DEFAULT_INBOUND_PRIORITY },
   );
 
-  const ticketId = await transactional(async (tx) => {
+  const { ticketId, messageId } = await transactional(async (tx) => {
     const [t] = await tx
       .insert(tickets)
       .values({
@@ -805,15 +836,18 @@ async function createTicketFromInbound(
       })
       .returning({ id: tickets.id });
 
-    await tx.insert(messages).values({
-      ticketId: t.id,
-      authorEmail: fromEmail,
-      authorName: knownUser?.name ?? fromName,
-      authorType: "customer",
-      body,
-      channel: "email",
-    });
-    return t.id;
+    const [m] = await tx
+      .insert(messages)
+      .values({
+        ticketId: t.id,
+        authorEmail: fromEmail,
+        authorName: knownUser?.name ?? fromName,
+        authorType: "customer",
+        body,
+        channel: "email",
+      })
+      .returning({ id: messages.id });
+    return { ticketId: t.id, messageId: m.id };
   });
 
   await audit({
@@ -867,6 +901,7 @@ async function createTicketFromInbound(
     status: "created",
     ticketNumber,
     ticketId,
+    messageId,
     customerName: knownUser?.name ?? fromName,
     subject,
   };

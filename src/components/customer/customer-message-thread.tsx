@@ -1,18 +1,41 @@
 "use client";
 
 import { useFormatter, useTranslations } from "next-intl";
-import { FileText } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessageBody } from "@/components/tickets/message-body";
-import { formatBytes, initials } from "@/lib/format";
+import {
+  AttachmentViewer,
+  type ResolveUrl,
+} from "@/components/tickets/attachment-viewer";
+import { initials } from "@/lib/format";
 import type { CustomerMessage } from "@/lib/customer/queries";
 import { cn } from "@/lib/utils";
+import { getDownloadUrl, getGuestDownloadUrl } from "@/app/actions/attachments";
 
 type Props = {
   messages: CustomerMessage[];
+  /** Guest portal only: the HMAC ticket token + number, so attachment
+   *  downloads authenticate by token instead of a session. */
+  guestToken?: string;
+  ticketNumber?: string;
 };
 
-export function CustomerMessageThread({ messages }: Props) {
+export function CustomerMessageThread({
+  messages,
+  guestToken,
+  ticketNumber,
+}: Props) {
+  // Guests download by token; signed-in customers by session (a Customer holds
+  // tickets.view on their own ticket).
+  const resolveUrl: ResolveUrl =
+    guestToken && ticketNumber
+      ? (id) =>
+          getGuestDownloadUrl({
+            ticketNumber,
+            token: guestToken,
+            attachmentId: id,
+          })
+      : (id) => getDownloadUrl(id);
   const t = useTranslations("portal.tickets.thread");
   const formatter = useFormatter();
 
@@ -60,20 +83,10 @@ export function CustomerMessageThread({ messages }: Props) {
                 </div>
                 <MessageBody body={m.body} bodyFormat={m.bodyFormat} />
                 {m.attachments.length > 0 ? (
-                  <ul className="mt-3 space-y-1">
-                    {m.attachments.map((a) => (
-                      <li
-                        key={a.id}
-                        className="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300"
-                      >
-                        <FileText className="size-3.5" aria-hidden="true" />
-                        <span className="truncate">{a.fileName}</span>
-                        <span className="text-zinc-400">
-                          {formatBytes(a.sizeBytes)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <AttachmentViewer
+                    items={m.attachments}
+                    resolveUrl={resolveUrl}
+                  />
                 ) : null}
               </div>
             </div>

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useFormatter, useTranslations } from "next-intl";
-import { Download, FileText, Image as ImageIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessageBody } from "@/components/tickets/message-body";
-import { formatBytes, initials } from "@/lib/format";
+import { AttachmentViewer } from "@/components/tickets/attachment-viewer";
+import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getDownloadUrl } from "@/app/actions/attachments";
 
@@ -120,7 +119,10 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
                 className="mt-2"
               />
               {m.attachments && m.attachments.length > 0 ? (
-                <AttachmentList items={m.attachments} />
+                <AttachmentViewer
+                  items={m.attachments}
+                  resolveUrl={(id) => getDownloadUrl(id)}
+                />
               ) : null}
             </div>
           </div>
@@ -130,129 +132,4 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
   );
 }
 
-function AttachmentList({ items }: { items: ThreadAttachment[] }) {
-  const images = items.filter((a) => a.isImage);
-  const files = items.filter((a) => !a.isImage);
-
-  return (
-    <div className="mt-3 space-y-2">
-      {images.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {images.map((a) => (
-            <AttachmentImage key={a.id} attachment={a} />
-          ))}
-        </div>
-      ) : null}
-      {files.length > 0 ? (
-        <ul className="flex flex-wrap gap-2">
-          {files.map((a) => (
-            <li key={a.id}>
-              <AttachmentChip attachment={a} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-function AttachmentImage({ attachment }: { attachment: ThreadAttachment }) {
-  const t = useTranslations("tickets.attachments");
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function handleClick() {
-    if (url) {
-      window.open(url, "_blank", "noopener,noreferrer");
-      return;
-    }
-    startTransition(async () => {
-      const res = await getDownloadUrl(attachment.id);
-      if (res.ok) {
-        setUrl(res.url);
-        window.open(res.url, "_blank", "noopener,noreferrer");
-      } else {
-        setError(res.error);
-      }
-    });
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={isPending}
-      className={cn(
-        "group relative w-32 h-32 rounded-md border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center text-xs text-zinc-500 hover:border-blue-400 transition-colors",
-        isPending && "opacity-60",
-      )}
-      title={attachment.fileName}
-      aria-label={t("openImage", { fileName: attachment.fileName })}
-    >
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt={attachment.fileName}
-          className="w-full h-full object-cover"
-        />
-      ) : (
-        <span className="flex flex-col items-center gap-1 px-2 text-center">
-          <ImageIcon className="size-5" aria-hidden="true" />
-          <span className="truncate w-full">{attachment.fileName}</span>
-          {error ? (
-            <span className="text-[10px] text-red-500">{error}</span>
-          ) : null}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function AttachmentChip({ attachment }: { attachment: ThreadAttachment }) {
-  const t = useTranslations("tickets.attachments");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function handleClick() {
-    setError(null);
-    startTransition(async () => {
-      const res = await getDownloadUrl(attachment.id);
-      if (res.ok) {
-        window.open(res.url, "_blank", "noopener,noreferrer");
-      } else {
-        setError(res.error);
-      }
-    });
-  }
-
-  return (
-    <div className="space-y-1">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={isPending}
-        className={cn(
-          "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs",
-          "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900",
-          isPending && "opacity-60",
-        )}
-      >
-        <FileText className="size-3.5" aria-hidden="true" />
-        <span className="font-medium truncate max-w-[16rem]">
-          {attachment.fileName}
-        </span>
-        <span className="text-zinc-400">{formatBytes(attachment.sizeBytes)}</span>
-        <Download className="size-3.5" aria-hidden="true" />
-        <span className="sr-only">{t("download")}</span>
-      </button>
-      {error ? (
-        <p role="alert" className="text-[10px] text-red-500">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
 

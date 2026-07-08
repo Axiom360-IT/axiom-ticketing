@@ -251,4 +251,75 @@ wrote:
   it("handles missing input safely", () => {
     expect(stripQuotesAndSignatures("")).toBe("");
   });
+
+  // ── Forwarded email (req 5.x) ──────────────────────────────────────────
+  // A forward's real content is BELOW the marker, so it must NOT be truncated
+  // like a reply — that dropped the actual request (the reported bug).
+
+  it("keeps the forwarded body of a Gmail-style forward", () => {
+    const text = `FYI, please help this client.
+
+---------- Forwarded message ---------
+From: Customer <c@client.com>
+Date: Mon, Jul 7, 2026 at 9:00 AM
+Subject: Printer not working
+To: Evelyn <e.rueca@axiomcan.com>
+
+My printer won't turn on. Please help.`;
+    const out = stripQuotesAndSignatures(text);
+    expect(out).toContain("My printer won't turn on. Please help.");
+    expect(out).toContain("FYI, please help this client.");
+  });
+
+  it("preserves the request when a forward has a signature above the marker (the reported bug)", () => {
+    const text = `Thank you!
+
+Regards,
+Evelyn R.
+IT Coordinator
+
+---------- Forwarded message ---------
+From: Customer <c@client.com>
+Subject: Need new laptop
+
+Can I get a new laptop? Mine is broken.`;
+    expect(stripQuotesAndSignatures(text)).toContain(
+      "Can I get a new laptop? Mine is broken.",
+    );
+  });
+
+  it("keeps an Outlook forward's body when detected by a 'FW:' subject", () => {
+    const text = `Please action this.
+
+From: Customer <c@client.com>
+Sent: Monday, July 7, 2026 9:00 AM
+To: Evelyn
+Subject: Printer down
+
+The printer is completely dead.`;
+    expect(
+      stripQuotesAndSignatures(text, { subject: "FW: Printer down" }),
+    ).toContain("The printer is completely dead.");
+  });
+
+  it("still truncates an Outlook 'From:' block for a reply (no forward subject)", () => {
+    const text = `Please action this.
+
+From: Customer <c@client.com>
+Sent: Monday, July 7, 2026 9:00 AM
+Subject: Printer down
+
+The printer is completely dead.`;
+    expect(stripQuotesAndSignatures(text)).toBe("Please action this.");
+  });
+
+  it("treats a 'Re:' reply normally rather than as a forward", () => {
+    const text = `Yes please proceed.
+
+On Mon, Jan 8, 2026, Priya wrote:
+> details`;
+    expect(
+      stripQuotesAndSignatures(text, { subject: "Re: Your ticket" }),
+    ).toBe("Yes please proceed.");
+  });
 });

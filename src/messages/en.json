@@ -740,7 +740,11 @@
       "remove": "Remove",
       "tooManyFiles": "You can attach up to {max} files per message.",
       "tooLarge": "{fileName} is over the {limitMb} MB limit.",
-      "rejectedType": "{fileName}: file type not allowed."
+      "rejectedType": "{fileName}: file type not allowed.",
+      "openNewTab": "Open in new tab",
+      "closePreview": "Close preview",
+      "pdfPreviewFailed": "Couldn’t preview this PDF.",
+      "openInNewTab": "Open it in a new tab"
     }
   },
   "users": {
