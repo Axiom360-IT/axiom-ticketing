@@ -34,6 +34,9 @@ type TicketFiltersProps = {
     from: string;
     to: string;
     q: string;
+    /** Current tab scope — preserved across filter changes so changing a
+     *  filter doesn't bounce the user back to the Active tab. */
+    view: "active" | "closed" | "all";
   };
   technicians: { id: string; name: string }[];
   activeCount: number;
@@ -61,6 +64,7 @@ export function TicketFilters({
     const next = { ...initial, ...patch };
     const params = new URLSearchParams();
     if (next.q) params.set("q", next.q);
+    if (next.view !== "active") params.set("view", next.view);
     if (next.status.length > 0) params.set("status", next.status.join(","));
     if (next.priority.length > 0)
       params.set("priority", next.priority.join(","));
@@ -78,11 +82,13 @@ export function TicketFilters({
   }
 
   function clearAll() {
+    // Preserve the free-text search AND the current tab; everything else resets.
+    const params = new URLSearchParams();
+    if (initial.q) params.set("q", initial.q);
+    if (initial.view !== "active") params.set("view", initial.view);
+    const qs = params.toString();
     startTransition(() => {
-      // Preserve only the free-text search; everything else resets.
-      router.push(
-        initial.q ? `/admin/tickets?q=${encodeURIComponent(initial.q)}` : "/admin/tickets",
-      );
+      router.push(qs ? `/admin/tickets?${qs}` : "/admin/tickets");
     });
   }
 

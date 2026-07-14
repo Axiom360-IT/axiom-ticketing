@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, count, eq, inArray, isNull } from "drizzle-orm";
-import { getTranslations } from "next-intl/server";
+import {
+  and,
+  type AnyColumn,
+  count,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm";
+import { getFormatter, getTranslations } from "next-intl/server";
 import {
   ClipboardList,
   GitBranch,
@@ -19,10 +29,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  PriorityBar,
+  StatusDonut,
+  TrendLineChart,
+} from "@/components/dashboard/charts";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
-import { procurementRequests } from "@/lib/db/schema/procurement";
 import { users } from "@/lib/db/schema/auth";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/auth/permissions";
@@ -31,20 +45,24 @@ import type { Permission } from "@/lib/auth/permissions";
 // is gated by the caller's permissions — we only run the query when
 // the stat would actually be visible. `null` = caller doesn't have
 // permission (placeholder rendered); a number = visible (incl. `0`).
+// Counts are global (not visibility-scoped), matching the existing dashboard.
 
 async function getStats(perms: Set<Permission>) {
-  const [openTotalRes, unassignedRes, pendingProcRes, activeUsersRes] =
+  const canTickets = perms.has("tickets.view");
+  const notDeleted = isNull(tickets.deletedAt);
+  const one = (rows: { value: number }[] | null) =>
+    rows ? Number(rows[0]?.value ?? 0) : null;
+
+  const [total, open, unassigned, resolved, closed, activeUsers] =
     await Promise.all([
-      perms.has("tickets.view")
+      canTickets
+        ? db.select({ value: count() }).from(tickets).where(notDeleted)
+        : Promise.resolve(null),
+      canTickets
         ? db
             .select({ value: count() })
             .from(tickets)
-            .where(
-              and(
-                inArray(tickets.status, ["open", "in_progress"]),
-                isNull(tickets.deletedAt),
-              ),
-            )
+            .where(and(inArray(tickets.status, ["open", "in_progress"]), notDeleted))
         : Promise.resolve(null),
       perms.has("tickets.assign")
         ? db
@@ -54,36 +72,109 @@ async function getStats(perms: Set<Permission>) {
               and(
                 eq(tickets.status, "open"),
                 isNull(tickets.assignedToId),
-                isNull(tickets.deletedAt),
+                notDeleted,
               ),
             )
         : Promise.resolve(null),
-      perms.has("procurement.manage")
+      canTickets
         ? db
             .select({ value: count() })
-            .from(procurementRequests)
-            .where(
-              inArray(procurementRequests.status, [
-                "awaiting_customer_payment",
-                "order_pending",
-              ]),
-            )
+            .from(tickets)
+            .where(and(eq(tickets.status, "resolved"), notDeleted))
+        : Promise.resolve(null),
+      canTickets
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(and(eq(tickets.status, "closed"), notDeleted))
         : Promise.resolve(null),
       perms.has("users.view")
-        ? db
-            .select({ value: count() })
-            .from(users)
-            .where(eq(users.isActive, true))
+        ? db.select({ value: count() }).from(users).where(eq(users.isActive, true))
         : Promise.resolve(null),
     ]);
 
   return {
-    openTickets: openTotalRes ? Number(openTotalRes[0]?.value ?? 0) : null,
-    unassigned: unassignedRes ? Number(unassignedRes[0]?.value ?? 0) : null,
-    pendingProcurement: pendingProcRes
-      ? Number(pendingProcRes[0]?.value ?? 0)
-      : null,
-    activeUsers: activeUsersRes ? Number(activeUsersRes[0]?.value ?? 0) : null,
+    total: one(total),
+    openTickets: one(open),
+    unassigned: one(unassigned),
+    resolved: one(resolved),
+    closed: one(closed),
+    activeUsers: one(activeUsers),
+  };
+}
+
+// Chart datasets for the landing dashboard — status mix, the trailing 14-day
+// created-vs-resolved trend, and the active-ticket priority split. Returns null
+// when the caller can't view tickets (charts are hidden entirely). Days are
+// bucketed in UTC — a dashboard-level trend, not a business-hours report.
+const TREND_DAYS = 14;
+
+async function getChartData(perms: Set<Permission>) {
+  if (!perms.has("tickets.view")) return null;
+  const notDeleted = isNull(tickets.deletedAt);
+
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (TREND_DAYS - 1));
+
+  const dayExpr = (col: AnyColumn) =>
+    sql<string>`to_char(${col} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+
+  const [statusRows, priorityRows, createdByDay, resolvedByDay] =
+    await Promise.all([
+      db
+        .select({ status: tickets.status, value: count() })
+        .from(tickets)
+        .where(notDeleted)
+        .groupBy(tickets.status),
+      db
+        .select({ priority: tickets.priority, value: count() })
+        .from(tickets)
+        .where(and(ne(tickets.status, "closed"), notDeleted))
+        .groupBy(tickets.priority),
+      db
+        .select({ day: dayExpr(tickets.createdAt), value: count() })
+        .from(tickets)
+        .where(and(gte(tickets.createdAt, since), notDeleted))
+        .groupBy(dayExpr(tickets.createdAt)),
+      db
+        .select({ day: dayExpr(tickets.resolvedAt), value: count() })
+        .from(tickets)
+        .where(and(gte(tickets.resolvedAt, since), notDeleted))
+        .groupBy(dayExpr(tickets.resolvedAt)),
+    ]);
+
+  const statusMap = new Map(statusRows.map((r) => [r.status, Number(r.value)]));
+  const priorityMap = new Map(
+    priorityRows.map((r) => [r.priority, Number(r.value)]),
+  );
+  const createdMap = new Map(createdByDay.map((r) => [r.day, Number(r.value)]));
+  const resolvedMap = new Map(
+    resolvedByDay.map((r) => [r.day, Number(r.value)]),
+  );
+
+  const MAIN_STATUSES = ["open", "in_progress", "resolved", "closed"];
+  const otherTotal = statusRows
+    .filter((r) => !MAIN_STATUSES.includes(r.status))
+    .reduce((s, r) => s + Number(r.value), 0);
+
+  const trend: { day: string; created: number; resolved: number }[] = [];
+  for (let i = 0; i < TREND_DAYS; i++) {
+    const d = new Date(since);
+    d.setUTCDate(since.getUTCDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    trend.push({
+      day: key,
+      created: createdMap.get(key) ?? 0,
+      resolved: resolvedMap.get(key) ?? 0,
+    });
+  }
+
+  return {
+    statusMap,
+    priorityMap,
+    otherTotal,
+    trend,
   };
 }
 
@@ -92,10 +183,65 @@ export default async function AdminLanding() {
   if (!user) redirect("/admin/login");
 
   const t = await getTranslations("admin.landing");
-  const stats = await getStats(user.permissions);
+  const tStatus = await getTranslations("tickets.status");
+  const tPriority = await getTranslations("tickets.priority");
+  const formatter = await getFormatter();
+  const [stats, chart] = await Promise.all([
+    getStats(user.permissions),
+    getChartData(user.permissions),
+  ]);
 
   const displayRoles =
     user.roleNames.size > 0 ? [...user.roleNames].join(", ") : t("noRoles");
+
+  // Shape chart data with translated labels (colours live in the chart
+  // component, keyed by the stable `key`).
+  const statusLabels: Record<string, string> = {
+    open: tStatus("open"),
+    in_progress: tStatus("in_progress"),
+    resolved: tStatus("resolved"),
+    closed: tStatus("closed"),
+    other: t("statusOther"),
+  };
+  const priorityLabels: Record<string, string> = {
+    low: tPriority("low"),
+    medium: tPriority("medium"),
+    high: tPriority("high"),
+    critical: tPriority("critical"),
+  };
+
+  const statusData = chart
+    ? [
+        ...["open", "in_progress", "resolved", "closed"].map((key) => ({
+          key,
+          name: statusLabels[key],
+          value: chart.statusMap.get(key) ?? 0,
+        })),
+        ...(chart.otherTotal > 0
+          ? [{ key: "other", name: statusLabels.other, value: chart.otherTotal }]
+          : []),
+      ].filter((s) => s.value > 0)
+    : [];
+  const priorityData = chart
+    ? ["low", "medium", "high", "critical"].map((key) => ({
+        key,
+        name: priorityLabels[key],
+        value: chart.priorityMap.get(key) ?? 0,
+      }))
+    : [];
+  const trendData = chart
+    ? chart.trend.map((p) => ({
+        date: formatter.dateTime(new Date(`${p.day}T12:00:00Z`), {
+          month: "short",
+          day: "numeric",
+        }),
+        created: p.created,
+        resolved: p.resolved,
+      }))
+    : [];
+
+  // Charts are noise on an empty system — only show once tickets exist.
+  const showCharts = chart !== null && (stats.total ?? 0) > 0;
 
   return (
     <div className="max-w-6xl space-y-8">
@@ -110,8 +256,13 @@ export default async function AdminLanding() {
       {/* ── Quick stats ─────────────────────────────────────────── */}
       <section
         aria-label={t("quickStatsLabel")}
-        className="grid grid-cols-2 md:grid-cols-4 gap-3"
+        className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6"
       >
+        <StatCard
+          label={t("statTotal")}
+          value={stats.total}
+          href="/admin/tickets?view=all"
+        />
         <StatCard
           label={t("statOpenTickets")}
           value={stats.openTickets}
@@ -126,14 +277,14 @@ export default async function AdminLanding() {
           }
         />
         <StatCard
-          label={t("statPendingProcurement")}
-          value={stats.pendingProcurement}
-          href="/admin/procurement?status=awaiting_customer_payment"
-          accent={
-            stats.pendingProcurement !== null && stats.pendingProcurement > 0
-              ? "warning"
-              : undefined
-          }
+          label={t("statResolved")}
+          value={stats.resolved}
+          href="/admin/tickets?status=resolved"
+        />
+        <StatCard
+          label={t("statClosed")}
+          value={stats.closed}
+          href="/admin/tickets?view=closed"
         />
         <StatCard
           label={t("statActiveUsers")}
@@ -141,6 +292,46 @@ export default async function AdminLanding() {
           href="/admin/users"
         />
       </section>
+
+      {/* ── Charts ──────────────────────────────────────────────── */}
+      {showCharts ? (
+        <section aria-label={t("chartsLabel")} className="grid gap-4 lg:grid-cols-2">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">{t("chartTrendTitle")}</CardTitle>
+              <CardDescription>
+                {t("chartTrendSubtitle", { days: TREND_DAYS })}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TrendLineChart
+                data={trendData}
+                createdLabel={t("trendCreated")}
+                resolvedLabel={t("trendResolved")}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("chartStatusTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StatusDonut data={statusData} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {t("chartPriorityTitle")}
+              </CardTitle>
+              <CardDescription>{t("chartPrioritySubtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PriorityBar data={priorityData} />
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
 
       {/* ── Section cards ───────────────────────────────────────── */}
       <section

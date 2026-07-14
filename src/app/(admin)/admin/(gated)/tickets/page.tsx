@@ -9,6 +9,7 @@ import {
   inArray,
   isNull,
   lte,
+  ne,
   or,
   type SQL,
 } from "drizzle-orm";
@@ -53,6 +54,7 @@ import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
+import { cn } from "@/lib/utils";
 
 // Filter query string contract:
 //   ?q=text                            free-text search
@@ -65,6 +67,8 @@ import { listAssignableTechnicians } from "@/lib/tickets/load";
 //   &to=YYYY-MM-DD                     created on/before this date
 type SearchParams = Promise<{
   q?: string;
+  /** Tab scope: active (default, hides closed) | closed | all. */
+  view?: string;
   status?: string;
   priority?: string;
   category?: string;
@@ -122,6 +126,10 @@ export default async function TicketsPage({
 
   const sp = await searchParams;
   const search = sp.q?.trim() ?? "";
+  // Tab scope. "active" (default) hides closed; "closed" shows only closed;
+  // "all" imposes no status scope. An explicit status filter refines within it.
+  const view: "active" | "closed" | "all" =
+    sp.view === "closed" ? "closed" : sp.view === "all" ? "all" : "active";
   const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
   const filterPriority = parseEnumCsv(sp.priority, TICKET_PRIORITIES);
   const filterCategory = parseEnumCsv(sp.category, TICKET_CATEGORIES);
@@ -157,7 +165,23 @@ export default async function TicketsPage({
     );
     if (orClause) conditions.push(orClause);
   }
-  if (filterStatus) conditions.push(inArray(tickets.status, filterStatus));
+  // View tab sets the base status scope; an explicit status filter refines
+  // within it (an out-of-scope status — e.g. "closed" while on Active — is
+  // simply ignored rather than escaping the tab).
+  if (view === "closed") {
+    conditions.push(eq(tickets.status, "closed"));
+  } else if (view === "active") {
+    conditions.push(ne(tickets.status, "closed"));
+  }
+  if (filterStatus) {
+    const scoped =
+      view === "closed"
+        ? filterStatus.filter((s) => s === "closed")
+        : view === "active"
+          ? filterStatus.filter((s) => s !== "closed")
+          : filterStatus;
+    if (scoped.length > 0) conditions.push(inArray(tickets.status, scoped));
+  }
   if (filterPriority) conditions.push(inArray(tickets.priority, filterPriority));
   if (filterCategory) conditions.push(inArray(tickets.category, filterCategory));
   if (filterStream) conditions.push(inArray(tickets.stream, filterStream));
@@ -225,6 +249,27 @@ export default async function TicketsPage({
     ? t("countMatching", { count: rows.length, query: search })
     : t("count", { count: rows.length });
 
+  // Tab links preserve every active filter/search but reset paging. "active"
+  // is the canonical default, so it carries no `view` param.
+  const viewTabParams = new URLSearchParams(
+    Object.entries(sp).filter(
+      ([k, v]) =>
+        typeof v === "string" && v.length > 0 && k !== "view" && k !== "page",
+    ) as [string, string][],
+  );
+  const viewHref = (v: "active" | "closed" | "all") => {
+    const p = new URLSearchParams(viewTabParams);
+    if (v === "active") p.delete("view");
+    else p.set("view", v);
+    const qs = p.toString();
+    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
+  };
+  const viewTabs = [
+    { key: "active" as const, label: t("viewActive") },
+    { key: "closed" as const, label: t("viewClosed") },
+    { key: "all" as const, label: t("viewAll") },
+  ];
+
   return (
     <div className="space-y-4">
       {sp.reassigned ? <ReassignedNotice name={sp.reassigned} /> : null}
@@ -245,6 +290,32 @@ export default async function TicketsPage({
         ) : null}
       </div>
 
+      <div
+        role="tablist"
+        aria-label={t("viewTabsLabel")}
+        className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
+      >
+        {viewTabs.map((tab) => {
+          const active = view === tab.key;
+          return (
+            <Link
+              key={tab.key}
+              href={viewHref(tab.key)}
+              role="tab"
+              aria-selected={active}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm transition-colors",
+                active
+                  ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
+              )}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+
       <UrlSearchInput
         initialValue={search}
         placeholder={t("search")}
@@ -262,6 +333,7 @@ export default async function TicketsPage({
           from: filterFrom ?? "",
           to: filterTo ?? "",
           q: search,
+          view,
         }}
         technicians={technicians}
         activeCount={activeFilterCount}
