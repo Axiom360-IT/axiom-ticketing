@@ -266,3 +266,69 @@ export function friendlyAuditTarget(t: {
   if (type && t.targetId) return `${type} ${t.targetId}`;
   return type ?? t.targetId ?? "—";
 }
+
+// Friendly labels for the raw enum values that show up in before/after diffs.
+// Missing codes fall back to a generic prettifier, so this only needs the
+// values worth naming precisely.
+const VALUE_LABELS: Record<string, string> = {
+  // Ticket status
+  draft: "Draft",
+  open: "Open",
+  in_progress: "In progress",
+  awaiting_customer_confirmation: "Awaiting customer",
+  on_hold: "On hold",
+  resolved: "Resolved",
+  closed: "Closed",
+  // Priority
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
+  urgent: "Urgent",
+  // Service type
+  remote: "Remote",
+  onsite: "On-site",
+  on_site: "On-site",
+  phone: "Phone",
+  email: "Email",
+  in_person: "In person",
+  // Billing categories
+  billable: "Billable",
+  non_billable: "Non-billable",
+  included: "Included in plan",
+  // Close / resolution reasons
+  customer_no_response: "No customer response",
+  csat_no_response_24h: "No response to the satisfaction survey (24h)",
+  auto: "Automatic",
+  manual: "Manual",
+  // Outcomes
+  success: "Success",
+  failure: "Failed",
+  denied: "Denied",
+  error: "Error",
+};
+
+/** Turn a raw before/after value into plain language: booleans → Yes/No, known
+ *  codes → their label, `snake_case` codes → "Snake case". Emails, ids, numbers,
+ *  and free text pass through unchanged so nothing meaningful is mangled. */
+export function humanizeFieldValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (s.length === 0) return "—";
+    if (VALUE_LABELS[s]) return VALUE_LABELS[s];
+    // Only reshape things that look like enum codes (lowercase snake_case);
+    // leave emails, UUIDs, names, and sentences alone.
+    if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(s)) {
+      return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
+    }
+    return v;
+  }
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}

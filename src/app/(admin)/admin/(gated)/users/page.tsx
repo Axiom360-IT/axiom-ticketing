@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/pagination";
 import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
+import { ExportMenu } from "@/components/shared/export-menu";
 import { UserRowActions } from "@/components/users/user-row-actions";
 import { listAllRoles, listUsersForAdmin } from "@/app/actions/users";
 import { can } from "@/lib/auth/can";
@@ -97,6 +98,12 @@ export default async function UsersListPage({
     return `/admin/users?${params.toString()}`;
   }
 
+  // Carry the active filters so the export matches what's on screen.
+  const exportParams: Record<string, string> = { tab: audience };
+  if (q) exportParams.q = q;
+  if (roleId) exportParams.roleId = roleId;
+  if (status !== "active") exportParams.status = status;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -106,11 +113,17 @@ export default async function UsersListPage({
             {t("count", { count: totalItems })}
           </p>
         </div>
-        {canCreate ? (
-          <Button nativeButton={false} render={<Link href="/admin/users/new" />}>
-            {t("createButton")}
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <ExportMenu baseHref="/api/users/export" params={exportParams} />
+          {canCreate ? (
+            <Button
+              nativeButton={false}
+              render={<Link href="/admin/users/new" />}
+            >
+              {t("createButton")}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <nav

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/pagination";
 import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
+import { ExportMenu } from "@/components/shared/export-menu";
 import { OrgRowActions } from "@/components/organizations/org-row-actions";
 import {
   countUnverifiedOrgTickets,
@@ -97,6 +98,12 @@ export default async function OrganizationsListPage({
   const rows = filtered.slice(offset, offset + pageSize);
   const hasFilters = q !== "" || plan !== "" || status !== "";
 
+  // Carry the active filters so the export matches what's on screen.
+  const exportParams: Record<string, string> = {};
+  if (sp.q?.trim()) exportParams.q = sp.q.trim();
+  if (plan) exportParams.plan = plan;
+  if (status) exportParams.status = status;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -106,14 +113,20 @@ export default async function OrganizationsListPage({
             {t("subtitle")} · {t("count", { count: totalItems })}
           </p>
         </div>
-        {canCreate ? (
-          <Button
-            nativeButton={false}
-            render={<Link href="/admin/organizations/new" />}
-          >
-            {t("createButton")}
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            baseHref="/api/organizations/export"
+            params={exportParams}
+          />
+          {canCreate ? (
+            <Button
+              nativeButton={false}
+              render={<Link href="/admin/organizations/new" />}
+            >
+              {t("createButton")}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {canEdit && unverifiedCount > 0 ? (

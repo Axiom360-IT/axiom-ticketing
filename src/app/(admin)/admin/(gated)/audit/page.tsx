@@ -40,6 +40,7 @@ import {
   type AuditCategory,
   friendlyAuditTarget,
   humanizeFieldKey,
+  humanizeFieldValue,
   isDestructiveAction,
 } from "@/lib/audit/action-label";
 import { computeChanges, type FieldChange } from "@/lib/audit/diff";
@@ -117,10 +118,8 @@ function outcomeStyle(outcome: string): string {
 }
 
 function chipValue(v: unknown): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "string") return v.length > 24 ? `${v.slice(0, 21)}…` : v;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return "…";
+  const s = humanizeFieldValue(v);
+  return s.length > 24 ? `${s.slice(0, 21)}…` : s;
 }
 
 function relativeTime(then: Date, now: number): string {

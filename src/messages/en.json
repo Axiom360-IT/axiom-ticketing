@@ -999,7 +999,8 @@
       "planRemaining": "Hours remaining",
       "planUsed": "Used this period",
       "planNegative": "Over plan by {hours}. The accountants have been notified.",
-      "usageCardTitle": "Work by category"
+      "usageCardTitle": "Work by category",
+      "exportUsers": "Export users"
     },
     "trusted": {
       "cardTitle": "Trusted email contacts",

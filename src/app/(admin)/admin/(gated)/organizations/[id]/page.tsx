@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ExportMenu } from "@/components/shared/export-menu";
 import { AddHoursControl } from "@/components/organizations/add-hours-control";
 import { OrganizationForm } from "@/components/organizations/organization-form";
 import { OrgUsageBreakdown } from "@/components/organizations/org-usage-breakdown";
@@ -55,6 +56,12 @@ export default async function EditOrganizationPage({
     { type: "global" },
     productionContext,
   );
+  const canExportUsers = await can(
+    user,
+    "users.view",
+    { type: "global" },
+    productionContext,
+  );
 
   const usage = await getOrganizationUsage(id);
   const trustedContacts = await listOrganizationTrustedContacts(id);
@@ -73,13 +80,23 @@ export default async function EditOrganizationPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold break-words sm:text-2xl">
-          {t("title", { name: org.name })}
-        </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {t("subtitle")}
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <h1 className="text-xl font-semibold break-words sm:text-2xl">
+            {t("title", { name: org.name })}
+          </h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {t("subtitle")}
+          </p>
+        </div>
+        {canExportUsers ? (
+          <ExportMenu
+            baseHref="/api/users/export"
+            params={{ orgId: id }}
+            label={t("exportUsers")}
+            size="sm"
+          />
+        ) : null}
       </header>
       <Card>
         <CardHeader>

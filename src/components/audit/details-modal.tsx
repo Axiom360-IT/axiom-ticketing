@@ -11,18 +11,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { type AuditEntryDetail, getAuditEntry } from "@/app/actions/audit";
-import { auditActionLabel, humanizeFieldKey } from "@/lib/audit/action-label";
+import {
+  auditActionLabel,
+  auditOutcomeLabel,
+  friendlyAuditTarget,
+  humanizeFieldKey,
+  humanizeFieldValue,
+} from "@/lib/audit/action-label";
 import { computeChanges, type FieldChange } from "@/lib/audit/diff";
 import { cn } from "@/lib/utils";
 
 type Props = {
   entryId: string;
-};
-
-const OUTCOME_LABEL: Record<string, string> = {
-  denied: "Denied",
-  failure: "Failed",
-  error: "Error",
 };
 
 export function AuditDetailsButton({ entryId }: Props) {
@@ -45,8 +45,7 @@ export function AuditDetailsButton({ entryId }: Props) {
   const changes: FieldChange[] = detail
     ? computeChanges(detail.beforeValue, detail.afterValue)
     : [];
-  const target =
-    detail?.targetLabel ?? detail?.targetId ?? detail?.targetType ?? null;
+  const target = detail ? friendlyAuditTarget(detail) : null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -71,10 +70,10 @@ export function AuditDetailsButton({ entryId }: Props) {
             <div className="space-y-0.5">
               <p className="font-medium text-zinc-900 dark:text-zinc-50">
                 {auditActionLabel(detail.action)}
-                {target ? (
-                  <span className="text-zinc-500 dark:text-zinc-400">
+                {target && target !== "—" ? (
+                  <span className="font-normal text-zinc-500 dark:text-zinc-400">
                     {" · "}
-                    <span className="font-mono text-xs">{target}</span>
+                    {target}
                   </span>
                 ) : null}
               </p>
@@ -104,7 +103,7 @@ export function AuditDetailsButton({ entryId }: Props) {
               ) : null}
               {detail.outcome !== "success" ? (
                 <p className="text-xs font-medium text-red-600 dark:text-red-400">
-                  {OUTCOME_LABEL[detail.outcome] ?? detail.outcome}
+                  {auditOutcomeLabel(detail.outcome)}
                   {detail.failureReason ? `: ${detail.failureReason}` : ""}
                 </p>
               ) : null}
@@ -178,55 +177,22 @@ export function AuditDetailsButton({ entryId }: Props) {
               )}
             </div>
 
-            {/* Technical details — hidden by default so the common case stays clean */}
-            <details className="rounded-md border border-zinc-200 dark:border-zinc-800">
-              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                {t("details.technical")}
-              </summary>
-              <div className="space-y-1.5 border-t border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
-                <TechRow
-                  label={t("columns.target")}
-                  value={
-                    detail.targetType || detail.targetId
-                      ? `${detail.targetType ?? ""}${
-                          detail.targetId ? ` · ${detail.targetId}` : ""
-                        }`
-                      : null
-                  }
-                />
+            {/* Plain-language context: who did it (role) and where from (IP).
+                No raw JSON or programmer fields — the friendly change table
+                above is the record; the full raw data lives in the export. */}
+            {detail.actorRoleSnapshot || detail.ipAddress ? (
+              <div className="space-y-1.5 border-t border-zinc-100 pt-3 dark:border-zinc-800">
                 <TechRow
                   label={t("details.roleSnapshotLabel")}
                   value={detail.actorRoleSnapshot}
                 />
-                <TechRow label={t("details.ipLabel")} value={detail.ipAddress} mono />
                 <TechRow
-                  label={t("details.userAgentLabel")}
-                  value={detail.userAgent}
-                />
-                <TechRow
-                  label={t("details.requestIdLabel")}
-                  value={detail.requestId}
+                  label={t("details.ipLabel")}
+                  value={detail.ipAddress}
                   mono
                 />
-                {(detail.beforeValue != null || detail.afterValue != null) && (
-                  <div className="pt-1">
-                    <p className="mb-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                      {t("details.rawLabel")}
-                    </p>
-                    <pre className="max-h-56 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-2 font-mono text-[11px] whitespace-pre-wrap dark:border-zinc-800 dark:bg-zinc-900">
-                      {JSON.stringify(
-                        {
-                          before: detail.beforeValue ?? null,
-                          after: detail.afterValue ?? null,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </div>
-                )}
               </div>
-            </details>
+            ) : null}
           </div>
         )}
       </DialogContent>
@@ -234,14 +200,8 @@ export function AuditDetailsButton({ entryId }: Props) {
   );
 }
 
-function formatValue(v: unknown): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "string") return v;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v);
-}
-
-/** A field value, resolving user-id UUIDs to names and tinting add/remove. */
+/** A field value, resolving user-id UUIDs to names, mapping enum codes to
+ *  plain language, and tinting add/remove. */
 function Value({
   v,
   userNames,
@@ -255,7 +215,7 @@ function Value({
     typeof v === "string" && userNames[v] ? (
       <span title={v}>{userNames[v]}</span>
     ) : (
-      formatValue(v)
+      humanizeFieldValue(v)
     );
   return (
     <span
