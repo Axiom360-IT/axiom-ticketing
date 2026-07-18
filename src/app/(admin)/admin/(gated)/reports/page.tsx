@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { Button } from "@/components/ui/button";
+import { ExportMenu } from "@/components/shared/export-menu";
 import {
   Card,
   CardContent,
@@ -16,12 +15,18 @@ import {
 import {
   loadProcurementSpend,
   loadTicketHealth,
+  parseReportRange,
 } from "@/lib/reports/queries";
+import { UrlDateRange } from "@/components/ui/url-date-range";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
   if (
@@ -30,9 +35,15 @@ export default async function ReportsPage() {
     redirect("/admin");
   }
 
+  const sp = await searchParams;
+  const range = parseReportRange(sp.from, sp.to);
+  const exportParams: Record<string, string> = {};
+  if (sp.from?.trim()) exportParams.from = sp.from.trim();
+  if (sp.to?.trim()) exportParams.to = sp.to.trim();
+
   const [tickets, procurement, canExport] = await Promise.all([
-    loadTicketHealth(),
-    loadProcurementSpend(),
+    loadTicketHealth(range),
+    loadProcurementSpend(range),
     can(user, "reports.export", { type: "global" }, productionContext),
   ]);
 
@@ -65,19 +76,30 @@ export default async function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">{t("page.title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("page.subtitle")}
+            {range
+              ? t("page.subtitlePeriod", {
+                  from: sp.from ?? "…",
+                  to: sp.to ?? "…",
+                })
+              : t("page.subtitle")}
           </p>
         </div>
-        {canExport ? (
-          <Button nativeButton={false} render={<Link href="/api/reports/export" prefetch={false} />}>
-            {t("page.exportCsv")}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-end gap-3">
+          <UrlDateRange
+            fromValue={sp.from ?? ""}
+            toValue={sp.to ?? ""}
+            fromLabel={t("filters.from")}
+            toLabel={t("filters.to")}
+          />
+          {canExport ? (
+            <ExportMenu baseHref="/api/reports/export" params={exportParams} />
+          ) : null}
+        </div>
       </div>
 
       {/* Ticket health */}
@@ -85,42 +107,59 @@ export default async function ReportsPage() {
         <h2 className="text-lg font-semibold">{t("ticketHealth.title")}</h2>
 
         <div className="grid sm:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t("ticketHealth.weekLabel")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">
-                {formatter.number(tickets.totalsByWindow.week)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t("ticketHealth.monthLabel")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">
-                {formatter.number(tickets.totalsByWindow.month)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t("ticketHealth.allTimeLabel")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">
-                {formatter.number(tickets.totalsByWindow.allTime)}
-              </p>
-            </CardContent>
-          </Card>
+          {range ? (
+            <Card>
+              <CardHeader className="pb-1">
+                <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
+                  {t("ticketHealth.periodLabel")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold">
+                  {formatter.number(tickets.totalsByWindow.allTime)}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <Card>
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {t("ticketHealth.weekLabel")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-semibold">
+                    {formatter.number(tickets.totalsByWindow.week)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {t("ticketHealth.monthLabel")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-semibold">
+                    {formatter.number(tickets.totalsByWindow.month)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {t("ticketHealth.allTimeLabel")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-semibold">
+                    {formatter.number(tickets.totalsByWindow.allTime)}
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
@@ -234,18 +273,27 @@ export default async function ReportsPage() {
         <h2 className="text-lg font-semibold">{t("procurement.title")}</h2>
 
         <div className="grid sm:grid-cols-3 gap-4">
-          <MetricCard
-            title={t("procurement.monthLabel")}
-            value={fmtCurrency(procurement.totalsByWindow.month)}
-          />
-          <MetricCard
-            title={t("procurement.quarterLabel")}
-            value={fmtCurrency(procurement.totalsByWindow.quarter)}
-          />
-          <MetricCard
-            title={t("procurement.yearLabel")}
-            value={fmtCurrency(procurement.totalsByWindow.year)}
-          />
+          {range ? (
+            <MetricCard
+              title={t("procurement.periodLabel")}
+              value={fmtCurrency(procurement.totalsByWindow.year)}
+            />
+          ) : (
+            <>
+              <MetricCard
+                title={t("procurement.monthLabel")}
+                value={fmtCurrency(procurement.totalsByWindow.month)}
+              />
+              <MetricCard
+                title={t("procurement.quarterLabel")}
+                value={fmtCurrency(procurement.totalsByWindow.quarter)}
+              />
+              <MetricCard
+                title={t("procurement.yearLabel")}
+                value={fmtCurrency(procurement.totalsByWindow.year)}
+              />
+            </>
+          )}
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">

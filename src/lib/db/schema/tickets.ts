@@ -54,6 +54,10 @@ export const tickets = pgTable(
     // yes | no | monthly_plan | project | rework. When 'monthly_plan', logged
     // work-log minutes are deducted from the org's monthly balance.
     billable: text("billable"),
+    // Invoice number keyed in once the ticket has been billed. NULL/empty =
+    // not yet invoiced. Drives the "Billed / Needs invoice" status shown on the
+    // ticket, the tickets queue, and the work log.
+    invoiceNumber: text("invoice_number"),
     // How many work-log minutes this ticket has already deducted from its
     // organization's Monthly-Plan balance (Meeting-2, CR-19). Lets the
     // deduction stay idempotent + reversible as logs change or billable
@@ -91,10 +95,23 @@ export const tickets = pgTable(
     slaWarning50At: timestamp("sla_warning_50_at", { withTimezone: true }),
     slaWarning80At: timestamp("sla_warning_80_at", { withTimezone: true }),
     slaBreachedAt: timestamp("sla_breached_at", { withTimezone: true }),
+    // Last time the SLA monitor re-nagged admins about this ticket AFTER its
+    // initial breach. NULL = not re-nagged yet. Drives the configurable
+    // repeat-escalation cadence (settings: sla.breach_repeat_hours).
+    slaBreachRemindedAt: timestamp("sla_breach_reminded_at", {
+      withTimezone: true,
+    }),
     // Last time the unassigned-ticket monitor alerted admins about this
     // ticket having no owner. NULL = never alerted. Used for idempotency and
     // the configurable re-nag cadence (settings: unassigned_alert.*).
     unassignedReminderAt: timestamp("unassigned_reminder_at", {
+      withTimezone: true,
+    }),
+    // When the "no customer response" follow-up nudge was last sent (the
+    // customer-followup monitor). NULL = not yet nudged for the current agent
+    // message; the value is compared against the latest agent message so a
+    // fresh reply re-opens the nudge window without a separate reset.
+    customerFollowupSentAt: timestamp("customer_followup_sent_at", {
       withTimezone: true,
     }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),

@@ -13,6 +13,7 @@ import { billingBalanceMonitor } from "./billing-balance-monitor";
 import { cleanupOldNotifications } from "./cleanup-old-notifications";
 import { cleanupStaleDrafts } from "./cleanup-stale-drafts";
 import { cleanupStaleLockouts } from "./cleanup-stale-lockouts";
+import { customerFollowupMonitor } from "./customer-followup-monitor";
 import { dispatchNotification } from "./dispatch-notification";
 import { monthlyPlanReset } from "./monthly-plan-reset";
 import { notifyAccountantResolved } from "./notify-accountant-resolved";
@@ -30,6 +31,7 @@ export const functions = [
   scanAttachment,
   slaMonitor,
   unassignedMonitor,
+  customerFollowupMonitor,
   dispatchNotification,
   sendEmailNotification,
   sendSmsNotification,

@@ -16,6 +16,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { sendEmail } from "@/lib/email/send";
 import { pickLocale } from "@/lib/i18n";
+import { clientIp } from "@/lib/request";
 
 // Sign-in Server Action wrapping Better Auth's emailAndPassword flow with
 // per-account lockout (M16 Phase B). The IP-per-minute limiter on
@@ -86,9 +87,25 @@ export async function signInWithLockout(
   }
   const { email, password } = parsed.data;
 
+  // Request context for the audit trail (who, from where).
+  const reqHeaders = await headers();
+  const reqIp = clientIp(reqHeaders, "global");
+  const reqUa = reqHeaders.get("user-agent") ?? undefined;
+
   // 1. Pre-check the lockout flag.
   const state = await getLockoutState(email);
   if (state.locked && state.retryAt) {
+    // Continued attempts against a locked account are a signal worth keeping.
+    await audit({
+      actorId: null,
+      action: "user.login_denied",
+      outcome: "denied",
+      targetType: "user",
+      targetLabel: email,
+      after: { email, reason: "locked" },
+      ipAddress: reqIp,
+      userAgent: reqUa,
+    });
     return lockedResult(state.retryAt);
   }
 
@@ -106,7 +123,7 @@ export async function signInWithLockout(
       body: { email, password, rememberMe },
       // Strip any stale Better Auth cookie so an old session can't poison
       // the sign-in (see `stripAuthCookies`).
-      headers: stripAuthCookies(await headers()),
+      headers: stripAuthCookies(reqHeaders),
     });
     signInOk = true;
   } catch (err) {
@@ -144,15 +161,38 @@ export async function signInWithLockout(
   if (signInOk) {
     await clearFailures(email);
     // Clear any persisted lock on the user row + bump lastLoginAt.
-    await db
+    const [signedIn] = await db
       .update(users)
       .set({ lockedUntil: null, lastLoginAt: sql`now()` })
-      .where(eq(users.email, email));
+      .where(eq(users.email, email))
+      .returning({ id: users.id });
+    if (signedIn) {
+      await audit({
+        actorId: signedIn.id,
+        action: "user.login",
+        targetType: "user",
+        targetId: signedIn.id,
+        targetLabel: email,
+        ipAddress: reqIp,
+        userAgent: reqUa,
+      });
+    }
     return { ok: true };
   }
 
-  // 3. Record the failure. If this trips the lock, send the
-  //    notification email + persist `users.locked_until` + audit.
+  // 3. Record the failure — both in the lockout counter and the audit trail
+  //    (a failed sign-in is where investigations start). Actor is unknown
+  //    (unauthenticated); the account being targeted is the email.
+  await audit({
+    actorId: null,
+    action: "user.login",
+    outcome: "failure",
+    targetType: "user",
+    targetLabel: email,
+    after: { email },
+    ipAddress: reqIp,
+    userAgent: reqUa,
+  });
   const recorded = await recordFailedAttempt(email);
   if (recorded.justLocked && recorded.retryAt) {
     const retryAt = new Date(recorded.retryAt);

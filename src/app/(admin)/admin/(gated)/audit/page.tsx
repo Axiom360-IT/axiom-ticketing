@@ -1,22 +1,50 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
+import {
+  Activity,
+  ArrowRight,
+  Receipt,
+  Settings as SettingsIcon,
+  ShieldAlert,
+  Ticket,
+  Users as UsersIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ExportMenu } from "@/components/shared/export-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Pagination,
+  pageWindow,
+  parsePage,
+  parsePageSize,
+  reservedTableHeight,
+  takePage,
+} from "@/components/ui/pagination";
 import { AuditDetailsButton } from "@/components/audit/details-modal";
-import { AuditLoadMore } from "@/components/audit/load-more";
 import {
   listAuditActions,
   listAuditActors,
-  listAuditEntries,
+  listAuditEntriesOffset,
   type AuditFilters,
 } from "@/app/actions/audit";
-import { auditActionLabel } from "@/lib/audit/action-label";
+import {
+  auditActionCategory,
+  auditActionLabel,
+  AUDIT_CATEGORY_LABEL,
+  AUDIT_CATEGORY_ORDER,
+  type AuditCategory,
+  humanizeFieldKey,
+  isDestructiveAction,
+} from "@/lib/audit/action-label";
+import { computeChanges, type FieldChange } from "@/lib/audit/diff";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { cn } from "@/lib/utils";
 
 type SearchParams = Promise<{
   from?: string;
@@ -25,16 +53,89 @@ type SearchParams = Promise<{
   action?: string;
   targetType?: string;
   targetId?: string;
+  page?: string;
+  pageSize?: string;
 }>;
 
-function isoOrUndefined(v: string | undefined): string | undefined {
+// Date-only strings are promoted to a UTC instant. `to` snaps to END-of-day so
+// a `to=2026-07-16` filter includes all of the 16th (previously it collapsed to
+// midnight and excluded nearly the whole day).
+function toIso(v: string | undefined, endOfDay = false): string | undefined {
   if (!v) return undefined;
-  // Accept date-only strings (YYYY-MM-DD) by promoting to UTC midnight.
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    return new Date(`${v}T00:00:00.000Z`).toISOString();
+    const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+    return new Date(`${v}T${time}Z`).toISOString();
   }
   const d = new Date(v);
   return Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
+}
+
+// Category → icon + colour. The coloured rail/icon is the peripheral scan
+// channel so a security event never looks like a routine ticket edit.
+const CATEGORY_META: Record<
+  AuditCategory,
+  { icon: LucideIcon; badge: string }
+> = {
+  tickets: {
+    icon: Ticket,
+    badge:
+      "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400",
+  },
+  users: {
+    icon: UsersIcon,
+    badge:
+      "bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400",
+  },
+  security: {
+    icon: ShieldAlert,
+    badge: "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400",
+  },
+  billing: {
+    icon: Receipt,
+    badge:
+      "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400",
+  },
+  config: {
+    icon: SettingsIcon,
+    badge:
+      "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400",
+  },
+  system: {
+    icon: Activity,
+    badge: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+  },
+};
+
+// Non-success outcomes get a loud badge — a denied/failed privileged attempt
+// must never look like a routine success.
+const OUTCOME_LABEL: Record<string, string> = {
+  denied: "Denied",
+  failure: "Failed",
+  error: "Error",
+};
+function outcomeStyle(outcome: string): string {
+  return outcome === "denied"
+    ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+    : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+}
+
+function chipValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "string") return v.length > 24 ? `${v.slice(0, 21)}…` : v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "…";
+}
+
+function relativeTime(then: Date, now: number): string {
+  const mins = Math.floor((now - then.getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
 }
 
 export default async function AuditPage({
@@ -52,30 +153,47 @@ export default async function AuditPage({
 
   const sp = await searchParams;
   const filters: AuditFilters = {
-    from: isoOrUndefined(sp.from),
-    to: isoOrUndefined(sp.to),
+    from: toIso(sp.from),
+    to: toIso(sp.to, true),
     actorId: sp.actorId || undefined,
     action: sp.action || undefined,
     targetType: sp.targetType || undefined,
     targetId: sp.targetId || undefined,
   };
 
-  const [page, actions, actors, canExport] = await Promise.all([
-    listAuditEntries({ filters }),
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+  const { limit, offset } = pageWindow(page, pageSize);
+
+  const [pageData, actions, actors, canExport] = await Promise.all([
+    listAuditEntriesOffset({ filters, limit, offset }),
     listAuditActions(),
     listAuditActors(),
     can(user, "audit.export", { type: "global" }, productionContext),
   ]);
+  const { items: rows } = takePage(pageData.rows, pageSize);
+  const totalItems = pageData.total;
 
   const t = await getTranslations("audit");
   const formatter = await getFormatter();
+  const now = Date.now();
 
-  // Build the export URL preserving current filters.
-  const exportParams = new URLSearchParams();
-  for (const [k, v] of Object.entries(filters)) {
-    if (typeof v === "string" && v.length > 0) exportParams.set(k, v);
+  // Group the action filter by category so the dropdown is navigable.
+  const actionsByCategory = new Map<AuditCategory, string[]>();
+  for (const a of actions) {
+    const c = auditActionCategory(a);
+    const bucket = actionsByCategory.get(c) ?? [];
+    bucket.push(a);
+    actionsByCategory.set(c, bucket);
   }
-  const exportUrl = `/api/audit/export?${exportParams.toString()}`;
+
+  // Preserve current params (minus paging) on the pager + export links.
+  const carried = Object.entries(sp).filter(
+    ([k, v]) => typeof v === "string" && v.length > 0 && k !== "page",
+  ) as [string, string][];
+  const exportParams: Record<string, string> = Object.fromEntries(
+    carried.filter(([k]) => k !== "pageSize"),
+  );
 
   return (
     <div className="space-y-4">
@@ -87,9 +205,7 @@ export default async function AuditPage({
           </p>
         </div>
         {canExport ? (
-          <Button nativeButton={false} render={<Link href={exportUrl} prefetch={false} />}>
-            {t("page.exportCsv")}
-          </Button>
+          <ExportMenu baseHref="/api/audit/export" params={exportParams} />
         ) : null}
       </div>
 
@@ -100,21 +216,11 @@ export default async function AuditPage({
       >
         <div className="space-y-1">
           <Label htmlFor="audit-from">{t("filters.from")}</Label>
-          <Input
-            id="audit-from"
-            name="from"
-            type="date"
-            defaultValue={sp.from ?? ""}
-          />
+          <Input id="audit-from" name="from" type="date" defaultValue={sp.from ?? ""} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="audit-to">{t("filters.to")}</Label>
-          <Input
-            id="audit-to"
-            name="to"
-            type="date"
-            defaultValue={sp.to ?? ""}
-          />
+          <Input id="audit-to" name="to" type="date" defaultValue={sp.to ?? ""} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="audit-actor">{t("filters.actor")}</Label>
@@ -141,28 +247,26 @@ export default async function AuditPage({
             className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
           >
             <option value="">{t("filters.actionAll")}</option>
-            {actions.map((a) => (
-              <option key={a} value={a}>
-                {auditActionLabel(a)}
-              </option>
-            ))}
+            {AUDIT_CATEGORY_ORDER.filter((c) => actionsByCategory.has(c)).map(
+              (c) => (
+                <optgroup key={c} label={AUDIT_CATEGORY_LABEL[c]}>
+                  {(actionsByCategory.get(c) ?? []).map((a) => (
+                    <option key={a} value={a}>
+                      {auditActionLabel(a)}
+                    </option>
+                  ))}
+                </optgroup>
+              ),
+            )}
           </select>
         </div>
         <div className="space-y-1">
           <Label htmlFor="audit-targetType">{t("filters.targetType")}</Label>
-          <Input
-            id="audit-targetType"
-            name="targetType"
-            defaultValue={sp.targetType ?? ""}
-          />
+          <Input id="audit-targetType" name="targetType" defaultValue={sp.targetType ?? ""} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="audit-targetId">{t("filters.targetId")}</Label>
-          <Input
-            id="audit-targetId"
-            name="targetId"
-            defaultValue={sp.targetId ?? ""}
-          />
+          <Input id="audit-targetId" name="targetId" defaultValue={sp.targetId ?? ""} />
         </div>
         <div className="md:col-span-3 lg:col-span-6 flex gap-2">
           <Button type="submit">{t("filters.apply")}</Button>
@@ -173,8 +277,11 @@ export default async function AuditPage({
       </form>
 
       <Card className="p-0">
-        <CardContent className="p-0">
-          {page.rows.length === 0 ? (
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems, 60) }}
+        >
+          {rows.length === 0 ? (
             <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
               {t("empty")}
             </div>
@@ -183,71 +290,162 @@ export default async function AuditPage({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800">
-                    <th className="px-4 py-2">{t("columns.timestamp")}</th>
+                    <th className="px-4 py-2">{t("columns.event")}</th>
                     <th className="py-2 pr-4">{t("columns.actor")}</th>
-                    <th className="py-2 pr-4">{t("columns.action")}</th>
-                    <th className="py-2 pr-4">{t("columns.target")}</th>
-                    <th className="py-2 pr-4">{t("columns.ipAddress")}</th>
-                    <th className="py-2"></th>
+                    <th className="py-2 pr-4">{t("columns.when")}</th>
+                    <th className="py-2 pr-4"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {page.rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-t border-zinc-100 dark:border-zinc-800"
-                    >
-                      <td className="px-4 py-2 font-mono text-xs">
-                        {formatter.dateTime(row.timestamp, {
-                          dateStyle: "short",
-                          timeStyle: "medium",
-                        })}
-                      </td>
-                      <td className="py-2 pr-4 text-xs">
-                        {row.actorName ? (
-                          <span title={row.actorEmail ?? ""}>
-                            {row.actorName}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-4 text-xs">
-                        <span title={row.action}>
-                          {auditActionLabel(row.action)}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-4 text-xs">
-                        {row.targetType ? (
-                          <span>
-                            {row.targetType}
-                            {row.targetId ? (
-                              <span className="text-zinc-500 dark:text-zinc-400">
-                                {" · "}
-                                <code className="font-mono">{row.targetId}</code>
-                              </span>
-                            ) : null}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2 pr-4 text-xs text-zinc-500 dark:text-zinc-400">
-                        {row.ipAddress ?? ""}
-                      </td>
-                      <td className="py-2">
-                        <AuditDetailsButton entryId={row.id} />
-                      </td>
-                    </tr>
-                  ))}
-                  <AuditLoadMore
-                    initialCursor={page.nextCursor}
-                    filters={filters}
-                  />
+                  {rows.map((row) => {
+                    const category = auditActionCategory(row.action);
+                    const destructive = isDestructiveAction(row.action);
+                    const meta = CATEGORY_META[category];
+                    const Icon = meta.icon;
+                    const changes: FieldChange[] = computeChanges(
+                      row.beforeValue,
+                      row.afterValue,
+                    );
+                    const target =
+                      row.targetLabel ?? row.targetId ?? row.targetType ?? null;
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-t border-zinc-100 align-top dark:border-zinc-800"
+                      >
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-start gap-2.5">
+                            <span
+                              className={cn(
+                                "mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md",
+                                destructive
+                                  ? "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400"
+                                  : meta.badge,
+                              )}
+                            >
+                              <Icon className="size-3.5" aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-zinc-800 dark:text-zinc-200">
+                                <span
+                                  className="font-medium"
+                                  title={row.action}
+                                >
+                                  {auditActionLabel(row.action)}
+                                </span>
+                                {row.outcome !== "success" ? (
+                                  <span
+                                    className={cn(
+                                      "ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                      outcomeStyle(row.outcome),
+                                    )}
+                                  >
+                                    {OUTCOME_LABEL[row.outcome] ?? row.outcome}
+                                  </span>
+                                ) : null}
+                                {target ? (
+                                  <span className="text-zinc-500 dark:text-zinc-400">
+                                    {" · "}
+                                    <span className="font-mono text-xs">
+                                      {target.length > 32
+                                        ? `${target.slice(0, 29)}…`
+                                        : target}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
+                              {changes.length > 0 ? (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {changes.slice(0, 3).map((c) => (
+                                    <span
+                                      key={c.field}
+                                      className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                                    >
+                                      <span className="text-zinc-400 dark:text-zinc-500">
+                                        {humanizeFieldKey(c.field)}
+                                      </span>
+                                      {c.kind === "changed" ? (
+                                        <>
+                                          {chipValue(c.from)}
+                                          <ArrowRight
+                                            className="size-3 text-zinc-400"
+                                            aria-hidden="true"
+                                          />
+                                          <span className="font-medium">
+                                            {chipValue(c.to)}
+                                          </span>
+                                        </>
+                                      ) : c.kind === "added" ? (
+                                        <span className="font-medium">
+                                          {chipValue(c.to)}
+                                        </span>
+                                      ) : (
+                                        <span className="line-through">
+                                          {chipValue(c.from)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  ))}
+                                  {changes.length > 3 ? (
+                                    <span className="text-[11px] text-zinc-400">
+                                      +{changes.length - 3}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {row.actorName ? (
+                            <>
+                              <div
+                                className="text-xs text-zinc-700 dark:text-zinc-300"
+                                title={row.actorEmail ?? ""}
+                              >
+                                {row.actorName}
+                              </div>
+                              {row.actorRoleSnapshot ? (
+                                <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                                  {row.actorRoleSnapshot}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-xs text-zinc-400">
+                              {t("systemActor")}
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="py-2.5 pr-4 text-xs whitespace-nowrap text-zinc-500 dark:text-zinc-400"
+                          title={formatter.dateTime(row.timestamp, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        >
+                          {relativeTime(row.timestamp, now)}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <AuditDetailsButton entryId={row.id} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Pagination
+        pathname="/admin/audit"
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        searchParams={new URLSearchParams(carried)}
+      />
     </div>
   );
 }

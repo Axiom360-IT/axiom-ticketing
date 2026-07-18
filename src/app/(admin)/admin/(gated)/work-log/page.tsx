@@ -19,11 +19,13 @@ import {
   pageWindow,
   parsePage,
   parsePageSize,
+  reservedTableHeight,
   takePage,
 } from "@/components/ui/pagination";
 import { AddTimeModal } from "@/components/work-logs/add-time-modal";
 import { TimesheetFilters } from "@/components/work-logs/timesheet-filters";
 import { TimesheetRowActions } from "@/components/work-logs/timesheet-row-actions";
+import { BillingBadge } from "@/components/tickets/badges";
 import { getSessionUser } from "@/lib/auth/session";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
 import {
@@ -98,7 +100,7 @@ export default async function WorkLogPage({
   const { limit, offset } = pageWindow(page, pageSize);
 
   const [
-    { rows: rawRows, totalMinutes },
+    { rows: rawRows, totalMinutes, totalCount },
     technicians,
     organizations,
     loggable,
@@ -124,7 +126,7 @@ export default async function WorkLogPage({
     listUserCollaboratorTicketIds(user.id),
   ]);
 
-  const { items: rows, hasMore } = takePage(rawRows, pageSize);
+  const { items: rows } = takePage(rawRows, pageSize);
 
   // An entry is editable only by its ORIGINAL author (req 3.5 / 4.6 — frozen
   // history: not even an admin or the new owner may edit someone else's entry),
@@ -152,10 +154,10 @@ export default async function WorkLogPage({
       : value;
   }
 
-  const colSpan = canViewAll ? 7 : 6;
+  const colSpan = canViewAll ? 8 : 7;
 
   return (
-    <div className="space-y-5 max-w-6xl">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
@@ -207,7 +209,10 @@ export default async function WorkLogPage({
       </div>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalCount) }}
+        >
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -222,6 +227,7 @@ export default async function WorkLogPage({
                   <TableHead scope="col">{t("columns.time")}</TableHead>
                   <TableHead scope="col">{t("columns.service")}</TableHead>
                   <TableHead scope="col">{t("columns.billable")}</TableHead>
+                  <TableHead scope="col">{t("columns.invoice")}</TableHead>
                   <TableHead scope="col">{t("columns.date")}</TableHead>
                   <StickyActionsHead>
                     <span className="sr-only">{tCommon("actions")}</span>
@@ -273,6 +279,12 @@ export default async function WorkLogPage({
                           : tWorkLog("serviceRemote")}
                       </TableCell>
                       <TableCell>{billableLabel(row.billable)}</TableCell>
+                      <TableCell>
+                        <BillingBadge
+                          billable={row.billable}
+                          invoiceNumber={row.invoiceNumber}
+                        />
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
                         {formatter.dateTime(row.createdAt, {
                           dateStyle: "medium",
@@ -307,7 +319,7 @@ export default async function WorkLogPage({
         pathname="/admin/work-log"
         page={page}
         pageSize={pageSize}
-        hasMore={hasMore}
+        totalItems={totalCount}
         searchParams={
           new URLSearchParams(
             Object.entries(sp).filter(
@@ -315,12 +327,6 @@ export default async function WorkLogPage({
             ) as [string, string][],
           )
         }
-        labels={{
-          previous: tCommon("pagination.previous"),
-          next: tCommon("pagination.next"),
-          page: tCommon("pagination.page", { page }),
-          rowsPerPage: tCommon("pagination.rowsPerPage"),
-        }}
       />
     </div>
   );

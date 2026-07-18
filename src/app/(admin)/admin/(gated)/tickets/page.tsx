@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   and,
+  count,
   desc,
   eq,
   gte,
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { ExportMenu } from "@/components/shared/export-menu";
 import {
   StickyActionsCell,
   StickyActionsHead,
@@ -33,9 +35,11 @@ import {
   pageWindow,
   parsePage,
   parsePageSize,
+  reservedTableHeight,
   takePage,
 } from "@/components/ui/pagination";
 import {
+  BillingBadge,
   CategoryBadge,
   EscalatedBadge,
   PriorityBadge,
@@ -142,11 +146,13 @@ export default async function TicketsPage({
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
 
-  const [canCreate, canAssignGlobal, canDeleteGlobal] = await Promise.all([
-    can(user, "tickets.create", { type: "global" }, productionContext),
-    can(user, "tickets.assign", { type: "global" }, productionContext),
-    can(user, "tickets.delete", { type: "global" }, productionContext),
-  ]);
+  const [canCreate, canAssignGlobal, canDeleteGlobal, canExport] =
+    await Promise.all([
+      can(user, "tickets.create", { type: "global" }, productionContext),
+      can(user, "tickets.assign", { type: "global" }, productionContext),
+      can(user, "tickets.delete", { type: "global" }, productionContext),
+      can(user, "tickets.export", { type: "global" }, productionContext),
+    ]);
 
   // Technicians needed for both the inline assignee filter dropdown
   // AND the per-row Assign action — fetch once.
@@ -216,38 +222,47 @@ export default async function TicketsPage({
     (filterEscalated ? 1 : 0) +
     (filterFrom || filterTo ? 1 : 0);
 
-  const rawRows = await db
-    .select({
-      id: tickets.id,
-      ticketNumber: tickets.ticketNumber,
-      subject: tickets.subject,
-      category: tickets.category,
-      status: tickets.status,
-      priority: tickets.priority,
-      isEscalated: tickets.isEscalated,
-      customerName: tickets.customerName,
-      customerEmail: tickets.customerEmail,
-      // Registered org (verified via FK) + the raw company the submitter
-      // typed (an unverified claim we fall back to when nothing matched).
-      organizationName: organizations.name,
-      customerCompany: tickets.customerCompany,
-      assignedToId: tickets.assignedToId,
-      assignedToName: users.name,
-      createdAt: tickets.createdAt,
-      updatedAt: tickets.updatedAt,
-    })
-    .from(tickets)
-    .leftJoin(users, eq(users.id, tickets.assignedToId))
-    .leftJoin(organizations, eq(organizations.id, tickets.organizationId))
-    .where(where)
-    .orderBy(desc(tickets.createdAt))
-    .limit(limit)
-    .offset(offset);
-  const { items: rows, hasMore } = takePage(rawRows, pageSize);
+  // Page slice + total count in parallel. The count powers the numbered pager
+  // and "N of T" range; the WHERE only references `tickets` columns (plus
+  // self-contained EXISTS subqueries), so the count query needs no joins.
+  const [rawRows, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: tickets.id,
+        ticketNumber: tickets.ticketNumber,
+        subject: tickets.subject,
+        category: tickets.category,
+        status: tickets.status,
+        priority: tickets.priority,
+        isEscalated: tickets.isEscalated,
+        billable: tickets.billable,
+        invoiceNumber: tickets.invoiceNumber,
+        customerName: tickets.customerName,
+        customerEmail: tickets.customerEmail,
+        // Registered org (verified via FK) + the raw company the submitter
+        // typed (an unverified claim we fall back to when nothing matched).
+        organizationName: organizations.name,
+        customerCompany: tickets.customerCompany,
+        assignedToId: tickets.assignedToId,
+        assignedToName: users.name,
+        createdAt: tickets.createdAt,
+        updatedAt: tickets.updatedAt,
+      })
+      .from(tickets)
+      .leftJoin(users, eq(users.id, tickets.assignedToId))
+      .leftJoin(organizations, eq(organizations.id, tickets.organizationId))
+      .where(where)
+      .orderBy(desc(tickets.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ value: count() }).from(tickets).where(where),
+  ]);
+  const { items: rows } = takePage(rawRows, pageSize);
+  const totalItems = totalRow?.value ?? 0;
 
   const countLine = search
-    ? t("countMatching", { count: rows.length, query: search })
-    : t("count", { count: rows.length });
+    ? t("countMatching", { count: totalItems, query: search })
+    : t("count", { count: totalItems });
 
   // Tab links preserve every active filter/search but reset paging. "active"
   // is the canonical default, so it carries no `view` param.
@@ -270,6 +285,24 @@ export default async function TicketsPage({
     { key: "all" as const, label: t("viewAll") },
   ];
 
+  // Carry the active list filters onto the export so it matches what's shown.
+  const exportParams: Record<string, string> = {};
+  for (const k of [
+    "q",
+    "view",
+    "status",
+    "priority",
+    "category",
+    "stream",
+    "assignee",
+    "escalated",
+    "from",
+    "to",
+  ] as const) {
+    const v = sp[k];
+    if (typeof v === "string" && v.length > 0) exportParams[k] = v;
+  }
+
   return (
     <div className="space-y-4">
       {sp.reassigned ? <ReassignedNotice name={sp.reassigned} /> : null}
@@ -283,11 +316,19 @@ export default async function TicketsPage({
               : null}
           </p>
         </div>
-        {canCreate ? (
-          <Button nativeButton={false} render={<Link href="/admin/tickets/new" />}>
-            {t("createOnBehalf")}
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {canExport ? (
+            <ExportMenu baseHref="/api/tickets/export" params={exportParams} />
+          ) : null}
+          {canCreate ? (
+            <Button
+              nativeButton={false}
+              render={<Link href="/admin/tickets/new" />}
+            >
+              {t("createOnBehalf")}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div
@@ -340,7 +381,10 @@ export default async function TicketsPage({
       />
 
       <Card className="p-0">
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems, 57) }}
+        >
           {rows.length === 0 ? (
             <div className="py-16 text-center">
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -356,6 +400,7 @@ export default async function TicketsPage({
                   <TableHead>{t("columns.category")}</TableHead>
                   <TableHead>{t("columns.priority")}</TableHead>
                   <TableHead>{t("columns.status")}</TableHead>
+                  <TableHead>{t("columns.billing")}</TableHead>
                   <TableHead>{t("columns.customer")}</TableHead>
                   <TableHead>{t("columns.organization")}</TableHead>
                   <TableHead>{t("columns.assignee")}</TableHead>
@@ -389,6 +434,12 @@ export default async function TicketsPage({
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={row.status} />
+                    </TableCell>
+                    <TableCell>
+                      <BillingBadge
+                        billable={row.billable}
+                        invoiceNumber={row.invoiceNumber}
+                      />
                     </TableCell>
                     <TableCell className="text-sm">
                       <div>{row.customerName}</div>
@@ -446,18 +497,12 @@ export default async function TicketsPage({
         pathname="/admin/tickets"
         page={page}
         pageSize={pageSize}
-        hasMore={hasMore}
+        totalItems={totalItems}
         searchParams={new URLSearchParams(
           Object.entries(sp).filter(
             ([, v]) => typeof v === "string" && v.length > 0,
           ) as [string, string][],
         )}
-        labels={{
-          previous: tCommon("pagination.previous"),
-          next: tCommon("pagination.next"),
-          page: tCommon("pagination.page", { page }),
-          rowsPerPage: tCommon("pagination.rowsPerPage"),
-        }}
       />
     </div>
   );

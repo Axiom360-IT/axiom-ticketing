@@ -1,6 +1,12 @@
 {
   "common": {
     "appName": "Axiom360 Ticketing System",
+    "export": {
+      "label": "Export",
+      "pdf": "PDF document",
+      "xlsx": "Excel (.xlsx)",
+      "csv": "CSV (.csv)"
+    },
     "loading": "Loading…",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
@@ -16,10 +22,18 @@
     "search": "Search",
     "actions": "Actions",
     "pagination": {
-      "previous": "Previous",
-      "next": "Next",
+      "label": "Pagination",
+      "first": "First page",
+      "previous": "Previous page",
+      "next": "Next page",
+      "last": "Last page",
+      "goToPage": "Go to page {page}",
       "page": "Page {page}",
-      "rowsPerPage": "Rows per page"
+      "pageOf": "Page {page} of {total}",
+      "rowsPerPage": "Rows per page",
+      "itemsPerPage": "items per page",
+      "range": "{start}–{end} of {total, plural, one {# item} other {# items}}",
+      "rangeEmpty": "{total, plural, other {# items}}"
     },
     "richText": {
       "bold": "Bold",
@@ -384,6 +398,7 @@
         "category": "Category",
         "status": "Status",
         "priority": "Priority",
+        "billing": "Billing",
         "customer": "Customer",
         "organization": "Organization",
         "assignee": "Assignee",
@@ -578,6 +593,17 @@
       "monthly_plan": "Monthly plan",
       "project": "Project basis",
       "rework": "Rework"
+    },
+    "billingStatus": {
+      "billed": "Billed · {invoice}",
+      "needsInvoice": "Needs invoice",
+      "na": "No invoice needed"
+    },
+    "invoice": {
+      "label": "Invoice #",
+      "placeholder": "e.g. INV-1042",
+      "save": "Save",
+      "none": "Not billed yet"
     },
     "orgControl": {
       "title": "Organization",
@@ -867,8 +893,11 @@
       "addButton": "Add request",
       "count": "{count, plural, =0 {No requests} =1 {# request} other {# requests}}",
       "empty": "No requests match your filters.",
+      "search": "Search by item or requester",
       "filterStatus": "Status",
       "filterType": "Type",
+      "filterFrom": "From",
+      "filterTo": "To",
       "columns": {
         "item": "Item",
         "type": "Type",
@@ -936,6 +965,12 @@
       "subtitle": "Client companies that raise tickets",
       "count": "{count} organizations",
       "createButton": "Add organization",
+      "search": "Search by name or code",
+      "filterPlan": "Plan",
+      "filterStatus": "Status",
+      "filterAny": "Any",
+      "empty": "No organizations yet.",
+      "emptyFiltered": "No organizations match your filters.",
       "monthlyPlan": "Monthly plan",
       "oneOff": "One-off",
       "active": "Active",
@@ -1036,6 +1071,13 @@
       "count": "{count, plural, =0 {No roles} =1 {# role} other {# roles}}",
       "userCount": "{count, plural, =0 {0 users} =1 {1 user} other {# users}}",
       "system": "System",
+      "search": "Search roles",
+      "filterType": "Type",
+      "filterAny": "Any",
+      "typeSystem": "System",
+      "typeCustom": "Custom",
+      "empty": "No roles yet.",
+      "emptyFiltered": "No roles match your filters.",
       "columns": {
         "name": "Name",
         "type": "Type",
@@ -1314,6 +1356,15 @@
         "respect": "Respect business hours"
       }
     },
+    "slaBreachNotify": {
+      "title": "SLA breach notifications",
+      "subtitle": "Who gets alerted when a ticket breaches its SLA, and whether to keep reminding them.",
+      "rolesLabel": "Notify these roles",
+      "rolesHint": "These roles receive the breach alert (email, SMS, and in-app). The ticket's assigned technician is always notified too.",
+      "rolesEmpty": "No staff roles found.",
+      "repeatLabel": "Repeat reminder (hours)",
+      "repeatHint": "0 = alert once. Above 0, re-notifies these roles on that cadence while the ticket stays breached and unassigned. Once it's assigned or resolved, reminders stop."
+    },
     "holidays": {
       "title": "Holidays",
       "subtitle": "Days excluded from SLA business-hours computation.",
@@ -1349,6 +1400,16 @@
       "thresholdHint": "How long a ticket may sit unassigned before the first alert. Minimum 20 minutes (the check runs every 20 min); default 120 (2 hours).",
       "repeatLabel": "Repeat every (minutes)",
       "repeatHint": "Re-send the alert this often until the ticket is assigned. Set 0 to alert only once, or 20+ minutes to repeat."
+    },
+    "customerFollowup": {
+      "title": "Customer follow-up & auto-close",
+      "subtitle": "Nudge, then auto-close, tickets awaiting a customer reply that goes unanswered.",
+      "enabledLabel": "Follow up and auto-close on no response",
+      "enabledHint": "When on, a ticket left in “Awaiting customer” is emailed a reminder after the follow-up window, then closed if the customer still doesn't reply.",
+      "followupLabel": "Send follow-up after (days)",
+      "followupHint": "Days a ticket may await the customer's reply before the reminder email is sent. Default 3.",
+      "closeLabel": "Auto-close after (days)",
+      "closeHint": "Days after the reminder, with still no reply, before the ticket auto-closes. Default 4."
     },
     "emails": {
       "title": "Email configuration",
@@ -1433,11 +1494,14 @@
     },
     "columns": {
       "timestamp": "When",
+      "event": "Event",
       "actor": "Actor",
       "action": "Action",
       "target": "Target",
+      "when": "When",
       "ipAddress": "IP"
     },
+    "systemActor": "System",
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "empty": "No entries match the filters.",
@@ -1445,11 +1509,20 @@
     "details": {
       "title": "Audit entry",
       "actorLabel": "Actor",
+      "byActor": "By {actor}",
+      "viaImpersonator": "Acting on behalf, via {actor}",
       "impersonatorLabel": "Impersonated by",
       "roleSnapshotLabel": "Role at time of action",
       "ipLabel": "Source IP",
       "userAgentLabel": "User agent",
       "requestIdLabel": "Request ID",
+      "changesLabel": "Changes",
+      "noChanges": "No field-level changes recorded.",
+      "fieldCol": "Field",
+      "beforeCol": "Before",
+      "afterCol": "After",
+      "technical": "Technical details",
+      "rawLabel": "Raw before / after",
       "beforeLabel": "Before",
       "afterLabel": "After",
       "noBefore": "(none)",
@@ -1490,7 +1563,12 @@
     "page": {
       "title": "Reports",
       "subtitle": "Ticket health and procurement spend.",
+      "subtitlePeriod": "Period: {from} – {to}",
       "exportCsv": "Export CSV"
+    },
+    "filters": {
+      "from": "From",
+      "to": "To"
     },
     "ticketHealth": {
       "title": "Ticket health",
@@ -1498,6 +1576,7 @@
       "weekLabel": "Last 7 days",
       "monthLabel": "Last 30 days",
       "allTimeLabel": "All time",
+      "periodLabel": "Created (in period)",
       "byStatusTitle": "By status",
       "byStreamTitle": "By stream",
       "averageResolutionTitle": "Average resolution",
@@ -1522,6 +1601,7 @@
       "monthLabel": "Last 30 days",
       "quarterLabel": "Last 90 days",
       "yearLabel": "Last 12 months",
+      "periodLabel": "Spend (in period)",
       "byTypeTitle": "Hardware vs software",
       "byStageTitle": "By stage",
       "topItemsTitle": "Top 5 items",
@@ -1547,6 +1627,7 @@
       "time": "Time",
       "service": "Service",
       "billable": "Billable",
+      "invoice": "Invoice",
       "date": "Date"
     },
     "filters": {
@@ -1821,6 +1902,11 @@
       "mainNavLabel": "Main",
       "openMenu": "Open menu",
       "closeMenu": "Close menu",
+      "groupServiceDesk": "Service Desk",
+      "groupInsights": "Insights",
+      "groupAdministration": "Administration",
+      "collapseSidebar": "Collapse sidebar",
+      "expandSidebar": "Expand sidebar",
       "navDashboard": "Dashboard",
       "navTickets": "Tickets",
       "navWorkLog": "Work Log",
@@ -1854,8 +1940,8 @@
       "topbarNotificationsTitle": "Notification centre lands in M11"
     },
     "login": {
-      "title": "Staff sign-in",
-      "subtitle": "Use your work email to access the admin console.",
+      "title": "Welcome back",
+      "subtitle": "Sign in with your work email to reach the Axiom staff console.",
       "email": "Email",
       "password": "Password",
       "showPassword": "Show password",
@@ -1866,14 +1952,15 @@
       "genericError": "Invalid email or password.",
       "passwordSetSuccess": "Password set. Sign in below to continue.",
       "panel": {
-        "title": "Run support that scales with your team.",
-        "subtitle": "Triage, route, and resolve — with audit trails, SLAs, and procurement built in.",
+        "title": "The command center for your service desk.",
+        "subtitle": "Every request, SLA, and approval in one accountable workflow — so your team resolves faster and nothing slips through the cracks.",
+        "footnote": "Secure access for authorized staff",
         "featureQueueTitle": "One queue, every channel",
-        "featureQueueDescription": "Email, portal, and in-app tickets land in the same pipeline with deduping baked in.",
-        "featureSlaTitle": "SLAs you can trust",
-        "featureSlaDescription": "Business-hours-aware timers, breach alerts, and visible deadlines on every ticket.",
-        "featureGovernanceTitle": "Built for accountability",
-        "featureGovernanceDescription": "Role-aware permissions and an append-only audit log of every privileged action."
+        "featureQueueDescription": "Email, portal, and in-app requests converge into a single, de-duplicated pipeline your team can stay ahead of.",
+        "featureSlaTitle": "SLAs you can stand behind",
+        "featureSlaDescription": "Business-hours-aware timers, proactive breach alerts, and visible deadlines on every ticket.",
+        "featureGovernanceTitle": "Accountable by design",
+        "featureGovernanceDescription": "Role-aware permissions and an append-only audit trail of every privileged action."
       }
     },
     "setup": {
@@ -1895,6 +1982,58 @@
       "welcome": "Welcome back",
       "rolesPrefix": "Signed in as",
       "noRoles": "(no roles)",
+      "myQueue": {
+        "title": "My Queue",
+        "scope": "Tickets assigned to you",
+        "viewAll": "Open my tickets",
+        "assigned": "Assigned to me",
+        "awaiting": "Awaiting my reply",
+        "atRisk": "My SLA at-risk",
+        "escalated": "Escalated to me",
+        "caughtUp": "You're all caught up ✓",
+        "caughtUpHint": "Nothing assigned needs you right now.",
+        "pill": {
+          "overdue": "Overdue",
+          "dueSoon": "Due soon",
+          "yourReply": "Your reply"
+        }
+      },
+      "slaBoard": {
+        "title": "SLA deadlines",
+        "subtitle": "In-flight tickets breaching or near their target",
+        "viewAll": "Open queue",
+        "breached": "Breached",
+        "atRisk": "At risk",
+        "unassigned": "Unassigned",
+        "pill": {
+          "overdue": "Overdue",
+          "dueSoon": "Due soon"
+        }
+      },
+      "escalations": {
+        "title": "Escalations",
+        "subtitle": "Open escalations awaiting a decision",
+        "viewAll": "View all",
+        "open": "open",
+        "escalatedTo": "to",
+        "unassigned": "Unassigned"
+      },
+      "triage": {
+        "title": "Needs a decision",
+        "subtitle": "Held customer replies and unverified organizations",
+        "held": "Held replies",
+        "heldHint": "Awaiting moderation",
+        "unverified": "Unverified orgs",
+        "unverifiedHint": "Company typed, not matched"
+      },
+      "planWatch": {
+        "title": "Monthly plan",
+        "subtitle": "Organizations over or near their plan",
+        "viewAll": "View all",
+        "used": "{pct}% used",
+        "over": "{hours} over",
+        "left": "{hours} left"
+      },
       "quickStatsLabel": "Quick stats",
       "sectionsLabel": "Sections",
       "chartsLabel": "Ticket analytics",
@@ -2021,6 +2160,16 @@
       "view": "Open ticket",
       "trailerLine": "View the closed ticket in the admin console.",
       "subject": "[{ticketNumber}] Ticket closed: {subject}"
+    },
+    "customerFollowup": {
+      "preview": "We're still waiting to hear back on {ticketNumber}",
+      "title": "Still need our help?",
+      "greeting": "Hi {customerName},",
+      "body": "We haven't heard back on ticket {ticketNumber} “{subject}” and wanted to check in.",
+      "closeNotice": "If we don't hear from you by {closeDate}, we'll close this ticket for now — but you can reopen it any time.",
+      "prompt": "Just reply to this email or open your ticket to keep it going; we're happy to help.",
+      "viewTicket": "View your ticket",
+      "subject": "[{ticketNumber}] Following up on your ticket"
     },
     "ticketAssigned": {
       "preview": "Your ticket {ticketNumber} is now being worked on",

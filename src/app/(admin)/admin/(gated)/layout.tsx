@@ -7,6 +7,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { Sidebar } from "@/components/shared/sidebar";
+import { SidebarProvider } from "@/components/shared/sidebar-context";
 import { SkipLink } from "@/components/shared/skip-link";
 import { Topbar } from "@/components/shared/topbar";
 import { loadBranding } from "@/lib/branding/load";
@@ -71,28 +72,30 @@ export default async function AdminGatedLayout({
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <SkipLink />
-      <Sidebar branding={branding} permissions={[...user.permissions]} />
-      <div className="flex-1 flex flex-col min-w-0">
-        {bannerName ? <ImpersonationBanner targetName={bannerName} /> : null}
-        <Topbar
-          user={{
-            id: user.id,
-            email: displayEmail,
-            name: displayName,
-            roles: [...user.roleNames],
-            avatarUrl: displayAvatarUrl,
-          }}
-          branding={branding}
-          permissions={[...user.permissions]}
-        />
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none"
-        >
-          {children}
-        </main>
-      </div>
+      <SidebarProvider>
+        <Sidebar branding={branding} permissions={[...user.permissions]} />
+        <div className="flex-1 flex flex-col min-w-0">
+          {bannerName ? <ImpersonationBanner targetName={bannerName} /> : null}
+          <Topbar
+            user={{
+              id: user.id,
+              email: displayEmail,
+              name: displayName,
+              roles: [...user.roleNames],
+              avatarUrl: displayAvatarUrl,
+            }}
+            branding={branding}
+            permissions={[...user.permissions]}
+          />
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none"
+          >
+            {children}
+          </main>
+        </div>
+      </SidebarProvider>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
   Pagination,
   parsePage,
   parsePageSize,
+  reservedTableHeight,
 } from "@/components/ui/pagination";
 import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
@@ -83,9 +84,9 @@ export default async function UsersListPage({
   // here on the post-filter list. Acceptable at small org scale; if the
   // user table grows beyond a few thousand active rows, push filters
   // into SQL and switch to LIMIT/OFFSET in the helper.
+  const totalItems = allRows.length;
   const offset = (page - 1) * pageSize;
   const rows = allRows.slice(offset, offset + pageSize);
-  const hasMore = allRows.length > offset + pageSize;
 
   function tabHref(target: Audience): string {
     const params = new URLSearchParams();
@@ -102,7 +103,7 @@ export default async function UsersListPage({
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("count", { count: rows.length })}
+            {t("count", { count: totalItems })}
           </p>
         </div>
         {canCreate ? (
@@ -167,7 +168,10 @@ export default async function UsersListPage({
       </div>
 
       <Card className="p-0">
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
+        >
           {rows.length === 0 ? (
             <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
               {t("empty")}
@@ -246,18 +250,12 @@ export default async function UsersListPage({
         pathname="/admin/users"
         page={page}
         pageSize={pageSize}
-        hasMore={hasMore}
+        totalItems={totalItems}
         searchParams={new URLSearchParams(
           Object.entries(sp).filter(
             ([, v]) => typeof v === "string" && v.length > 0,
           ) as [string, string][],
         )}
-        labels={{
-          previous: tCommon("pagination.previous"),
-          next: tCommon("pagination.next"),
-          page: tCommon("pagination.page", { page }),
-          rowsPerPage: tCommon("pagination.rowsPerPage"),
-        }}
       />
     </div>
   );

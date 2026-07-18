@@ -15,8 +15,12 @@ import {
   StringSettingForm,
 } from "@/components/settings/scalar-form";
 import { SlaTargetsForm } from "@/components/settings/sla-form";
+import { RoleChecklistForm } from "@/components/settings/role-checklist-form";
 import { StringListForm } from "@/components/settings/string-list-form";
 import { loadSettingsSnapshot } from "@/app/actions/settings";
+import { db } from "@/lib/db/client";
+import { roles } from "@/lib/db/schema/rbac";
+import { ne } from "drizzle-orm";
 import { DEFAULT_BRANDING, isAccentKey, isGradientKey } from "@/lib/branding/presets";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -99,6 +103,18 @@ export default async function SettingsPage({
   const snapshot = await loadSettingsSnapshot();
   const v = snapshot.values;
 
+  // Staff role names for the SLA-breach recipient picker (Operations tab only).
+  const staffRoles =
+    tab === "operations"
+      ? (
+          await db
+            .select({ name: roles.name })
+            .from(roles)
+            .where(ne(roles.name, "Customer"))
+            .orderBy(roles.name)
+        ).map((r) => r.name)
+      : [];
+
   // Current logo (signed URL) for the branding tab's uploader.
   const brandingLogoUrl =
     tab === "branding" ? ((await loadBranding()).logoUrl ?? null) : null;
@@ -106,11 +122,13 @@ export default async function SettingsPage({
   const t = await getTranslations("settings.page");
   const tBh = await getTranslations("settings.businessHours");
   const tSla = await getTranslations("settings.sla");
+  const tSbn = await getTranslations("settings.slaBreachNotify");
   const tHol = await getTranslations("settings.holidays");
   const tDom = await getTranslations("settings.domains");
   const tProc = await getTranslations("settings.procurement");
   const tRw = await getTranslations("settings.responseWindow");
   const tUa = await getTranslations("settings.unassignedAlert");
+  const tCf = await getTranslations("settings.customerFollowup");
   const tEm = await getTranslations("settings.emails");
   const tFu = await getTranslations("settings.fileUpload");
   const tVs = await getTranslations("settings.virusScan");
@@ -206,6 +224,38 @@ export default async function SettingsPage({
 
           <Card>
             <CardHeader>
+              <CardTitle>{tSbn("title")}</CardTitle>
+              <CardDescription>{tSbn("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="mb-1.5 text-sm font-medium">{tSbn("rolesLabel")}</p>
+                <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  {tSbn("rolesHint")}
+                </p>
+                <RoleChecklistForm
+                  settingKey="sla.breach_notify_roles"
+                  allRoles={staffRoles}
+                  initial={
+                    strArr(v["sla.breach_notify_roles"]).length > 0
+                      ? strArr(v["sla.breach_notify_roles"])
+                      : ["Super Admin", "IT Director", "Coordinator"]
+                  }
+                  emptyHint={tSbn("rolesEmpty")}
+                />
+              </div>
+              <NumberSettingForm
+                settingKey="sla.breach_repeat_hours"
+                label={tSbn("repeatLabel")}
+                hint={tSbn("repeatHint")}
+                initial={num(v["sla.breach_repeat_hours"], 0)}
+                min={0}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>{tHol("title")}</CardTitle>
               <CardDescription>{tHol("subtitle")}</CardDescription>
             </CardHeader>
@@ -258,6 +308,35 @@ export default async function SettingsPage({
                 hint={tUa("repeatHint")}
                 initial={num(v["unassigned_alert.repeat_minutes"], 0)}
                 min={0}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tCf("title")}</CardTitle>
+              <CardDescription>{tCf("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <BooleanSettingForm
+                settingKey="customer_followup.enabled"
+                label={tCf("enabledLabel")}
+                description={tCf("enabledHint")}
+                initial={bool(v["customer_followup.enabled"], true)}
+              />
+              <NumberSettingForm
+                settingKey="customer_followup.followup_days"
+                label={tCf("followupLabel")}
+                hint={tCf("followupHint")}
+                initial={num(v["customer_followup.followup_days"], 3)}
+                min={1}
+              />
+              <NumberSettingForm
+                settingKey="customer_followup.close_days"
+                label={tCf("closeLabel")}
+                hint={tCf("closeHint")}
+                initial={num(v["customer_followup.close_days"], 4)}
+                min={1}
               />
             </CardContent>
           </Card>

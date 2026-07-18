@@ -43,6 +43,7 @@ export type WorkLogRow = {
   ticketAssignedToId: string | null;
   organizationName: string | null;
   billable: string | null;
+  invoiceNumber: string | null;
 };
 
 function buildConditions(user: SessionUser, filters: WorkLogFilters): SQL[] {
@@ -83,7 +84,12 @@ export async function listWorkLogs(
   user: SessionUser,
   filters: WorkLogFilters,
   { limit, offset }: { limit: number; offset: number },
-): Promise<{ rows: WorkLogRow[]; totalMinutes: number; canViewAll: boolean }> {
+): Promise<{
+  rows: WorkLogRow[];
+  totalMinutes: number;
+  totalCount: number;
+  canViewAll: boolean;
+}> {
   const canViewAll = user.permissions.has("worklog.view_all");
   const conditions = buildConditions(user, filters);
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -107,6 +113,7 @@ export async function listWorkLogs(
       ticketAssignedToId: tickets.assignedToId,
       organizationName: organizations.name,
       billable: tickets.billable,
+      invoiceNumber: tickets.invoiceNumber,
     })
     .from(workLogs)
     .innerJoin(tickets, eq(workLogs.ticketId, tickets.id))
@@ -117,15 +124,23 @@ export async function listWorkLogs(
     .limit(limit)
     .offset(offset);
 
+  // Sum of minutes AND the total row count in one aggregate round-trip — the
+  // count backs the numbered pager / "N of T entries" range on the timesheet.
   const [agg] = await db
     .select({
       total: sql<number>`coalesce(sum(${workLogs.minutes}), 0)::int`,
+      rowCount: sql<number>`count(*)::int`,
     })
     .from(workLogs)
     .innerJoin(tickets, eq(workLogs.ticketId, tickets.id))
     .where(where);
 
-  return { rows, totalMinutes: agg?.total ?? 0, canViewAll };
+  return {
+    rows,
+    totalMinutes: agg?.total ?? 0,
+    totalCount: agg?.rowCount ?? 0,
+    canViewAll,
+  };
 }
 
 /** Tickets the caller can log time against from the timesheet "Add time"

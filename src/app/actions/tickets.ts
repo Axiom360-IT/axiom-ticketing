@@ -2270,6 +2270,57 @@ const BILLABLE_VALUES = [
 ] as const;
 type BillableValue = (typeof BILLABLE_VALUES)[number];
 
+const INVOICE_NUMBER_MAX = 60;
+
+/**
+ * Record (or clear) the invoice number a ticket was billed under. Empty string
+ * clears it. Gated by tickets.update like the other billing controls; audited.
+ */
+export async function setTicketInvoiceNumber(
+  ticketId: string,
+  invoiceNumber: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = invoiceNumber.trim();
+  if (trimmed.length > INVOICE_NUMBER_MAX) {
+    return {
+      ok: false,
+      error: `Invoice number must be ${INVOICE_NUMBER_MAX} characters or fewer.`,
+    };
+  }
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  const value = trimmed.length > 0 ? trimmed : null;
+  await db
+    .update(tickets)
+    .set({ invoiceNumber: value, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.set_invoice",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { invoiceNumber: value },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath("/admin/work-log");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
 export async function setTicketBillable(
   ticketId: string,
   billable: BillableValue | null,

@@ -15,6 +15,14 @@ import {
   StickyActionsCell,
   StickyActionsHead,
 } from "@/components/ui/row-actions";
+import {
+  Pagination,
+  parsePage,
+  parsePageSize,
+  reservedTableHeight,
+} from "@/components/ui/pagination";
+import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { OrgRowActions } from "@/components/organizations/org-row-actions";
 import {
   countUnverifiedOrgTickets,
@@ -30,7 +38,19 @@ function formatHours(minutes: number | null): string | null {
   return Number.isInteger(hours) ? String(hours) : hours.toFixed(2);
 }
 
-export default async function OrganizationsListPage() {
+type SearchParams = Promise<{
+  q?: string;
+  plan?: string;
+  status?: string;
+  page?: string;
+  pageSize?: string;
+}>;
+
+export default async function OrganizationsListPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
   if (
@@ -39,7 +59,7 @@ export default async function OrganizationsListPage() {
     redirect("/admin");
   }
 
-  const [rows, canCreate, canEdit, canDelete, unverifiedCount] =
+  const [allRows, canCreate, canEdit, canDelete, unverifiedCount] =
     await Promise.all([
       listOrganizationsForAdmin(),
       can(user, "organizations.create", { type: "global" }, productionContext),
@@ -51,13 +71,39 @@ export default async function OrganizationsListPage() {
   const tTriage = await getTranslations("orgTriage");
   const tCommon = await getTranslations("common");
 
+  // listOrganizationsForAdmin returns the full set (client roster — bounded).
+  // Filter + paginate in memory, mirroring the users/roles pages.
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim().toLowerCase();
+  const plan = sp.plan === "monthly" || sp.plan === "one_off" ? sp.plan : "";
+  const status =
+    sp.status === "active" || sp.status === "inactive" ? sp.status : "";
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+
+  const filtered = allRows.filter((o) => {
+    if (q && !`${o.name} ${o.abbreviation}`.toLowerCase().includes(q)) {
+      return false;
+    }
+    if (plan === "monthly" && !o.isMonthlyPlan) return false;
+    if (plan === "one_off" && o.isMonthlyPlan) return false;
+    if (status === "active" && !o.isActive) return false;
+    if (status === "inactive" && o.isActive) return false;
+    return true;
+  });
+
+  const totalItems = filtered.length;
+  const offset = (page - 1) * pageSize;
+  const rows = filtered.slice(offset, offset + pageSize);
+  const hasFilters = q !== "" || plan !== "" || status !== "";
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("subtitle")} · {t("count", { count: rows.length })}
+            {t("subtitle")} · {t("count", { count: totalItems })}
           </p>
         </div>
         {canCreate ? (
@@ -80,8 +126,48 @@ export default async function OrganizationsListPage() {
         </Link>
       ) : null}
 
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[14rem]">
+          <UrlSearchInput
+            initialValue={sp.q ?? ""}
+            placeholder={t("search")}
+            className="max-w-md"
+          />
+        </div>
+        <UrlFilterSelect
+          name="plan"
+          label={t("filterPlan")}
+          value={plan}
+          anyLabel={t("filterAny")}
+          options={[
+            { value: "monthly", label: t("monthlyPlan") },
+            { value: "one_off", label: t("oneOff") },
+          ]}
+          triggerClassName="w-40"
+        />
+        <UrlFilterSelect
+          name="status"
+          label={t("filterStatus")}
+          value={status}
+          anyLabel={t("filterAny")}
+          options={[
+            { value: "active", label: t("active") },
+            { value: "inactive", label: t("inactive") },
+          ]}
+          triggerClassName="w-36"
+        />
+      </div>
+
       <Card className="p-0">
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
+        >
+          {rows.length === 0 ? (
+            <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              {hasFilters ? t("emptyFiltered") : t("empty")}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -144,8 +230,21 @@ export default async function OrganizationsListPage() {
               })}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
+
+      <Pagination
+        pathname="/admin/organizations"
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
+      />
     </div>
   );
 }

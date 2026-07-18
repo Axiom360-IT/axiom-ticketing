@@ -37,6 +37,14 @@ export const SETTING_SCHEMAS = {
   "sla.low.resolve_minutes": z.number().int().positive().max(60 * 24 * 14),
   "sla.low.respect_business_hours": z.boolean(),
 
+  // SLA-breach notification recipients + repeat escalation. `notify_roles` is
+  // the set of staff role NAMES that receive a breach alert (the ticket's own
+  // assignee is always notified on top). `repeat_hours` of 0 = alert once; >0
+  // re-nags the same recipients on that cadence while the ticket stays breached
+  // AND unassigned (once someone owns it, or it's resolved, the nagging stops).
+  "sla.breach_notify_roles": z.array(z.string().trim().min(1).max(60)).max(20),
+  "sla.breach_repeat_hours": z.number().int().min(0).max(24 * 14),
+
   // Email + stream tagging
   internal_email_domains: z.array(
     z
@@ -84,6 +92,14 @@ export const SETTING_SCHEMAS = {
     .refine((v) => v === 0 || v >= 20, {
       message: "Repeat must be 0 (alert once) or at least 20 minutes.",
     }),
+
+  // Customer follow-up + auto-close on no response. When a ticket sits in
+  // "awaiting customer" and the customer hasn't replied for `followup_days`,
+  // send a one-time nudge email; if still no reply `close_days` after that,
+  // auto-close the ticket. `enabled` is the master on/off.
+  "customer_followup.enabled": z.boolean(),
+  "customer_followup.followup_days": z.number().int().min(1).max(90),
+  "customer_followup.close_days": z.number().int().min(1).max(90),
 
   // Billing / accountant notifications (reqs 8.6–8.9). Accountants are OUR
   // platform's accountants (not per-organization contacts) — a global list of

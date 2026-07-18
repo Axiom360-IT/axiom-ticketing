@@ -129,6 +129,10 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   logoUrl: null,
 };
 
+// The official Axiom mark shipped in /public. Used as the sign-in logo when no
+// custom logo has been uploaded via Settings → Branding (branding.logoUrl).
+export const DEFAULT_LOGO_SRC = "/axiomcan_logo-removebg-preview.png";
+
 export function isAccentKey(v: unknown): v is AccentKey {
   return typeof v === "string" && (ACCENT_KEYS as readonly string[]).includes(v);
 }

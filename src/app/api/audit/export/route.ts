@@ -1,14 +1,22 @@
 import type { NextRequest } from "next/server";
 import { iterAuditEntries, type AuditFilters } from "@/app/actions/audit";
+import { audit } from "@/lib/audit";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { type ExportDataset, parseExportFormat } from "@/lib/export/dataset";
+import { exportResponse } from "@/lib/export/respond";
+import { clientIp } from "@/lib/request";
 
-// CSV export. Streams chunked rows so large exports never hold the full
-// result set in memory. Permission gate is `audit.export` per ARCHITECTURE.
+// Audit export. CSV is STREAMED (chunked) so a large log never materializes in
+// memory. XLSX/PDF inherently build a whole document, so they're capped — use
+// CSV for the complete forensic dump. Permission gate: `audit.export`.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+// XLSX/PDF materialize the whole document; cap the row count. CSV is unbounded.
+const DOC_CAP = 10000;
 
 const CSV_HEADER = [
   "timestamp",
@@ -19,28 +27,42 @@ const CSV_HEADER = [
   "impersonator_id",
   "impersonator_email",
   "action",
+  "category",
+  "outcome",
   "target_type",
   "target_id",
+  "target_label",
   "ip_address",
 ].join(",");
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return "";
-  const s =
+  let s =
     v instanceof Date ? v.toISOString() : typeof v === "string" ? v : String(v);
+  // Neutralize spreadsheet formula injection (CWE-1236) — audit cells carry
+  // actor names and target labels that can contain user-influenced text.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   if (/[",\n\r]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }
   return s;
 }
 
-function isoOrUndefined(v: string | null): string | undefined {
+function isoOrUndefined(
+  v: string | null,
+  endOfDay = false,
+): string | undefined {
   if (!v) return undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    return new Date(`${v}T00:00:00.000Z`).toISOString();
+    const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+    return new Date(`${v}T${time}Z`).toISOString();
   }
   const d = new Date(v);
   return Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
+}
+
+function fmtTime(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -53,54 +75,146 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const sp = request.nextUrl.searchParams;
+  const format = parseExportFormat(sp.get("format"));
   const filters: AuditFilters = {
     from: isoOrUndefined(sp.get("from")),
-    to: isoOrUndefined(sp.get("to")),
+    to: isoOrUndefined(sp.get("to"), true),
     actorId: sp.get("actorId") || undefined,
     action: sp.get("action") || undefined,
     targetType: sp.get("targetType") || undefined,
     targetId: sp.get("targetId") || undefined,
   };
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        controller.enqueue(encoder.encode(`${CSV_HEADER}\n`));
-        for await (const row of iterAuditEntries(filters)) {
-          const line =
-            [
-              row.timestamp,
-              row.actorId,
-              row.actorName,
-              row.actorEmail,
-              row.actorRoleSnapshot,
-              row.impersonatorId,
-              row.impersonatorEmail,
-              row.action,
-              row.targetType,
-              row.targetId,
-              row.ipAddress,
-            ]
-              .map(csvEscape)
-              .join(",") + "\n";
-          controller.enqueue(encoder.encode(line));
-        }
-        controller.close();
-      } catch (err) {
-        controller.error(err);
-      }
-    },
-  });
+  // Audit the audit: exporting the log is itself a privileged, security-
+  // relevant action and must leave its own record (who, what filters, format,
+  // from where). Best-effort — never block the export on it.
+  try {
+    await audit({
+      actorId: user.id,
+      action: "audit.export",
+      targetType: "audit_log",
+      ipAddress: clientIp(request.headers, "global"),
+      after: {
+        format,
+        filters: Object.fromEntries(
+          Object.entries(filters).filter(([, v]) => v !== undefined),
+        ),
+      },
+    });
+  } catch {
+    // Non-fatal.
+  }
 
-  const filename = `audit-${new Date().toISOString().slice(0, 10)}.csv`;
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      // Long timeouts: CSVs can be megabytes.
-      "Cache-Control": "no-store",
-    },
-  });
+  // ── CSV: streamed, unbounded ───────────────────────────────────────
+  if (format === "csv") {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode(`﻿${CSV_HEADER}\n`));
+          for await (const row of iterAuditEntries(filters)) {
+            const line =
+              [
+                row.timestamp,
+                row.actorId,
+                row.actorName,
+                row.actorEmail,
+                row.actorRoleSnapshot,
+                row.impersonatorId,
+                row.impersonatorEmail,
+                row.action,
+                row.category,
+                row.outcome,
+                row.targetType,
+                row.targetId,
+                row.targetLabel,
+                row.ipAddress,
+              ]
+                .map(csvEscape)
+                .join(",") + "\n";
+            controller.enqueue(encoder.encode(line));
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
+
+    const filename = `audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  // ── XLSX / PDF: capped, human-readable summary ─────────────────────
+  const tableRows: (string | number)[][] = [];
+  let truncated = false;
+  for await (const row of iterAuditEntries(filters)) {
+    if (tableRows.length >= DOC_CAP) {
+      truncated = true;
+      break;
+    }
+    const actor =
+      (row.actorName ?? "System") +
+      (row.impersonatorEmail ? ` (via ${row.impersonatorEmail})` : "");
+    const target =
+      row.targetLabel ??
+      (row.targetType && row.targetId
+        ? `${row.targetType}:${row.targetId}`
+        : (row.targetType ?? "—"));
+    tableRows.push([
+      fmtTime(row.timestamp),
+      actor,
+      row.action,
+      row.category ?? "—",
+      row.outcome ?? "—",
+      target,
+      row.ipAddress ?? "—",
+    ]);
+  }
+
+  const applied = Object.entries(filters)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+
+  const dataset: ExportDataset = {
+    title: "Audit log export",
+    subtitle: `${tableRows.length} entr${tableRows.length === 1 ? "y" : "ies"}`,
+    orientation: "landscape",
+    meta: [
+      {
+        label: "Generated at",
+        value: `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+      },
+      { label: "Filters", value: applied || "none" },
+    ],
+    sections: [
+      {
+        kind: "table",
+        title: "Audit entries",
+        note: truncated
+          ? `Capped at ${DOC_CAP} rows — export as CSV for the full log, or narrow the filters.`
+          : undefined,
+        columns: [
+          "Time (UTC)",
+          "Actor",
+          "Action",
+          "Category",
+          "Outcome",
+          "Target",
+          "IP",
+        ],
+        rows: tableRows,
+      },
+    ],
+  };
+
+  return exportResponse(dataset, format, "audit");
 }

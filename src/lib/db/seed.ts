@@ -177,6 +177,26 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "Re-alert cadence in minutes while still unassigned (0 = alert once)",
     },
 
+    // Customer follow-up + auto-close on no response
+    {
+      key: "customer_followup.enabled",
+      value: true,
+      description:
+        "Send a follow-up email and auto-close tickets awaiting a customer reply that goes unanswered",
+    },
+    {
+      key: "customer_followup.followup_days",
+      value: 3,
+      description:
+        "Days a ticket may await the customer's reply before the follow-up nudge email is sent",
+    },
+    {
+      key: "customer_followup.close_days",
+      value: 4,
+      description:
+        "Days after the follow-up nudge with still no reply before the ticket auto-closes",
+    },
+
     // Billing / accountant notifications (reqs 8.6–8.9)
     {
       key: "billing.accountant_emails",

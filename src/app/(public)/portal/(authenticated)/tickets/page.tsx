@@ -1,11 +1,21 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { CustomerTicketList } from "@/components/customer/customer-ticket-list";
+import {
+  Pagination,
+  parsePage,
+  parsePageSize,
+} from "@/components/ui/pagination";
 import { requireSessionUser } from "@/lib/auth/session";
 import { listMyTickets } from "@/lib/customer/queries";
 import { cn } from "@/lib/utils";
 
-type SearchParams = Promise<{ status?: string; q?: string }>;
+type SearchParams = Promise<{
+  status?: string;
+  q?: string;
+  page?: string;
+  pageSize?: string;
+}>;
 
 // Quick-filter chip set. Each chip is just a link with a `?status=`
 // query param — no client state. The "All" chip clears the filter by
@@ -50,6 +60,13 @@ export default async function PortalTicketsPage({
     }
     return true;
   });
+
+  // Paginate the filtered set so a long history stays scannable.
+  const page = parsePage(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
+  const totalItems = filtered.length;
+  const offset = (page - 1) * pageSize;
+  const pageItems = filtered.slice(offset, offset + pageSize);
 
   return (
     <section className="max-w-5xl mx-auto py-6 sm:py-10 px-4">
@@ -152,7 +169,22 @@ export default async function PortalTicketsPage({
           )}
         </div>
       ) : (
-        <CustomerTicketList items={filtered} />
+        <>
+          <CustomerTicketList items={pageItems} />
+          <div className="mt-5">
+            <Pagination
+              pathname="/portal/tickets"
+              page={page}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              searchParams={new URLSearchParams(
+                Object.entries(sp).filter(
+                  ([, v]) => typeof v === "string" && v.length > 0,
+                ) as [string, string][],
+              )}
+            />
+          </div>
+        </>
       )}
     </section>
   );

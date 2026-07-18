@@ -19,14 +19,22 @@ import {
   Pagination,
   parsePage,
   parsePageSize,
+  reservedTableHeight,
 } from "@/components/ui/pagination";
+import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { RoleRowActions } from "@/components/roles/role-row-actions";
 import { listRolesForAdmin } from "@/app/actions/roles";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 
-type SearchParams = Promise<{ page?: string; pageSize?: string }>;
+type SearchParams = Promise<{
+  q?: string;
+  type?: string;
+  page?: string;
+  pageSize?: string;
+}>;
 
 export default async function RolesListPage({
   searchParams,
@@ -40,6 +48,8 @@ export default async function RolesListPage({
   }
 
   const sp = await searchParams;
+  const q = (sp.q ?? "").trim().toLowerCase();
+  const type = sp.type === "system" || sp.type === "custom" ? sp.type : "";
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
 
@@ -53,10 +63,19 @@ export default async function RolesListPage({
   const tCommon = await getTranslations("common");
 
   // listRolesForAdmin returns the full set (small list — typically <20).
-  // Paginate at the page level for visual consistency with other tables.
+  // Filter + paginate at the page level for consistency with other tables.
+  const filtered = allRows.filter((r) => {
+    if (q && !`${r.name} ${r.description ?? ""}`.toLowerCase().includes(q)) {
+      return false;
+    }
+    if (type === "system" && !r.isSystem) return false;
+    if (type === "custom" && r.isSystem) return false;
+    return true;
+  });
+  const totalItems = filtered.length;
   const offset = (page - 1) * pageSize;
-  const rows = allRows.slice(offset, offset + pageSize);
-  const hasMore = allRows.length > offset + pageSize;
+  const rows = filtered.slice(offset, offset + pageSize);
+  const hasFilters = q !== "" || type !== "";
 
   return (
     <div className="space-y-4">
@@ -64,7 +83,7 @@ export default async function RolesListPage({
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {t("subtitle")} · {t("count", { count: rows.length })}
+            {t("subtitle")} · {t("count", { count: totalItems })}
           </p>
         </div>
         {canCreate ? (
@@ -74,8 +93,37 @@ export default async function RolesListPage({
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[14rem]">
+          <UrlSearchInput
+            initialValue={sp.q ?? ""}
+            placeholder={t("search")}
+            className="max-w-md"
+          />
+        </div>
+        <UrlFilterSelect
+          name="type"
+          label={t("filterType")}
+          value={type}
+          anyLabel={t("filterAny")}
+          options={[
+            { value: "system", label: t("typeSystem") },
+            { value: "custom", label: t("typeCustom") },
+          ]}
+          triggerClassName="w-36"
+        />
+      </div>
+
       <Card className="p-0">
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
+        >
+          {rows.length === 0 ? (
+            <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              {hasFilters ? t("emptyFiltered") : t("empty")}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -121,6 +169,7 @@ export default async function RolesListPage({
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -128,18 +177,12 @@ export default async function RolesListPage({
         pathname="/admin/roles"
         page={page}
         pageSize={pageSize}
-        hasMore={hasMore}
+        totalItems={totalItems}
         searchParams={new URLSearchParams(
           Object.entries(sp).filter(
             ([, v]) => typeof v === "string" && v.length > 0,
           ) as [string, string][],
         )}
-        labels={{
-          previous: tCommon("pagination.previous"),
-          next: tCommon("pagination.next"),
-          page: tCommon("pagination.page", { page }),
-          rowsPerPage: tCommon("pagination.rowsPerPage"),
-        }}
       />
     </div>
   );

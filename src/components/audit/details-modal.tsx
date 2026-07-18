@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,14 +10,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  type AuditEntryDetail,
-  getAuditEntry,
-} from "@/app/actions/audit";
+import { type AuditEntryDetail, getAuditEntry } from "@/app/actions/audit";
 import { auditActionLabel, humanizeFieldKey } from "@/lib/audit/action-label";
+import { computeChanges, type FieldChange } from "@/lib/audit/diff";
+import { cn } from "@/lib/utils";
 
 type Props = {
   entryId: string;
+};
+
+const OUTCOME_LABEL: Record<string, string> = {
+  denied: "Denied",
+  failure: "Failed",
+  error: "Error",
 };
 
 export function AuditDetailsButton({ entryId }: Props) {
@@ -37,6 +42,12 @@ export function AuditDetailsButton({ entryId }: Props) {
     }
   }
 
+  const changes: FieldChange[] = detail
+    ? computeChanges(detail.beforeValue, detail.afterValue)
+    : [];
+  const target =
+    detail?.targetLabel ?? detail?.targetId ?? detail?.targetType ?? null;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
@@ -55,81 +66,167 @@ export function AuditDetailsButton({ entryId }: Props) {
             …
           </div>
         ) : (
-          <div className="space-y-3 text-sm">
-            <Row
-              label={t("columns.timestamp")}
-              value={formatter.dateTime(detail.timestamp, {
-                dateStyle: "medium",
-                timeStyle: "long",
-              })}
-            />
-            <Row
-              label={t("columns.action")}
-              value={
-                <span title={detail.action}>
-                  {auditActionLabel(detail.action)}
-                </span>
-              }
-            />
-            <Row
-              label={t("details.actorLabel")}
-              value={
-                detail.actorName
-                  ? `${detail.actorName} (${detail.actorEmail ?? "—"})`
-                  : "—"
-              }
-            />
-            {detail.impersonatorId ? (
-              <Row
-                label={t("details.impersonatorLabel")}
-                value={
-                  detail.impersonatorName
-                    ? `${detail.impersonatorName} (${detail.impersonatorEmail ?? "—"})`
-                    : detail.impersonatorId
-                }
-              />
-            ) : null}
-            {detail.actorRoleSnapshot ? (
-              <Row
-                label={t("details.roleSnapshotLabel")}
-                value={detail.actorRoleSnapshot}
-              />
-            ) : null}
-            {detail.targetType || detail.targetId ? (
-              <Row
-                label={t("columns.target")}
-                value={
-                  <span>
-                    {detail.targetType ?? ""}
-                    {detail.targetId ? ` · ${detail.targetId}` : ""}
+          <div className="space-y-4 text-sm">
+            {/* Plain-language summary */}
+            <div className="space-y-0.5">
+              <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                {auditActionLabel(detail.action)}
+                {target ? (
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    {" · "}
+                    <span className="font-mono text-xs">{target}</span>
                   </span>
-                }
-              />
-            ) : null}
-            {detail.ipAddress ? (
-              <Row
-                label={t("details.ipLabel")}
-                value={<code className="font-mono text-xs">{detail.ipAddress}</code>}
-              />
-            ) : null}
-            {detail.requestId ? (
-              <Row
-                label={t("details.requestIdLabel")}
-                value={<code className="font-mono text-xs">{detail.requestId}</code>}
-              />
-            ) : null}
-            <FieldsBlock
-              label={t("details.beforeLabel")}
-              empty={t("details.noBefore")}
-              value={detail.beforeValue}
-              userNames={detail.userNames}
-            />
-            <FieldsBlock
-              label={t("details.afterLabel")}
-              empty={t("details.noAfter")}
-              value={detail.afterValue}
-              userNames={detail.userNames}
-            />
+                ) : null}
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {detail.actorName
+                  ? t("details.byActor", {
+                      actor: detail.actorEmail
+                        ? `${detail.actorName} (${detail.actorEmail})`
+                        : detail.actorName,
+                    })
+                  : t("systemActor")}
+                {" · "}
+                {formatter.dateTime(detail.timestamp, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+              {detail.impersonatorId ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {t("details.viaImpersonator", {
+                    actor:
+                      detail.impersonatorName ??
+                      detail.impersonatorEmail ??
+                      detail.impersonatorId,
+                  })}
+                </p>
+              ) : null}
+              {detail.outcome !== "success" ? (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                  {OUTCOME_LABEL[detail.outcome] ?? detail.outcome}
+                  {detail.failureReason ? `: ${detail.failureReason}` : ""}
+                </p>
+              ) : null}
+            </div>
+
+            {/* Field-level diff */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                {t("details.changesLabel")}
+              </p>
+              {changes.length === 0 ? (
+                <p className="text-xs text-zinc-400">
+                  {t("details.noChanges")}
+                </p>
+              ) : (
+                <div className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                        <th className="px-2.5 py-1.5 font-medium">
+                          {t("details.fieldCol")}
+                        </th>
+                        <th className="px-2.5 py-1.5 font-medium">
+                          {t("details.beforeCol")}
+                        </th>
+                        <th className="px-2.5 py-1.5 font-medium">
+                          {t("details.afterCol")}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {changes.map((c) => (
+                        <tr
+                          key={c.field}
+                          className="border-t border-zinc-100 align-top dark:border-zinc-800"
+                        >
+                          <td className="px-2.5 py-1.5 text-zinc-500 dark:text-zinc-400">
+                            {humanizeFieldKey(c.field)}
+                          </td>
+                          <td className="px-2.5 py-1.5">
+                            {c.kind === "added" ? (
+                              <span className="text-zinc-300 dark:text-zinc-600">
+                                —
+                              </span>
+                            ) : (
+                              <Value
+                                v={c.from}
+                                userNames={detail.userNames}
+                                tone="removed"
+                              />
+                            )}
+                          </td>
+                          <td className="px-2.5 py-1.5">
+                            {c.kind === "removed" ? (
+                              <span className="text-zinc-300 dark:text-zinc-600">
+                                —
+                              </span>
+                            ) : (
+                              <Value
+                                v={c.to}
+                                userNames={detail.userNames}
+                                tone="added"
+                              />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Technical details — hidden by default so the common case stays clean */}
+            <details className="rounded-md border border-zinc-200 dark:border-zinc-800">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                {t("details.technical")}
+              </summary>
+              <div className="space-y-1.5 border-t border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
+                <TechRow
+                  label={t("columns.target")}
+                  value={
+                    detail.targetType || detail.targetId
+                      ? `${detail.targetType ?? ""}${
+                          detail.targetId ? ` · ${detail.targetId}` : ""
+                        }`
+                      : null
+                  }
+                />
+                <TechRow
+                  label={t("details.roleSnapshotLabel")}
+                  value={detail.actorRoleSnapshot}
+                />
+                <TechRow label={t("details.ipLabel")} value={detail.ipAddress} mono />
+                <TechRow
+                  label={t("details.userAgentLabel")}
+                  value={detail.userAgent}
+                />
+                <TechRow
+                  label={t("details.requestIdLabel")}
+                  value={detail.requestId}
+                  mono
+                />
+                {(detail.beforeValue != null || detail.afterValue != null) && (
+                  <div className="pt-1">
+                    <p className="mb-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                      {t("details.rawLabel")}
+                    </p>
+                    <pre className="max-h-56 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-2 font-mono text-[11px] whitespace-pre-wrap dark:border-zinc-800 dark:bg-zinc-900">
+                      {JSON.stringify(
+                        {
+                          before: detail.beforeValue ?? null,
+                          after: detail.afterValue ?? null,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
         )}
       </DialogContent>
@@ -137,80 +234,66 @@ export function AuditDetailsButton({ entryId }: Props) {
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <span className="text-zinc-500 dark:text-zinc-400 w-28 sm:w-40 shrink-0 text-xs">
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 break-all">{value}</span>
-    </div>
-  );
-}
-
-function formatFieldValue(v: unknown): string {
+function formatValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return JSON.stringify(v);
 }
 
-/** Render a field value, swapping a user-id UUID for the user's name (keeping
- *  the raw id as a hover tooltip) so the snapshot reads "Jane Doe" not a UUID. */
-function renderFieldValue(
-  v: unknown,
-  userNames: Record<string, string>,
-): React.ReactNode {
-  if (typeof v === "string" && userNames[v]) {
-    return <span title={v}>{userNames[v]}</span>;
-  }
-  return formatFieldValue(v);
+/** A field value, resolving user-id UUIDs to names and tinting add/remove. */
+function Value({
+  v,
+  userNames,
+  tone,
+}: {
+  v: unknown;
+  userNames: Record<string, string>;
+  tone: "added" | "removed";
+}) {
+  const resolved =
+    typeof v === "string" && userNames[v] ? (
+      <span title={v}>{userNames[v]}</span>
+    ) : (
+      formatValue(v)
+    );
+  return (
+    <span
+      className={cn(
+        "break-words whitespace-pre-wrap",
+        tone === "added"
+          ? "text-emerald-700 dark:text-emerald-400"
+          : "text-red-700 line-through decoration-red-300 dark:text-red-400",
+      )}
+    >
+      {resolved}
+    </span>
+  );
 }
 
-/** Render a before/after snapshot as readable "Field: value" rows (instead of
- *  raw JSON). Falls back to JSON for arrays/nested non-object values. */
-function FieldsBlock({
+function TechRow({
   label,
-  empty,
   value,
-  userNames,
+  mono,
 }: {
   label: string;
-  empty: string;
-  value: unknown;
-  userNames: Record<string, string>;
+  value: string | null;
+  mono?: boolean;
 }) {
-  const isEmpty =
-    value === null ||
-    value === undefined ||
-    (typeof value === "object" && Object.keys(value as object).length === 0);
-  const isPlainObject =
-    typeof value === "object" && value !== null && !Array.isArray(value);
+  if (!value) return null;
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+    <div className="flex gap-3">
+      <span className="w-28 shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
         {label}
-      </p>
-      {isEmpty ? (
-        <p className="text-xs text-zinc-400">{empty}</p>
-      ) : isPlainObject ? (
-        <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-3 gap-y-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-2 text-xs">
-          {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
-            <Fragment key={k}>
-              <dt className="text-zinc-500 dark:text-zinc-400">
-                {humanizeFieldKey(k)}
-              </dt>
-              <dd className="min-w-0 break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
-                {renderFieldValue(v, userNames)}
-              </dd>
-            </Fragment>
-          ))}
-        </dl>
-      ) : (
-        <pre className="text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-2 overflow-x-auto whitespace-pre-wrap">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 break-all text-xs text-zinc-700 dark:text-zinc-300",
+          mono && "font-mono",
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

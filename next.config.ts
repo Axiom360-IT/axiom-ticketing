@@ -3,6 +3,11 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // pdfkit + exceljs ship data files (fonts/AFM, xml templates) and expect to
+  // be `require`d from node_modules at runtime. Bundling them with Turbopack
+  // breaks that file resolution, so keep them external to the server bundle —
+  // they're only ever imported by Node-runtime export route handlers.
+  serverExternalPackages: ["pdfkit", "exceljs"],
   async redirects() {
     return [
       // `/admin/sign-in` is NOT a real route — the admin login lives at

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, lte, or, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -322,6 +322,11 @@ export async function listProcurementForTicket(ticketId: string) {
 export type ProcurementListFilters = {
   status?: string;
   type?: string;
+  /** Free-text match on item name or requester email. */
+  q?: string;
+  /** Inclusive created-at bounds (YYYY-MM-DD, snapped to day in UTC). */
+  from?: string;
+  to?: string;
 };
 
 export async function listProcurementForAdmin(
@@ -339,9 +344,31 @@ export async function listProcurementForAdmin(
     throw new ForbiddenError();
   }
 
-  const where = [] as ReturnType<typeof eq>[];
+  const where = [] as SQL[];
   if (filters.status) where.push(eq(procurementRequests.status, filters.status));
   if (filters.type) where.push(eq(procurementRequests.type, filters.type));
+  const q = filters.q?.trim();
+  if (q) {
+    const term = `%${q}%`;
+    const orClause = or(
+      ilike(procurementRequests.itemName, term),
+      ilike(procurementRequests.requestedByEmail, term),
+      ilike(procurementRequests.vendor, term),
+    );
+    if (orClause) where.push(orClause);
+  }
+  if (filters.from?.trim()) {
+    const d = new Date(`${filters.from.trim()}T00:00:00.000Z`);
+    if (!Number.isNaN(d.getTime())) {
+      where.push(gte(procurementRequests.createdAt, d));
+    }
+  }
+  if (filters.to?.trim()) {
+    const d = new Date(`${filters.to.trim()}T23:59:59.999Z`);
+    if (!Number.isNaN(d.getTime())) {
+      where.push(lte(procurementRequests.createdAt, d));
+    }
+  }
 
   // Permission scope: requesters (everyone but Coordinator/Super Admin)
   // see only their own requests.
@@ -354,26 +381,38 @@ export async function listProcurementForAdmin(
   const limit = pageSize + 1;
   const offset = (page - 1) * pageSize;
 
-  const rawRows = await db
-    .select({
-      id: procurementRequests.id,
-      ticketId: procurementRequests.ticketId,
-      type: procurementRequests.type,
-      itemName: procurementRequests.itemName,
-      quantity: procurementRequests.quantity,
-      estimatedCost: procurementRequests.estimatedCost,
-      status: procurementRequests.status,
-      requestedByEmail: procurementRequests.requestedByEmail,
-      createdAt: procurementRequests.createdAt,
-    })
-    .from(procurementRequests)
-    .where(where.length > 0 ? and(...where) : undefined)
-    .orderBy(desc(procurementRequests.createdAt))
-    .limit(limit)
-    .offset(offset);
+  const whereClause = where.length > 0 ? and(...where) : undefined;
+
+  const [rawRows, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: procurementRequests.id,
+        ticketId: procurementRequests.ticketId,
+        type: procurementRequests.type,
+        itemName: procurementRequests.itemName,
+        quantity: procurementRequests.quantity,
+        estimatedCost: procurementRequests.estimatedCost,
+        status: procurementRequests.status,
+        requestedByEmail: procurementRequests.requestedByEmail,
+        createdAt: procurementRequests.createdAt,
+      })
+      .from(procurementRequests)
+      .where(whereClause)
+      .orderBy(desc(procurementRequests.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ value: count() })
+      .from(procurementRequests)
+      .where(whereClause),
+  ]);
 
   const hasMore = rawRows.length > pageSize;
-  return { items: rawRows.slice(0, pageSize), hasMore };
+  return {
+    items: rawRows.slice(0, pageSize),
+    hasMore,
+    total: totalRow?.value ?? 0,
+  };
 }
 
 export async function getProcurementDetail(id: string) {

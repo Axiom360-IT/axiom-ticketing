@@ -92,6 +92,10 @@ import {
   type TicketClosedProps,
 } from "./templates/ticket-closed";
 import {
+  CustomerFollowupEmail,
+  type CustomerFollowupProps,
+} from "./templates/customer-followup";
+import {
   TicketCreatedEmail,
   type TicketCreatedProps,
 } from "./templates/ticket-created";
@@ -141,6 +145,10 @@ export type EmailTemplate =
   | { template: "ticket_reply"; data: Omit<TicketReplyProps, "locale"> }
   | { template: "ticket_resolved"; data: Omit<TicketResolvedProps, "locale"> }
   | { template: "ticket_closed"; data: Omit<TicketClosedProps, "locale"> }
+  | {
+      template: "customer_followup";
+      data: Omit<CustomerFollowupProps, "locale">;
+    }
   | { template: "ticket_reopened"; data: Omit<TicketReopenedProps, "locale"> }
   | { template: "new_assignment"; data: Omit<NewAssignmentProps, "locale"> }
   | {
@@ -271,6 +279,10 @@ async function renderTemplate(
       return await render(<TicketResolvedEmail {...t.data} locale={locale} />);
     case "ticket_closed":
       return await render(<TicketClosedEmail {...t.data} locale={locale} />);
+    case "customer_followup":
+      return await render(
+        <CustomerFollowupEmail {...t.data} locale={locale} />,
+      );
     case "ticket_reopened":
       return await render(<TicketReopenedEmail {...t.data} locale={locale} />);
     case "new_assignment":
@@ -368,6 +380,7 @@ const TEMPLATE_NAMESPACE = {
   ticket_reply: "emails.ticketReply",
   ticket_resolved: "emails.ticketResolved",
   ticket_closed: "emails.ticketClosed",
+  customer_followup: "emails.customerFollowup",
   ticket_reopened: "emails.ticketReopened",
   new_assignment: "emails.newAssignment",
   escalation_alert: "emails.escalationAlert",

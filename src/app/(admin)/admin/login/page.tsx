@@ -41,6 +41,7 @@ export default async function LoginPage() {
       branding={branding}
       panelTitle={tPanel("title")}
       panelSubtitle={tPanel("subtitle")}
+      panelFootnote={tPanel("footnote")}
       features={features}
       formTitle={t("title")}
       formSubtitle={t("subtitle")}

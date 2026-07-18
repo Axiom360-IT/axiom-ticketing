@@ -9,6 +9,8 @@ import {
   type Technician,
 } from "@/components/tickets/assign-control";
 import { BillableControl } from "@/components/tickets/billable-control";
+import { InvoiceNumberControl } from "@/components/tickets/invoice-number-control";
+import { BillingBadge } from "@/components/tickets/badges";
 import { MergedTechnicians } from "@/components/tickets/merged-technicians";
 import { TicketOrgControl } from "@/components/tickets/ticket-org-control";
 import {
@@ -77,6 +79,7 @@ export default async function TicketDetailPage({
   const t = await getTranslations("tickets.detail");
   const tWorkLog = await getTranslations("tickets.workLog");
   const tBillable = await getTranslations("tickets.billable");
+  const tInvoice = await getTranslations("tickets.invoice");
   const tOrgControl = await getTranslations("tickets.orgControl");
   const tQueue = await getTranslations("tickets.queue");
   const tCsat = await getTranslations("tickets.csat");
@@ -663,7 +666,7 @@ export default async function TicketDetailPage({
                 <InfoHint label={tBillable("help")} />
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm">
+            <CardContent className="text-sm space-y-3">
               {canUpdate ? (
                 <BillableControl
                   ticketId={ticket.id}
@@ -678,6 +681,30 @@ export default async function TicketDetailPage({
                   )}
                 </div>
               )}
+
+              {/* Invoice number + billed status (CR — Meeting-3). Keyed in once
+                  the ticket has been billed; reflected on the queue + work log. */}
+              <div className="space-y-1.5 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                    {tInvoice("label")}
+                  </span>
+                  <BillingBadge
+                    billable={ticket.billable}
+                    invoiceNumber={ticket.invoiceNumber}
+                  />
+                </div>
+                {canUpdate ? (
+                  <InvoiceNumberControl
+                    ticketId={ticket.id}
+                    current={ticket.invoiceNumber}
+                  />
+                ) : ticket.invoiceNumber ? (
+                  <p className="font-mono">{ticket.invoiceNumber}</p>
+                ) : (
+                  <p className="text-zinc-400">{tInvoice("none")}</p>
+                )}
+              </div>
             </CardContent>
           </Card>
 

@@ -8,7 +8,6 @@ import {
   isNotNull,
   lt,
   lte,
-  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -34,9 +33,8 @@ export type AuditFilters = {
 };
 
 export type AuditCursor = {
-  /** ISO timestamp of the last seen row. */
-  timestamp: string;
-  id: string;
+  /** Gapless insertion sequence of the last seen row. */
+  seq: number;
 };
 
 export type AuditEntryRow = {
@@ -50,8 +48,12 @@ export type AuditEntryRow = {
   impersonatorEmail: string | null;
   impersonatorName: string | null;
   action: string;
+  category: string | null;
+  severity: string;
+  outcome: string;
   targetType: string | null;
   targetId: string | null;
+  targetLabel: string | null;
   ipAddress: string | null;
 };
 
@@ -60,6 +62,7 @@ export type AuditEntryDetail = AuditEntryRow & {
   afterValue: unknown;
   userAgent: string | null;
   requestId: string | null;
+  failureReason: string | null;
   /** Resolved names for any user-id UUIDs that appear in before/after, so the
    *  detail view can show "Jane Doe" instead of a raw id (e.g. `assignedToId`). */
   userNames: Record<string, string>;
@@ -96,8 +99,12 @@ const filterSchema = z.object({
 });
 
 const cursorSchema = z.object({
-  timestamp: z.string().datetime(),
-  id: z.string().uuid(),
+  // `seq` is a bigint; the pg/Neon driver hands bigints back as strings, so a
+  // cursor that round-trips through the CSV exporter arrives with a string seq.
+  // Coerce it so validation passes and the keyset advances — otherwise the
+  // cursor is rejected, resets to page 1, and the export streams the same page
+  // forever (a non-terminating response).
+  seq: z.coerce.number().int().nonnegative(),
 });
 
 function buildWhere(
@@ -126,14 +133,8 @@ function buildWhere(
   }
 
   if (cursor) {
-    // Keyset: rows STRICTLY older than the cursor (tie-break by id).
-    const cursorTime = new Date(cursor.timestamp);
-    const tieBreak = and(
-      eq(auditLog.timestamp, cursorTime),
-      lt(auditLog.id, cursor.id),
-    );
-    const beyond = or(lt(auditLog.timestamp, cursorTime), tieBreak);
-    if (beyond) clauses.push(beyond);
+    // Keyset on the gapless sequence — rows strictly older than the cursor.
+    clauses.push(lt(auditLog.seq, cursor.seq));
   }
 
   if (clauses.length === 0) return undefined;
@@ -173,18 +174,21 @@ export async function listAuditEntries(opts: {
   const effectiveFilters: AuditFilters = isStrictTechnician(caller)
     ? { ...filters.data, actorId: caller.id }
     : filters.data;
-  const cursor = opts.cursor
-    ? cursorSchema.safeParse(opts.cursor).success
-      ? opts.cursor
-      : null
-    : null;
+  // Use the PARSED cursor (seq coerced to a real number), never the raw input,
+  // so the keyset comparison in buildWhere binds a bigint-compatible number.
+  const cursorParse = opts.cursor ? cursorSchema.safeParse(opts.cursor) : null;
+  const cursor = cursorParse?.success ? cursorParse.data : null;
 
   const pageSize = Math.min(Math.max(opts.pageSize ?? PAGE_SIZE, 1), 200);
   const where = buildWhere(effectiveFilters, cursor);
 
   // Self-join twice via SQL aliasing for actor + impersonator emails/names.
+  // Snapshot columns win; the join backfills legacy rows written before the
+  // snapshot existed. NOTE: audit_log is referenced UNALIASED on purpose —
+  // `buildWhere` produces refs qualified with the real table name.
   const result = await db.execute<{
     id: string;
+    seq: number;
     timestamp: Date;
     actor_id: string | null;
     actor_email: string | null;
@@ -194,26 +198,28 @@ export async function listAuditEntries(opts: {
     impersonator_email: string | null;
     impersonator_name: string | null;
     action: string;
+    category: string | null;
+    severity: string;
+    outcome: string;
     target_type: string | null;
     target_id: string | null;
+    target_label: string | null;
     ip_address: string | null;
-  // NOTE: audit_log is referenced UNALIASED here on purpose. `buildWhere`
-  // produces drizzle column refs qualified with the real table name
-  // ("audit_log"."actor_id" …); aliasing the table as `a` would hide that
-  // name and make every filtered query (e.g. a strict technician's forced
-  // actor_id scope) throw "invalid reference to FROM-clause entry".
   }>(sql`
-    SELECT audit_log.id, audit_log.timestamp, audit_log.actor_id,
+    SELECT audit_log.id, audit_log.seq, audit_log.timestamp, audit_log.actor_id,
            audit_log.actor_role_snapshot, audit_log.impersonator_id,
-           audit_log.action, audit_log.target_type, audit_log.target_id,
-           audit_log.ip_address,
-           ua.email AS actor_email, ua.name AS actor_name,
-           ui.email AS impersonator_email, ui.name AS impersonator_name
+           audit_log.action, audit_log.category, audit_log.severity,
+           audit_log.outcome, audit_log.target_type, audit_log.target_id,
+           audit_log.target_label, audit_log.ip_address,
+           COALESCE(audit_log.actor_name, ua.name) AS actor_name,
+           COALESCE(audit_log.actor_email, ua.email) AS actor_email,
+           COALESCE(audit_log.impersonator_name, ui.name) AS impersonator_name,
+           COALESCE(audit_log.impersonator_email, ui.email) AS impersonator_email
     FROM audit_log
     LEFT JOIN users ua ON ua.id = audit_log.actor_id
     LEFT JOIN users ui ON ui.id = audit_log.impersonator_id
     ${where ? sql`WHERE ${where}` : sql``}
-    ORDER BY audit_log.timestamp DESC, audit_log.id DESC
+    ORDER BY audit_log.seq DESC
     LIMIT ${pageSize + 1}
   `);
   const rows = result.rows;
@@ -229,20 +235,122 @@ export async function listAuditEntries(opts: {
     impersonatorEmail: r.impersonator_email,
     impersonatorName: r.impersonator_name,
     action: r.action,
+    category: r.category,
+    severity: r.severity,
+    outcome: r.outcome,
     targetType: r.target_type,
     targetId: r.target_id,
+    targetLabel: r.target_label,
     ipAddress: r.ip_address,
   }));
 
+  // `seq` (bigint) arrives from the driver as a string — coerce to a number so
+  // the returned cursor's declared `number` type is honest and the next keyset
+  // page binds correctly.
   const nextCursor =
-    rows.length > pageSize
-      ? {
-          timestamp: list[list.length - 1].timestamp.toISOString(),
-          id: list[list.length - 1].id,
-        }
-      : null;
+    rows.length > pageSize ? { seq: Number(rows[pageSize - 1].seq) } : null;
 
   return { rows: list, nextCursor };
+}
+
+export type AuditListRow = AuditEntryRow & {
+  beforeValue: unknown;
+  afterValue: unknown;
+};
+
+/**
+ * Offset-paginated page of audit entries + the total row count — backs the
+ * numbered pager on the audit page (mirrors the tickets queue). Includes the
+ * before/after snapshots so the list can show a compact "what changed" summary.
+ * Applies the same audit.view gate and strict-technician own-entries scope.
+ */
+export async function listAuditEntriesOffset(opts: {
+  filters?: AuditFilters;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: AuditListRow[]; total: number }> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "audit.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  const parsed = filterSchema.safeParse(opts.filters ?? {});
+  if (!parsed.success) return { rows: [], total: 0 };
+  const effectiveFilters: AuditFilters = isStrictTechnician(caller)
+    ? { ...parsed.data, actorId: caller.id }
+    : parsed.data;
+  const where = buildWhere(effectiveFilters, null);
+  const limit = Math.min(Math.max(opts.limit, 1), 201);
+  const offset = Math.max(0, opts.offset);
+
+  const [pageRes, countRes] = await Promise.all([
+    db.execute<{
+      id: string;
+      timestamp: Date;
+      actor_id: string | null;
+      actor_email: string | null;
+      actor_name: string | null;
+      actor_role_snapshot: string | null;
+      impersonator_id: string | null;
+      impersonator_email: string | null;
+      impersonator_name: string | null;
+      action: string;
+      category: string | null;
+      severity: string;
+      outcome: string;
+      target_type: string | null;
+      target_id: string | null;
+      target_label: string | null;
+      ip_address: string | null;
+      before_value: unknown;
+      after_value: unknown;
+    }>(sql`
+      SELECT audit_log.id, audit_log.timestamp, audit_log.actor_id,
+             audit_log.actor_role_snapshot, audit_log.impersonator_id,
+             audit_log.action, audit_log.category, audit_log.severity,
+             audit_log.outcome, audit_log.target_type, audit_log.target_id,
+             audit_log.target_label, audit_log.ip_address,
+             audit_log.before_value, audit_log.after_value,
+             COALESCE(audit_log.actor_name, ua.name) AS actor_name,
+             COALESCE(audit_log.actor_email, ua.email) AS actor_email,
+             COALESCE(audit_log.impersonator_name, ui.name) AS impersonator_name,
+             COALESCE(audit_log.impersonator_email, ui.email) AS impersonator_email
+      FROM audit_log
+      LEFT JOIN users ua ON ua.id = audit_log.actor_id
+      LEFT JOIN users ui ON ui.id = audit_log.impersonator_id
+      ${where ? sql`WHERE ${where}` : sql``}
+      ORDER BY audit_log.seq DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `),
+    db.execute<{ count: number }>(sql`
+      SELECT count(*)::int AS count FROM audit_log
+      ${where ? sql`WHERE ${where}` : sql``}
+    `),
+  ]);
+
+  const rows: AuditListRow[] = pageRes.rows.map((r) => ({
+    id: r.id,
+    timestamp: new Date(r.timestamp),
+    actorId: r.actor_id,
+    actorEmail: r.actor_email,
+    actorName: r.actor_name,
+    actorRoleSnapshot: r.actor_role_snapshot,
+    impersonatorId: r.impersonator_id,
+    impersonatorEmail: r.impersonator_email,
+    impersonatorName: r.impersonator_name,
+    action: r.action,
+    category: r.category,
+    severity: r.severity,
+    outcome: r.outcome,
+    targetType: r.target_type,
+    targetId: r.target_id,
+    targetLabel: r.target_label,
+    ipAddress: r.ip_address,
+    beforeValue: r.before_value,
+    afterValue: r.after_value,
+  }));
+  return { rows, total: countRes.rows[0]?.count ?? 0 };
 }
 
 /**
@@ -300,8 +408,13 @@ export async function getAuditEntry(
     impersonator_email: string | null;
     impersonator_name: string | null;
     action: string;
+    category: string | null;
+    severity: string;
+    outcome: string;
+    failure_reason: string | null;
     target_type: string | null;
     target_id: string | null;
+    target_label: string | null;
     ip_address: string | null;
     user_agent: string | null;
     request_id: string | null;
@@ -309,11 +422,14 @@ export async function getAuditEntry(
     after_value: unknown;
   }>(sql`
     SELECT a.id, a.timestamp, a.actor_id, a.actor_role_snapshot,
-           a.impersonator_id, a.action, a.target_type, a.target_id,
+           a.impersonator_id, a.action, a.category, a.severity, a.outcome,
+           a.failure_reason, a.target_type, a.target_id, a.target_label,
            a.ip_address, a.user_agent, a.request_id,
            a.before_value, a.after_value,
-           ua.email AS actor_email, ua.name AS actor_name,
-           ui.email AS impersonator_email, ui.name AS impersonator_name
+           COALESCE(a.actor_name, ua.name) AS actor_name,
+           COALESCE(a.actor_email, ua.email) AS actor_email,
+           COALESCE(a.impersonator_name, ui.name) AS impersonator_name,
+           COALESCE(a.impersonator_email, ui.email) AS impersonator_email
     FROM audit_log a
     LEFT JOIN users ua ON ua.id = a.actor_id
     LEFT JOIN users ui ON ui.id = a.impersonator_id
@@ -354,8 +470,13 @@ export async function getAuditEntry(
     impersonatorEmail: r.impersonator_email,
     impersonatorName: r.impersonator_name,
     action: r.action,
+    category: r.category,
+    severity: r.severity,
+    outcome: r.outcome,
+    failureReason: r.failure_reason,
     targetType: r.target_type,
     targetId: r.target_id,
+    targetLabel: r.target_label,
     ipAddress: r.ip_address,
     beforeValue: r.before_value,
     afterValue: r.after_value,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { billingStatus } from "@/lib/tickets/billing-status";
 import { cn } from "@/lib/utils";
 
 type StatusBadgeProps = {
@@ -99,6 +100,59 @@ export function EscalatedBadge({ className }: { className?: string }) {
       )}
     >
       {t("escalatedBadge")}
+    </span>
+  );
+}
+
+const BILLING_STYLES: Record<string, string> = {
+  billed:
+    "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  needs_invoice:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
+};
+
+/**
+ * Billing status of a ticket — 🟢 Billed (with the invoice #), 🟠 Needs invoice
+ * (billable-by-invoice but blank), or a muted dash for N/A (monthly-plan /
+ * non-billable / uncategorised). Derived from (billable, invoiceNumber).
+ */
+export function BillingBadge({
+  billable,
+  invoiceNumber,
+  className,
+}: {
+  billable: string | null;
+  invoiceNumber: string | null;
+  className?: string;
+}) {
+  const t = useTranslations("tickets.billingStatus");
+  const status = billingStatus(billable, invoiceNumber);
+
+  if (status === "na") {
+    return (
+      <span
+        className={cn("text-xs text-zinc-400 dark:text-zinc-600", className)}
+        aria-label={t("na")}
+      >
+        —
+      </span>
+    );
+  }
+
+  const label =
+    status === "billed"
+      ? t("billed", { invoice: invoiceNumber ?? "" })
+      : t("needsInvoice");
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-[12rem] items-center gap-1 truncate rounded-full border px-2 py-0.5 text-xs font-medium",
+        BILLING_STYLES[status],
+        className,
+      )}
+      title={label}
+    >
+      {label}
     </span>
   );
 }

@@ -39,15 +39,12 @@ export function PageSizeSelect({ currentSize, label }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-        {label}
-      </span>
       <Select
         value={String(currentSize)}
         onValueChange={(v) => v && pushSize(v)}
         disabled={pending}
       >
-        <SelectTrigger className="h-8 w-[70px]" aria-label={label}>
+        <SelectTrigger className="h-9 w-[68px]" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -58,6 +55,9 @@ export function PageSizeSelect({ currentSize, label }: Props) {
           ))}
         </SelectContent>
       </Select>
+      <span className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+        {label}
+      </span>
     </div>
   );
 }

@@ -7,6 +7,8 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lte,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { db } from "../db/client";
@@ -29,6 +31,29 @@ function dateMonthsAgo(months: number): Date {
   return d;
 }
 
+/** An inclusive created-at window. When supplied, every metric is scoped to
+ * rows created within it, so the report reflects one period instead of all
+ * time. `from`/`to` are UTC instants (the callers snap dates to day bounds). */
+export type ReportRange = { from: Date; to: Date };
+
+/** Build a range from `from`/`to` query values (YYYY-MM-DD, snapped to day
+ * bounds in UTC). Either side may be omitted (open-ended). Returns undefined
+ * when neither is set or a value is unparseable — i.e. "all time". */
+export function parseReportRange(
+  from?: string,
+  to?: string,
+): ReportRange | undefined {
+  const f = from?.trim();
+  const t = to?.trim();
+  if (!f && !t) return undefined;
+  const fromDate = f ? new Date(`${f}T00:00:00.000Z`) : new Date(0);
+  const toDate = t ? new Date(`${t}T23:59:59.999Z`) : new Date();
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    return undefined;
+  }
+  return { from: fromDate, to: toDate };
+}
+
 // ── Tickets ─────────────────────────────────────────────────────────
 
 export type TicketHealth = {
@@ -47,32 +72,46 @@ export type TicketHealth = {
   }[];
 };
 
-export async function loadTicketHealth(): Promise<TicketHealth> {
+export async function loadTicketHealth(
+  range?: ReportRange,
+): Promise<TicketHealth> {
+  const rangeCond = range
+    ? and(gte(tickets.createdAt, range.from), lte(tickets.createdAt, range.to))
+    : undefined;
+  // Every query's WHERE = NOT_DELETED + the optional date range + any extras,
+  // so a new metric can't accidentally ignore the range.
+  const w = (...extra: (SQL | undefined)[]): SQL => {
+    const parts = [NOT_DELETED, rangeCond, ...extra].filter(
+      (p): p is SQL => Boolean(p),
+    );
+    return parts.length === 1 ? parts[0] : and(...parts)!;
+  };
+
   const weekAgo = dateNDaysAgo(7);
   const monthAgo = dateNDaysAgo(30);
 
   const [weekRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(and(NOT_DELETED, gte(tickets.createdAt, weekAgo)));
+    .where(w(gte(tickets.createdAt, weekAgo)));
   const [monthRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(and(NOT_DELETED, gte(tickets.createdAt, monthAgo)));
+    .where(w(gte(tickets.createdAt, monthAgo)));
   const [allRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(NOT_DELETED);
+    .where(w());
 
   const byStatusRows = await db
     .select({ status: tickets.status, value: count() })
     .from(tickets)
-    .where(NOT_DELETED)
+    .where(w())
     .groupBy(tickets.status);
   const byStreamRows = await db
     .select({ stream: tickets.stream, value: count() })
     .from(tickets)
-    .where(NOT_DELETED)
+    .where(w())
     .groupBy(tickets.stream);
 
   // Average resolution time over RESOLVED + CLOSED tickets that have
@@ -82,37 +121,31 @@ export async function loadTicketHealth(): Promise<TicketHealth> {
       avgMinutes: sql<number | null>`AVG(EXTRACT(EPOCH FROM (${tickets.resolvedAt} - ${tickets.createdAt})) / 60.0)`,
     })
     .from(tickets)
-    .where(and(NOT_DELETED, isNotNull(tickets.resolvedAt)));
+    .where(w(isNotNull(tickets.resolvedAt)));
 
   const [csatYesRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(and(NOT_DELETED, eq(tickets.csatResponse, "satisfied")));
+    .where(w(eq(tickets.csatResponse, "satisfied")));
   const [csatNoRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(and(NOT_DELETED, eq(tickets.csatResponse, "unsatisfied")));
+    .where(w(eq(tickets.csatResponse, "unsatisfied")));
 
   const [escalatedRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(and(NOT_DELETED, eq(tickets.isEscalated, true)));
+    .where(w(eq(tickets.isEscalated, true)));
 
   const [resolvedTotalRow] = await db
     .select({ value: count() })
     .from(tickets)
-    .where(
-      and(
-        NOT_DELETED,
-        inArray(tickets.status, ["resolved", "closed"]),
-      ),
-    );
+    .where(w(inArray(tickets.status, ["resolved", "closed"])));
   const [breachedRow] = await db
     .select({ value: count() })
     .from(tickets)
     .where(
-      and(
-        NOT_DELETED,
+      w(
         inArray(tickets.status, ["resolved", "closed"]),
         isNotNull(tickets.slaBreachedAt),
       ),
@@ -127,7 +160,7 @@ export async function loadTicketHealth(): Promise<TicketHealth> {
     })
     .from(tickets)
     .innerJoin(users, eq(users.id, tickets.assignedToId))
-    .where(and(NOT_DELETED, isNotNull(tickets.assignedToId)))
+    .where(w(isNotNull(tickets.assignedToId)))
     .groupBy(tickets.assignedToId, users.name)
     .orderBy(desc(count()))
     .limit(20);
@@ -192,18 +225,37 @@ const COMPLETED_STATUSES = ["approved", "purchased", "delivered"] as const;
 const COST_NUMERIC = sql<string | null>`${procurementRequests.estimatedCost}`;
 const COST_AS_FLOAT = sql<number>`COALESCE(${procurementRequests.estimatedCost}::numeric, 0)`;
 
-export async function loadProcurementSpend(): Promise<ProcurementSpend> {
+export async function loadProcurementSpend(
+  range?: ReportRange,
+): Promise<ProcurementSpend> {
+  const rangeCond = range
+    ? and(
+        gte(procurementRequests.createdAt, range.from),
+        lte(procurementRequests.createdAt, range.to),
+      )
+    : undefined;
+  // Combine the optional date range with any extra conditions. Returns
+  // undefined when there's nothing to filter (so `.where(undefined)` is a no-op).
+  const w = (...extra: (SQL | undefined)[]): SQL | undefined => {
+    const parts = [rangeCond, ...extra].filter((p): p is SQL => Boolean(p));
+    return parts.length === 0
+      ? undefined
+      : parts.length === 1
+        ? parts[0]
+        : and(...parts)!;
+  };
+
   const monthAgo = dateMonthsAgo(1);
   const quarterAgo = dateMonthsAgo(3);
   const yearAgo = dateMonthsAgo(12);
 
   async function totalSince(after: Date | null): Promise<number> {
-    const where = after
-      ? and(
-          inArray(procurementRequests.status, [...COMPLETED_STATUSES]),
-          gte(procurementRequests.createdAt, after),
-        )
-      : inArray(procurementRequests.status, [...COMPLETED_STATUSES]);
+    // With a date range active, the window (`after`) is ignored — every
+    // total reflects the selected period instead of a rolling window.
+    const where = w(
+      inArray(procurementRequests.status, [...COMPLETED_STATUSES]),
+      range ? undefined : after ? gte(procurementRequests.createdAt, after) : undefined,
+    );
     const [row] = await db
       .select({
         total: sql<string>`COALESCE(SUM(${COST_AS_FLOAT}), 0)`,
@@ -225,7 +277,7 @@ export async function loadProcurementSpend(): Promise<ProcurementSpend> {
       total: sql<string>`COALESCE(SUM(${COST_AS_FLOAT}), 0)`,
     })
     .from(procurementRequests)
-    .where(inArray(procurementRequests.status, [...COMPLETED_STATUSES]))
+    .where(w(inArray(procurementRequests.status, [...COMPLETED_STATUSES])))
     .groupBy(procurementRequests.type);
 
   const byStatusRows = await db
@@ -235,6 +287,7 @@ export async function loadProcurementSpend(): Promise<ProcurementSpend> {
       value: count(),
     })
     .from(procurementRequests)
+    .where(w())
     .groupBy(procurementRequests.status);
 
   const topRows = await db
@@ -244,7 +297,7 @@ export async function loadProcurementSpend(): Promise<ProcurementSpend> {
     })
     .from(procurementRequests)
     .where(
-      and(
+      w(
         inArray(procurementRequests.status, [...COMPLETED_STATUSES]),
         isNotNull(COST_NUMERIC),
       ),
@@ -260,10 +313,12 @@ export async function loadProcurementSpend(): Promise<ProcurementSpend> {
     })
     .from(procurementRequests)
     .where(
-      inArray(procurementRequests.status, [
-        "pending_coordinator_approval",
-        "pending_admin_approval",
-      ]),
+      w(
+        inArray(procurementRequests.status, [
+          "pending_coordinator_approval",
+          "pending_admin_approval",
+        ]),
+      ),
     );
 
   return {
@@ -291,4 +346,3 @@ export async function loadProcurementSpend(): Promise<ProcurementSpend> {
     },
   };
 }
-

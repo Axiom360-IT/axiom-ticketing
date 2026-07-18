@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { inArray } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportMenu } from "@/components/shared/export-menu";
+import { UrlDateRange } from "@/components/ui/url-date-range";
 import {
   Table,
   TableBody,
@@ -19,8 +21,10 @@ import {
   Pagination,
   parsePage,
   parsePageSize,
+  reservedTableHeight,
 } from "@/components/ui/pagination";
 import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { ProcurementRowActions } from "@/components/procurement/procurement-row-actions";
 import { ProcurementStatusBadge } from "@/components/procurement/status-badge";
 import { listProcurementForAdmin } from "@/app/actions/procurement";
@@ -39,8 +43,11 @@ const STATUSES = [
 const TYPES = ["hardware", "software", "other"] as const;
 
 type SearchParams = Promise<{
+  q?: string;
   status?: string;
   type?: string;
+  from?: string;
+  to?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -58,12 +65,22 @@ export default async function ProcurementListPage({
     redirect("/admin");
   }
 
+  const canExport = await can(
+    user,
+    "procurement.export",
+    { type: "global" },
+    productionContext,
+  );
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
-  const { items: rows, hasMore } = await listProcurementForAdmin({
+  const { items: rows, total: totalItems } = await listProcurementForAdmin({
+    q: sp.q,
     status: sp.status,
     type: sp.type,
+    from: sp.from,
+    to: sp.to,
     page,
     pageSize,
   });
@@ -90,16 +107,34 @@ export default async function ProcurementListPage({
   const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
 
+  const exportParams: Record<string, string> = {};
+  for (const k of ["q", "status", "type", "from", "to"] as const) {
+    const v = sp[k];
+    if (typeof v === "string" && v.length > 0) exportParams[k] = v;
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {t("subtitle")} · {t("count", { count: rows.length })}
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold sm:text-2xl">{t("title")}</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {t("subtitle")} · {t("count", { count: totalItems })}
+          </p>
+        </div>
+        {canExport ? (
+          <ExportMenu baseHref="/api/procurement/export" params={exportParams} />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[14rem]">
+          <UrlSearchInput
+            initialValue={sp.q ?? ""}
+            placeholder={t("search")}
+            className="max-w-md"
+          />
+        </div>
         <UrlFilterSelect
           name="status"
           label={t("filterStatus")}
@@ -116,10 +151,19 @@ export default async function ProcurementListPage({
           options={TYPES.map((v) => ({ value: v, label: tType(v) }))}
           triggerClassName="w-40"
         />
+        <UrlDateRange
+          fromValue={sp.from ?? ""}
+          toValue={sp.to ?? ""}
+          fromLabel={t("filterFrom")}
+          toLabel={t("filterTo")}
+        />
       </div>
 
       <Card className="p-0">
-        <CardContent className="p-0">
+        <CardContent
+          className="p-0"
+          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
+        >
           {rows.length === 0 ? (
             <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
               {t("empty")}
@@ -205,18 +249,12 @@ export default async function ProcurementListPage({
         pathname="/admin/procurement"
         page={page}
         pageSize={pageSize}
-        hasMore={hasMore}
+        totalItems={totalItems}
         searchParams={new URLSearchParams(
           Object.entries(sp).filter(
             ([, v]) => typeof v === "string" && v.length > 0,
           ) as [string, string][],
         )}
-        labels={{
-          previous: tCommon("pagination.previous"),
-          next: tCommon("pagination.next"),
-          page: tCommon("pagination.page", { page }),
-          rowsPerPage: tCommon("pagination.rowsPerPage"),
-        }}
       />
     </div>
   );

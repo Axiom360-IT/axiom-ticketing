@@ -21,6 +21,9 @@ type NavItem = {
   href: string;
   labelKey: "home" | "myTickets" | "profile";
   icon: typeof Ticket;
+  /** Vibrant per-item icon color (Tailwind text-class literal). Reads bright
+   *  on the dark slate sidebar and stays legible when the item is active. */
+  color: string;
   /** When true, treat the route as exact (no descendant match). The
    *  `/portal` Home item needs this — otherwise it stays active on
    *  `/portal/tickets` because that pathname `startsWith("/portal")`. */
@@ -28,9 +31,9 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/portal", labelKey: "home", icon: Home, exact: true },
-  { href: "/portal/tickets", labelKey: "myTickets", icon: Ticket },
-  { href: "/portal/profile", labelKey: "profile", icon: User },
+  { href: "/portal", labelKey: "home", icon: Home, color: "text-sky-400", exact: true },
+  { href: "/portal/tickets", labelKey: "myTickets", icon: Ticket, color: "text-violet-400" },
+  { href: "/portal/profile", labelKey: "profile", icon: User, color: "text-emerald-400" },
 ];
 
 export function CustomerSidebar({ branding }: { branding: BrandingConfig }) {
@@ -103,7 +106,10 @@ export function CustomerSidebar({ branding }: { branding: BrandingConfig }) {
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <Icon
+                    className={cn("w-4 h-4 shrink-0", item.color)}
+                    aria-hidden="true"
+                  />
                   <span>{t(item.labelKey)}</span>
                 </Link>
               </li>
