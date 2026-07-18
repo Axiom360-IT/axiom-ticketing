@@ -1,6 +1,13 @@
 import type { NextRequest } from "next/server";
 import { iterAuditEntries, type AuditFilters } from "@/app/actions/audit";
 import { audit } from "@/lib/audit";
+import {
+  auditActionCategory,
+  auditActionLabel,
+  auditOutcomeLabel,
+  AUDIT_CATEGORY_LABEL,
+  friendlyAuditTarget,
+} from "@/lib/audit/action-label";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
@@ -18,21 +25,24 @@ export const runtime = "nodejs";
 // XLSX/PDF materialize the whole document; cap the row count. CSV is unbounded.
 const DOC_CAP = 10000;
 
+// Friendly, reader-facing columns first; raw forensic identifiers after, so a
+// non-technical reader sees "Resolved the ticket / Tickets / Success" while an
+// investigator still has the exact codes and IDs.
 const CSV_HEADER = [
-  "timestamp",
-  "actor_id",
-  "actor_name",
-  "actor_email",
-  "actor_role_snapshot",
-  "impersonator_id",
-  "impersonator_email",
-  "action",
-  "category",
-  "outcome",
-  "target_type",
-  "target_id",
-  "target_label",
-  "ip_address",
+  "When (UTC)",
+  "Event",
+  "Category",
+  "Status",
+  "Target",
+  "Actor",
+  "Actor email",
+  "Role",
+  "IP address",
+  "Action code",
+  "Actor ID",
+  "Impersonator email",
+  "Target type",
+  "Target ID",
 ].join(",");
 
 function csvEscape(v: unknown): string {
@@ -115,20 +125,20 @@ export async function GET(request: NextRequest): Promise<Response> {
           for await (const row of iterAuditEntries(filters)) {
             const line =
               [
-                row.timestamp,
-                row.actorId,
-                row.actorName,
+                fmtTime(row.timestamp),
+                auditActionLabel(row.action),
+                AUDIT_CATEGORY_LABEL[auditActionCategory(row.action)],
+                auditOutcomeLabel(row.outcome),
+                friendlyAuditTarget(row),
+                row.actorName ?? "System",
                 row.actorEmail,
                 row.actorRoleSnapshot,
-                row.impersonatorId,
-                row.impersonatorEmail,
+                row.ipAddress,
                 row.action,
-                row.category,
-                row.outcome,
+                row.actorId,
+                row.impersonatorEmail,
                 row.targetType,
                 row.targetId,
-                row.targetLabel,
-                row.ipAddress,
               ]
                 .map(csvEscape)
                 .join(",") + "\n";
@@ -163,18 +173,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     const actor =
       (row.actorName ?? "System") +
       (row.impersonatorEmail ? ` (via ${row.impersonatorEmail})` : "");
-    const target =
-      row.targetLabel ??
-      (row.targetType && row.targetId
-        ? `${row.targetType}:${row.targetId}`
-        : (row.targetType ?? "—"));
     tableRows.push([
       fmtTime(row.timestamp),
+      auditActionLabel(row.action),
+      AUDIT_CATEGORY_LABEL[auditActionCategory(row.action)],
+      auditOutcomeLabel(row.outcome),
+      friendlyAuditTarget(row),
       actor,
-      row.action,
-      row.category ?? "—",
-      row.outcome ?? "—",
-      target,
       row.ipAddress ?? "—",
     ]);
   }
@@ -204,11 +209,11 @@ export async function GET(request: NextRequest): Promise<Response> {
           : undefined,
         columns: [
           "Time (UTC)",
-          "Actor",
-          "Action",
+          "Event",
           "Category",
-          "Outcome",
+          "Status",
           "Target",
+          "Actor",
           "IP",
         ],
         rows: tableRows,

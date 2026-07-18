@@ -237,3 +237,32 @@ export function humanizeFieldKey(key: string): string {
     .trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+// ── Outcome + target humanizers (shared by the audit UI and the export) ──────
+
+const OUTCOME_LABELS: Record<string, string> = {
+  success: "Success",
+  failure: "Failed",
+  denied: "Denied",
+  error: "Error",
+};
+
+/** "denied" → "Denied". Null/empty is treated as a success (the default). */
+export function auditOutcomeLabel(outcome: string | null | undefined): string {
+  if (!outcome) return "Success";
+  return OUTCOME_LABELS[outcome] ?? prettifyCode(outcome);
+}
+
+/** A readable "what was affected" string — e.g. "Ticket AX-20260717-001",
+ *  "Organization", or "Audit log". Prefers the stored human label, then falls
+ *  back to a humanized target type + id. */
+export function friendlyAuditTarget(t: {
+  targetType?: string | null;
+  targetId?: string | null;
+  targetLabel?: string | null;
+}): string {
+  if (t.targetLabel && t.targetLabel.trim().length > 0) return t.targetLabel;
+  const type = t.targetType ? humanizeFieldKey(t.targetType) : null;
+  if (type && t.targetId) return `${type} ${t.targetId}`;
+  return type ?? t.targetId ?? "—";
+}

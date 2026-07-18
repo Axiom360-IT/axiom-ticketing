@@ -1497,7 +1497,9 @@
       "event": "Event",
       "actor": "Actor",
       "action": "Action",
+      "category": "Category",
       "target": "Target",
+      "outcome": "Status",
       "when": "When",
       "ipAddress": "IP"
     },

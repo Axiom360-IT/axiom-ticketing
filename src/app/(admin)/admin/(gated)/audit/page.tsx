@@ -34,9 +34,11 @@ import {
 import {
   auditActionCategory,
   auditActionLabel,
+  auditOutcomeLabel,
   AUDIT_CATEGORY_LABEL,
   AUDIT_CATEGORY_ORDER,
   type AuditCategory,
+  friendlyAuditTarget,
   humanizeFieldKey,
   isDestructiveAction,
 } from "@/lib/audit/action-label";
@@ -107,12 +109,7 @@ const CATEGORY_META: Record<
 };
 
 // Non-success outcomes get a loud badge — a denied/failed privileged attempt
-// must never look like a routine success.
-const OUTCOME_LABEL: Record<string, string> = {
-  denied: "Denied",
-  failure: "Failed",
-  error: "Error",
-};
+// must never look like a routine success. (Labels come from auditOutcomeLabel.)
 function outcomeStyle(outcome: string): string {
   return outcome === "denied"
     ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
@@ -291,6 +288,9 @@ export default async function AuditPage({
                 <thead>
                   <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800">
                     <th className="px-4 py-2">{t("columns.event")}</th>
+                    <th className="py-2 pr-4">{t("columns.category")}</th>
+                    <th className="py-2 pr-4">{t("columns.target")}</th>
+                    <th className="py-2 pr-4">{t("columns.outcome")}</th>
                     <th className="py-2 pr-4">{t("columns.actor")}</th>
                     <th className="py-2 pr-4">{t("columns.when")}</th>
                     <th className="py-2 pr-4"></th>
@@ -306,8 +306,7 @@ export default async function AuditPage({
                       row.beforeValue,
                       row.afterValue,
                     );
-                    const target =
-                      row.targetLabel ?? row.targetId ?? row.targetType ?? null;
+                    const target = friendlyAuditTarget(row);
                     return (
                       <tr
                         key={row.id}
@@ -327,32 +326,9 @@ export default async function AuditPage({
                             </span>
                             <div className="min-w-0">
                               <div className="text-zinc-800 dark:text-zinc-200">
-                                <span
-                                  className="font-medium"
-                                  title={row.action}
-                                >
+                                <span className="font-medium" title={row.action}>
                                   {auditActionLabel(row.action)}
                                 </span>
-                                {row.outcome !== "success" ? (
-                                  <span
-                                    className={cn(
-                                      "ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                                      outcomeStyle(row.outcome),
-                                    )}
-                                  >
-                                    {OUTCOME_LABEL[row.outcome] ?? row.outcome}
-                                  </span>
-                                ) : null}
-                                {target ? (
-                                  <span className="text-zinc-500 dark:text-zinc-400">
-                                    {" · "}
-                                    <span className="font-mono text-xs">
-                                      {target.length > 32
-                                        ? `${target.slice(0, 29)}…`
-                                        : target}
-                                    </span>
-                                  </span>
-                                ) : null}
                               </div>
                               {changes.length > 0 ? (
                                 <div className="mt-1 flex flex-wrap gap-1">
@@ -395,6 +371,51 @@ export default async function AuditPage({
                               ) : null}
                             </div>
                           </div>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <span
+                            className={cn(
+                              "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+                              meta.badge,
+                            )}
+                          >
+                            {AUDIT_CATEGORY_LABEL[category]}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <span
+                            className={cn(
+                              "text-xs",
+                              target === "—"
+                                ? "text-zinc-400"
+                                : "text-zinc-600 dark:text-zinc-300",
+                            )}
+                            title={target}
+                          >
+                            {target.length > 28
+                              ? `${target.slice(0, 25)}…`
+                              : target}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {row.outcome === "success" ? (
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-emerald-600 dark:text-emerald-400">
+                              <span
+                                aria-hidden="true"
+                                className="size-1.5 rounded-full bg-emerald-500"
+                              />
+                              {auditOutcomeLabel(row.outcome)}
+                            </span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap",
+                                outcomeStyle(row.outcome),
+                              )}
+                            >
+                              {auditOutcomeLabel(row.outcome)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 pr-4">
                           {row.actorName ? (
