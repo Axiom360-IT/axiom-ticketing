@@ -12,6 +12,7 @@ import {
   lte,
   ne,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
@@ -58,6 +59,8 @@ import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
+import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
+import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
 import { cn } from "@/lib/utils";
 
 // Filter query string contract:
@@ -81,6 +84,12 @@ type SearchParams = Promise<{
   escalated?: string;
   from?: string;
   to?: string;
+  /** CSV multi-select of billing states (see BILLING_FILTER_VALUES). */
+  billing?: string;
+  /** Organization id — single-select. */
+  org?: string;
+  /** Customer email — single-select (from the auto-populated customer list). */
+  customer?: string;
   page?: string;
   pageSize?: string;
   /** Set after a reassign that cost the viewer access — shows a confirmation. */
@@ -142,6 +151,9 @@ export default async function TicketsPage({
   const filterEscalated = sp.escalated === "1";
   const filterFrom = sp.from?.trim() || undefined;
   const filterTo = sp.to?.trim() || undefined;
+  const filterBilling = parseEnumCsv(sp.billing, BILLING_FILTER_VALUES);
+  const filterOrg = sp.org?.trim() || undefined;
+  const filterCustomer = sp.customer?.trim() || undefined;
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
@@ -210,6 +222,12 @@ export default async function TicketsPage({
       conditions.push(lte(tickets.createdAt, toDate));
     }
   }
+  if (filterBilling) {
+    const billingCond = billingFilterCondition(filterBilling);
+    if (billingCond) conditions.push(billingCond);
+  }
+  if (filterOrg) conditions.push(eq(tickets.organizationId, filterOrg));
+  if (filterCustomer) conditions.push(eq(tickets.customerEmail, filterCustomer));
 
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
@@ -220,7 +238,10 @@ export default async function TicketsPage({
     (filterCategory ? 1 : 0) +
     (filterAssignee ? 1 : 0) +
     (filterEscalated ? 1 : 0) +
-    (filterFrom || filterTo ? 1 : 0);
+    (filterFrom || filterTo ? 1 : 0) +
+    (filterBilling ? 1 : 0) +
+    (filterOrg ? 1 : 0) +
+    (filterCustomer ? 1 : 0);
 
   // Page slice + total count in parallel. The count powers the numbered pager
   // and "N of T" range; the WHERE only references `tickets` columns (plus
@@ -260,6 +281,36 @@ export default async function TicketsPage({
   const { items: rows } = takePage(rawRows, pageSize);
   const totalItems = totalRow?.value ?? 0;
 
+  // Options for the Organization + Customer filter dropdowns. The customer list
+  // is the distinct set of customers across tickets the viewer can see, built
+  // automatically (name + email, one entry per email).
+  const [orgOptions, customerRows] = await Promise.all([
+    db
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizations)
+      .orderBy(organizations.name),
+    db
+      .select({
+        email: tickets.customerEmail,
+        name: sql<string | null>`max(${tickets.customerName})`,
+      })
+      .from(tickets)
+      .where(
+        and(
+          ticketsVisibilityCondition(user),
+          sql`${tickets.customerEmail} is not null and ${tickets.customerEmail} <> ''`,
+        ),
+      )
+      .groupBy(tickets.customerEmail)
+      .orderBy(
+        sql`lower(coalesce(max(${tickets.customerName}), ${tickets.customerEmail}))`,
+      ),
+  ]);
+  const customerOptions = customerRows.map((c) => ({
+    email: c.email ?? "",
+    name: c.name ?? c.email ?? "",
+  }));
+
   const countLine = search
     ? t("countMatching", { count: totalItems, query: search })
     : t("count", { count: totalItems });
@@ -298,6 +349,9 @@ export default async function TicketsPage({
     "escalated",
     "from",
     "to",
+    "billing",
+    "org",
+    "customer",
   ] as const) {
     const v = sp[k];
     if (typeof v === "string" && v.length > 0) exportParams[k] = v;
@@ -373,10 +427,15 @@ export default async function TicketsPage({
           escalated: filterEscalated,
           from: filterFrom ?? "",
           to: filterTo ?? "",
+          billing: filterBilling ?? [],
+          org: filterOrg ?? "",
+          customer: filterCustomer ?? "",
           q: search,
           view,
         }}
         technicians={technicians}
+        organizations={orgOptions}
+        customers={customerOptions}
         activeCount={activeFilterCount}
       />
 

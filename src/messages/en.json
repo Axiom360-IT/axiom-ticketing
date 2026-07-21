@@ -705,6 +705,21 @@
       "escalatedOnly": "Escalated only",
       "from": "From",
       "to": "To",
+      "billing": "Billing",
+      "organization": "Organization",
+      "anyOrganization": "All organizations",
+      "customer": "Customer",
+      "anyCustomer": "All customers",
+      "billingOptions": {
+        "needs_invoice": "Needs invoice",
+        "billed": "Billed / invoiced",
+        "yes": "Billable / per hour",
+        "monthly_plan": "Monthly plan",
+        "project": "Project basis",
+        "rework": "Rework",
+        "no": "Not billable",
+        "unset": "Not set"
+      },
       "clearAll": "{count, plural, =1 {Clear 1 filter} other {Clear # filters}}",
       "active": "{count, plural, =0 {No filters} =1 {1 filter active} other {# filters active}}"
     },

@@ -23,3 +23,21 @@ export function billingStatus(
   if (billable && INVOICEABLE.has(billable)) return "needs_invoice";
   return "na";
 }
+
+// The values the /admin/tickets "Billing" filter offers (a flat multi-select;
+// selecting several ORs them together, like the Status filter). Two are derived
+// invoice states (needs_invoice / billed); the rest are the raw billable
+// categories, plus "unset" for un-triaged tickets. Pure (no drizzle) so both the
+// client filter UI and the server query can share this single source of truth.
+export const BILLING_FILTER_VALUES = [
+  "needs_invoice",
+  "billed",
+  "yes",
+  "monthly_plan",
+  "project",
+  "rework",
+  "no",
+  "unset",
+] as const;
+
+export type BillingFilterValue = (typeof BILLING_FILTER_VALUES)[number];

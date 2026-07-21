@@ -21,6 +21,8 @@ import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { type ExportDataset, parseExportFormat } from "@/lib/export/dataset";
 import { exportResponse } from "@/lib/export/respond";
+import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
+import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,6 +35,16 @@ const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const CATEGORIES = ["hardware", "software", "network", "access", "other"] as const;
 const STREAMS = ["internal", "external"] as const;
+
+// Friendly labels for the raw billable category (no code-y underscores in the
+// exported file).
+const BILLABLE_LABEL: Record<string, string> = {
+  yes: "Billable",
+  no: "Non-billable",
+  monthly_plan: "Monthly plan",
+  project: "Project",
+  rework: "Rework",
+};
 
 function enumCsv<T extends string>(
   raw: string | null,
@@ -78,6 +90,9 @@ export async function GET(request: Request): Promise<Response> {
   const fEscalated = sp.get("escalated") === "1";
   const fFrom = sp.get("from")?.trim() || undefined;
   const fTo = sp.get("to")?.trim() || undefined;
+  const fBilling = enumCsv(sp.get("billing"), BILLING_FILTER_VALUES);
+  const fOrg = sp.get("org")?.trim() || undefined;
+  const fCustomer = sp.get("customer")?.trim() || undefined;
 
   const conditions: SQL[] = [ticketsVisibilityCondition(user)];
   if (search) {
@@ -114,6 +129,12 @@ export async function GET(request: Request): Promise<Response> {
     const d = new Date(`${fTo}T23:59:59.999Z`);
     if (!Number.isNaN(d.getTime())) conditions.push(lte(tickets.createdAt, d));
   }
+  if (fBilling) {
+    const billingCond = billingFilterCondition(fBilling);
+    if (billingCond) conditions.push(billingCond);
+  }
+  if (fOrg) conditions.push(eq(tickets.organizationId, fOrg));
+  if (fCustomer) conditions.push(eq(tickets.customerEmail, fCustomer));
 
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
@@ -126,6 +147,8 @@ export async function GET(request: Request): Promise<Response> {
       category: tickets.category,
       stream: tickets.stream,
       isEscalated: tickets.isEscalated,
+      billable: tickets.billable,
+      invoiceNumber: tickets.invoiceNumber,
       organizationName: organizations.name,
       customerCompany: tickets.customerCompany,
       customerName: tickets.customerName,
@@ -166,6 +189,8 @@ export async function GET(request: Request): Promise<Response> {
           "Priority",
           "Category",
           "Stream",
+          "Billable",
+          "Invoice #",
           "Organization",
           "Customer",
           "Email",
@@ -180,6 +205,8 @@ export async function GET(request: Request): Promise<Response> {
           r.priority,
           r.category,
           r.stream,
+          r.billable ? (BILLABLE_LABEL[r.billable] ?? r.billable) : "",
+          r.invoiceNumber ?? "",
           r.organizationName ?? r.customerCompany ?? "—",
           r.customerName,
           r.customerEmail,

@@ -11,6 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
@@ -33,18 +34,25 @@ type TicketFiltersProps = {
     escalated: boolean;
     from: string;
     to: string;
+    billing: string[];
+    org: string;
+    customer: string;
     q: string;
     /** Current tab scope — preserved across filter changes so changing a
      *  filter doesn't bounce the user back to the Active tab. */
     view: "active" | "closed" | "all";
   };
   technicians: { id: string; name: string }[];
+  organizations: { id: string; name: string }[];
+  customers: { email: string; name: string }[];
   activeCount: number;
 };
 
 export function TicketFilters({
   initial,
   technicians,
+  organizations,
+  customers,
   activeCount,
 }: TicketFiltersProps) {
   const router = useRouter();
@@ -53,6 +61,7 @@ export function TicketFilters({
   const tPriority = useTranslations("tickets.priority");
   const tCategory = useTranslations("tickets.category");
   const tStream = useTranslations("tickets.stream");
+  const tBillingOpt = useTranslations("tickets.filters.billingOptions");
   const [pending, startTransition] = useTransition();
 
   /** Push a new URL preserving every other filter that the caller didn't
@@ -75,6 +84,9 @@ export function TicketFilters({
     if (next.escalated) params.set("escalated", "1");
     if (next.from) params.set("from", next.from);
     if (next.to) params.set("to", next.to);
+    if (next.billing.length > 0) params.set("billing", next.billing.join(","));
+    if (next.org) params.set("org", next.org);
+    if (next.customer) params.set("customer", next.customer);
     const qs = params.toString();
     startTransition(() => {
       router.push(qs ? `/admin/tickets?${qs}` : "/admin/tickets");
@@ -122,6 +134,48 @@ export function TicketFilters({
         onChange={(next) => pushFilters({ stream: next })}
         disabled={pending}
       />
+      <MultiSelect
+        label={t("billing")}
+        values={initial.billing}
+        options={BILLING_FILTER_VALUES.map((v) => ({
+          value: v,
+          label: tBillingOpt(v),
+        }))}
+        onChange={(next) => pushFilters({ billing: next })}
+        disabled={pending}
+      />
+
+      {/* Organization — single-select. */}
+      <select
+        value={initial.org}
+        onChange={(e) => pushFilters({ org: e.target.value })}
+        disabled={pending}
+        aria-label={t("organization")}
+        className="h-9 max-w-[12rem] rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+      >
+        <option value="">{t("anyOrganization")}</option>
+        {organizations.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Customer — single-select, auto-populated with every unique customer. */}
+      <select
+        value={initial.customer}
+        onChange={(e) => pushFilters({ customer: e.target.value })}
+        disabled={pending}
+        aria-label={t("customer")}
+        className="h-9 max-w-[16rem] rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+      >
+        <option value="">{t("anyCustomer")}</option>
+        {customers.map((c) => (
+          <option key={c.email} value={c.email}>
+            {c.name && c.name !== c.email ? `${c.name} · ${c.email}` : c.email}
+          </option>
+        ))}
+      </select>
 
       {/* Assignee — single-select. "Unassigned" is a sentinel value. */}
       <select
