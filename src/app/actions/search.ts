@@ -67,8 +67,12 @@ export async function globalSearch(rawQuery: string): Promise<GlobalSearchResult
   // worked-on carry-over so a technician can still find (and open read-only) a
   // ticket they logged work on after it was reassigned away (req 3.4), even
   // though it has left their active queue (req 3.3).
+  // Gate on the raw permission grant — NOT can(..., { type: "global" }), whose
+  // tickets.view branch requires a ticket target and so always returns false
+  // (it would silently drop tickets from search entirely). Per-row visibility
+  // is enforced below by ticketsVisibilityCondition.
   let ticketHits: SearchTicketHit[] = [];
-  if (await can(caller, "tickets.view", { type: "global" }, productionContext)) {
+  if (caller.permissions.has("tickets.view")) {
     const visibility = ticketsVisibilityCondition(caller, {
       includeWorkedOn: true,
     });

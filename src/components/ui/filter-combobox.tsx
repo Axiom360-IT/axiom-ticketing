@@ -45,8 +45,13 @@ function SearchBox({ placeholder }: { placeholder: string }) {
 function OptionList({ emptyMessage }: { emptyMessage: string }) {
   return (
     <div className="max-h-72 overflow-y-auto p-1">
-      <Combobox.Empty className="px-2 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-        {emptyMessage}
+      {/* Base UI keeps this element mounted for screen-reader announcements and
+          only nulls its CHILDREN when the list is non-empty — so any padding on
+          the element itself would leave an empty box above the options. Keep
+          the box padding-free and style the message instead, so it collapses to
+          zero height whenever there are matches. */}
+      <Combobox.Empty className="text-sm text-zinc-500 dark:text-zinc-400">
+        <div className="px-2 py-6 text-center">{emptyMessage}</div>
       </Combobox.Empty>
       <Combobox.List>
         {(item: ComboOption) => (

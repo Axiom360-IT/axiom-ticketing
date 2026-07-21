@@ -158,16 +158,21 @@ export default async function TicketsPage({
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
 
-  const [canCreate, canAssignGlobal, canDeleteGlobal, canExport] =
-    await Promise.all([
-      can(user, "tickets.create", { type: "global" }, productionContext),
-      can(user, "tickets.assign", { type: "global" }, productionContext),
-      can(user, "tickets.delete", { type: "global" }, productionContext),
-      can(user, "tickets.export", { type: "global" }, productionContext),
-    ]);
+  const [canCreate, canDeleteGlobal, canExport] = await Promise.all([
+    can(user, "tickets.create", { type: "global" }, productionContext),
+    can(user, "tickets.delete", { type: "global" }, productionContext),
+    can(user, "tickets.export", { type: "global" }, productionContext),
+  ]);
+  // UI-affordance gate for the assignee filter + the per-row Assign action. Use
+  // the RAW permission grant — NOT can(..., { type: "global" }): the
+  // `tickets.assign` branch in can() mandates a ticket target, so a global
+  // check can never return true. That's why the assignee filter listed no
+  // technicians and the row Assign control never appeared. Per-ticket
+  // authorization is still enforced server-side in `assignTicket`.
+  const canAssignGlobal = user.permissions.has("tickets.assign");
 
-  // Technicians needed for both the inline assignee filter dropdown
-  // AND the per-row Assign action — fetch once.
+  // Technicians power both the inline assignee filter dropdown and the per-row
+  // Assign action — fetch once for anyone who can assign.
   const technicians = canAssignGlobal ? await listAssignableTechnicians() : [];
 
   // Build the WHERE clause as an array of conditions; AND them together
