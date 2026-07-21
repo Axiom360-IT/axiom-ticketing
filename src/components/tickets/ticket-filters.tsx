@@ -3,14 +3,13 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  FilterCombobox,
+  FilterMultiCombobox,
+  type ComboOption,
+} from "@/components/ui/filter-combobox";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
@@ -64,12 +63,13 @@ export function TicketFilters({
   const tBillingOpt = useTranslations("tickets.filters.billingOptions");
   const [pending, startTransition] = useTransition();
 
+  const searchPh = t("searchOptions");
+  const noMatches = t("noMatches");
+
   /** Push a new URL preserving every other filter that the caller didn't
    * change. Empty arrays / empty strings get OMITTED from the URL so the
    * canonical "no filter" form has no query param at all. */
-  function pushFilters(
-    patch: Partial<TicketFiltersProps["initial"]>,
-  ) {
+  function pushFilters(patch: Partial<TicketFiltersProps["initial"]>) {
     const next = { ...initial, ...patch };
     const params = new URLSearchParams();
     if (next.q) params.set("q", next.q);
@@ -104,99 +104,102 @@ export function TicketFilters({
     });
   }
 
+  // Single-select option lists — the first entry (value "") is the reset.
+  const assigneeOptions: ComboOption[] = [
+    { value: "", label: t("anyAssignee") },
+    { value: "unassigned", label: t("unassigned") },
+    ...technicians.map((tech) => ({ value: tech.id, label: tech.name })),
+  ];
+  const orgOptions: ComboOption[] = [
+    { value: "", label: t("anyOrganization") },
+    ...organizations.map((o) => ({ value: o.id, label: o.name })),
+  ];
+  const customerOptions: ComboOption[] = [
+    { value: "", label: t("anyCustomer") },
+    ...customers.map((c) => ({
+      value: c.email,
+      label: c.name && c.name !== c.email ? `${c.name} · ${c.email}` : c.email,
+    })),
+  ];
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <MultiSelect
+      <FilterMultiCombobox
         label={t("status")}
-        values={initial.status}
+        value={initial.status}
         options={STATUSES.map((v) => ({ value: v, label: tStatus(v) }))}
         onChange={(next) => pushFilters({ status: next })}
         disabled={pending}
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
       />
-      <MultiSelect
+      <FilterMultiCombobox
         label={t("priority")}
-        values={initial.priority}
+        value={initial.priority}
         options={PRIORITIES.map((v) => ({ value: v, label: tPriority(v) }))}
         onChange={(next) => pushFilters({ priority: next })}
         disabled={pending}
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
       />
-      <MultiSelect
+      <FilterMultiCombobox
         label={t("category")}
-        values={initial.category}
+        value={initial.category}
         options={CATEGORIES.map((v) => ({ value: v, label: tCategory(v) }))}
         onChange={(next) => pushFilters({ category: next })}
         disabled={pending}
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
       />
-      <MultiSelect
+      <FilterMultiCombobox
         label={t("stream")}
-        values={initial.stream}
+        value={initial.stream}
         options={STREAMS.map((v) => ({ value: v, label: tStream(v) }))}
         onChange={(next) => pushFilters({ stream: next })}
         disabled={pending}
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
       />
-      <MultiSelect
+      <FilterMultiCombobox
         label={t("billing")}
-        values={initial.billing}
+        value={initial.billing}
         options={BILLING_FILTER_VALUES.map((v) => ({
           value: v,
           label: tBillingOpt(v),
         }))}
         onChange={(next) => pushFilters({ billing: next })}
         disabled={pending}
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
       />
 
-      {/* Organization — single-select. */}
-      <select
+      <FilterCombobox
+        ariaLabel={t("organization")}
         value={initial.org}
-        onChange={(e) => pushFilters({ org: e.target.value })}
+        options={orgOptions}
+        onChange={(v) => pushFilters({ org: v })}
         disabled={pending}
-        aria-label={t("organization")}
-        className="h-9 max-w-[12rem] rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-      >
-        <option value="">{t("anyOrganization")}</option>
-        {organizations.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.name}
-          </option>
-        ))}
-      </select>
-
-      {/* Customer — single-select, auto-populated with every unique customer. */}
-      <select
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
+      />
+      <FilterCombobox
+        ariaLabel={t("customer")}
         value={initial.customer}
-        onChange={(e) => pushFilters({ customer: e.target.value })}
+        options={customerOptions}
+        onChange={(v) => pushFilters({ customer: v })}
         disabled={pending}
-        aria-label={t("customer")}
-        className="h-9 max-w-[16rem] rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-      >
-        <option value="">{t("anyCustomer")}</option>
-        {customers.map((c) => (
-          <option key={c.email} value={c.email}>
-            {c.name && c.name !== c.email ? `${c.name} · ${c.email}` : c.email}
-          </option>
-        ))}
-      </select>
-
-      {/* Assignee — single-select. "Unassigned" is a sentinel value. */}
-      <select
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
+      />
+      <FilterCombobox
+        ariaLabel={t("assignee")}
         value={initial.assignee}
-        onChange={(e) => pushFilters({ assignee: e.target.value })}
+        options={assigneeOptions}
+        onChange={(v) => pushFilters({ assignee: v })}
         disabled={pending}
-        aria-label={t("assignee")}
-        className="h-9 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-      >
-        <option value="">{t("anyAssignee")}</option>
-        <option value="unassigned">{t("unassigned")}</option>
-        {technicians.length > 0 ? (
-          <optgroup label={t("technicians")}>
-            {technicians.map((tech) => (
-              <option key={tech.id} value={tech.id}>
-                {tech.name}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-      </select>
+        searchPlaceholder={searchPh}
+        emptyMessage={noMatches}
+      />
 
       {/* Escalated-only — pill toggle. */}
       <Button
@@ -244,63 +247,5 @@ export function TicketFilters({
         </Button>
       ) : null}
     </div>
-  );
-}
-
-// ── MultiSelect popover ─────────────────────────────────────────────
-// Reuses the existing DropdownMenu primitive (Base UI Menu under the
-// hood) with CheckboxItem children. Keeps the bundle from growing a
-// new Popover dependency and matches the visual treatment of every
-// other dropdown in the app.
-
-function MultiSelect({
-  label,
-  values,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  values: string[];
-  options: { value: string; label: string }[];
-  onChange: (next: string[]) => void;
-  disabled?: boolean;
-}) {
-  const selected = new Set(values);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={disabled}
-        render={
-          <Button variant="outline" size="sm" disabled={disabled}>
-            <span>{label}</span>
-            {selected.size > 0 ? (
-              <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] px-1.5">
-                {selected.size}
-              </span>
-            ) : null}
-            <ChevronDown className="h-3.5 w-3.5 ml-0.5" aria-hidden="true" />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="start" className="w-48">
-        {options.map((opt) => (
-          <DropdownMenuCheckboxItem
-            key={opt.value}
-            checked={selected.has(opt.value)}
-            onCheckedChange={(checked) => {
-              const next = checked
-                ? [...values, opt.value]
-                : values.filter((v) => v !== opt.value);
-              onChange(next);
-            }}
-            // Don't auto-close so users can pick multiple in one go.
-            closeOnClick={false}
-          >
-            {opt.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

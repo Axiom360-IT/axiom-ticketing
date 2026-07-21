@@ -710,6 +710,8 @@
       "anyOrganization": "All organizations",
       "customer": "Customer",
       "anyCustomer": "All customers",
+      "searchOptions": "Search…",
+      "noMatches": "No matches.",
       "billingOptions": {
         "needs_invoice": "Needs invoice",
         "billed": "Billed / invoiced",
