@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  signCsatAccessToken,
   signCsatToken,
   signGuestToken,
+  verifyCsatAccessToken,
   verifyCsatToken,
   verifyGuestToken,
 } from "./tokens";
@@ -47,25 +49,59 @@ describe("signGuestToken / verifyGuestToken", () => {
 });
 
 describe("signCsatToken / verifyCsatToken", () => {
-  it("roundtrips satisfied", () => {
-    const t = signCsatToken("AX-0042", "satisfied");
-    expect(verifyCsatToken(t, "AX-0042")).toBe("satisfied");
+  it("roundtrips each emoji rating", () => {
+    for (const r of ["happy", "neutral", "unhappy"] as const) {
+      const t = signCsatToken("AX-0042", r);
+      expect(verifyCsatToken(t, "AX-0042")).toBe(r);
+    }
   });
 
-  it("roundtrips unsatisfied", () => {
-    const t = signCsatToken("AX-0042", "unsatisfied");
-    expect(verifyCsatToken(t, "AX-0042")).toBe("unsatisfied");
+  it("maps legacy binary tokens (satisfied→happy, unsatisfied→unhappy)", () => {
+    // @ts-expect-error — legacy value, minted before the emoji upgrade.
+    const sat = signCsatToken("AX-0042", "satisfied");
+    expect(verifyCsatToken(sat, "AX-0042")).toBe("happy");
+    // @ts-expect-error — legacy value.
+    const unsat = signCsatToken("AX-0042", "unsatisfied");
+    expect(verifyCsatToken(unsat, "AX-0042")).toBe("unhappy");
   });
 
   it("rejects with wrong ticket", () => {
-    const t = signCsatToken("AX-0042", "satisfied");
+    const t = signCsatToken("AX-0042", "happy");
     expect(verifyCsatToken(t, "AX-0099")).toBeNull();
   });
 
-  it("rejects a tampered response", () => {
-    const t = signCsatToken("AX-0042", "satisfied");
+  it("rejects a tampered rating", () => {
+    const t = signCsatToken("AX-0042", "happy");
     const buf = Buffer.from(t, "base64url");
     buf[buf.length - 1] ^= 0xff;
     expect(verifyCsatToken(buf.toString("base64url"), "AX-0042")).toBeNull();
+  });
+});
+
+describe("signCsatAccessToken / verifyCsatAccessToken", () => {
+  it("roundtrips for the same ticket", () => {
+    const t = signCsatAccessToken("AX-0042");
+    expect(verifyCsatAccessToken(t, "AX-0042")).toBe(true);
+  });
+
+  it("rejects for a different ticket", () => {
+    const t = signCsatAccessToken("AX-0042");
+    expect(verifyCsatAccessToken(t, "AX-0099")).toBe(false);
+  });
+
+  it("rejects a tampered token", () => {
+    const t = signCsatAccessToken("AX-0042");
+    const buf = Buffer.from(t, "base64url");
+    buf[buf.length - 1] ^= 0xff;
+    expect(verifyCsatAccessToken(buf.toString("base64url"), "AX-0042")).toBe(
+      false,
+    );
+  });
+
+  it("is not accepted by the rating-bound verifier and vice-versa", () => {
+    const access = signCsatAccessToken("AX-0042");
+    expect(verifyCsatToken(access, "AX-0042")).toBeNull();
+    const rated = signCsatToken("AX-0042", "happy");
+    expect(verifyCsatAccessToken(rated, "AX-0042")).toBe(false);
   });
 });

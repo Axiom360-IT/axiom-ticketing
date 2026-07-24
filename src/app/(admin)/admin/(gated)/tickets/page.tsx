@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -16,40 +17,19 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ExportMenu } from "@/components/shared/export-menu";
-import {
-  StickyActionsCell,
-  StickyActionsHead,
-} from "@/components/ui/row-actions";
 import {
   Pagination,
   pageWindow,
   parsePage,
   parsePageSize,
-  reservedTableHeight,
   takePage,
 } from "@/components/ui/pagination";
-import {
-  BillingBadge,
-  CategoryBadge,
-  EscalatedBadge,
-  PriorityBadge,
-  StatusBadge,
-} from "@/components/tickets/badges";
-import { TicketFilters } from "@/components/tickets/ticket-filters";
 import { ReassignedNotice } from "@/components/tickets/reassigned-notice";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
-import { TicketRowActions } from "@/components/tickets/ticket-row-actions";
+import { UrlFilterSelect } from "@/components/ui/url-filter-select";
+import { TicketsTable } from "@/components/tickets/tickets-table";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { ticketsVisibilityCondition } from "@/lib/auth/scope";
@@ -59,8 +39,11 @@ import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
+import { loadAllTicketCategories } from "@/lib/tickets/categories";
+import { loadAllTicketTypes } from "@/lib/tickets/types";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
+import { parseCsv, parseSort } from "@/lib/data-table";
 import { cn } from "@/lib/utils";
 
 // Filter query string contract:
@@ -79,6 +62,7 @@ type SearchParams = Promise<{
   status?: string;
   priority?: string;
   category?: string;
+  type?: string;
   stream?: string;
   assignee?: string;
   escalated?: string;
@@ -90,6 +74,8 @@ type SearchParams = Promise<{
   org?: string;
   /** Customer email — single-select (from the auto-populated customer list). */
   customer?: string;
+  /** `<column>:<asc|desc>` — column-header sort. */
+  sort?: string;
   page?: string;
   pageSize?: string;
   /** Set after a reassign that cost the viewer access — shows a confirmation. */
@@ -98,13 +84,6 @@ type SearchParams = Promise<{
 
 const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
-const TICKET_CATEGORIES = [
-  "hardware",
-  "software",
-  "network",
-  "access",
-  "other",
-] as const;
 const TICKET_STREAMS = ["internal", "external"] as const;
 
 /** Split a CSV query-string value, drop empties, and intersect with the
@@ -133,8 +112,8 @@ export default async function TicketsPage({
   if (!user) redirect("/admin/login");
 
   const t = await getTranslations("tickets.queue");
-  const tCommon = await getTranslations("common");
   const tFilters = await getTranslations("tickets.filters");
+  const tStream = await getTranslations("tickets.stream");
   const formatter = await getFormatter();
 
   const sp = await searchParams;
@@ -143,20 +122,87 @@ export default async function TicketsPage({
   // "all" imposes no status scope. An explicit status filter refines within it.
   const view: "active" | "closed" | "all" =
     sp.view === "closed" ? "closed" : sp.view === "all" ? "all" : "active";
+  // Categories are admin-managed. Load all (for the label map + filter
+  // allow-set, so filtering by a since-retired category still works) and the
+  // active subset (for the filter dropdown options).
+  const [allCategories, allTypes] = await Promise.all([
+    loadAllTicketCategories(),
+    loadAllTicketTypes(),
+  ]);
+  const categoryValues = allCategories.map((c) => c.value);
+  const categoryLabelMap = new Map(allCategories.map((c) => [c.value, c.label]));
+  const categoryOptions = allCategories
+    .filter((c) => c.isActive)
+    .map((c) => ({ value: c.value, label: c.label }));
+  const typeValues = allTypes.map((t) => t.value);
+  const typeLabelMap = new Map(allTypes.map((t) => [t.value, t.label]));
+  const typeOptions = allTypes
+    .filter((t) => t.isActive)
+    .map((t) => ({ value: t.value, label: t.label }));
+
   const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
   const filterPriority = parseEnumCsv(sp.priority, TICKET_PRIORITIES);
-  const filterCategory = parseEnumCsv(sp.category, TICKET_CATEGORIES);
+  const filterCategory = parseEnumCsv(sp.category, categoryValues);
+  const filterType = parseEnumCsv(sp.type, typeValues);
   const filterStream = parseEnumCsv(sp.stream, TICKET_STREAMS);
-  const filterAssignee = sp.assignee?.trim() || undefined;
+  const filterAssignee = parseCsv(sp.assignee);
   const filterEscalated = sp.escalated === "1";
   const filterFrom = sp.from?.trim() || undefined;
   const filterTo = sp.to?.trim() || undefined;
   const filterBilling = parseEnumCsv(sp.billing, BILLING_FILTER_VALUES);
-  const filterOrg = sp.org?.trim() || undefined;
-  const filterCustomer = sp.customer?.trim() || undefined;
+  const filterOrg = parseCsv(sp.org);
+  const filterCustomer = parseCsv(sp.customer);
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
+
+  // Column-header sort. Priority/status sort by a defined severity/lifecycle
+  // order rather than alphabetically; everything else sorts on its column. An
+  // unknown/absent sort falls back to newest-first.
+  const sort = parseSort(sp.sort, [
+    "ticket",
+    "subject",
+    "type",
+    "category",
+    "priority",
+    "status",
+    "billing",
+    "customer",
+    "organization",
+    "assignee",
+    "created",
+    "updated",
+  ]);
+  const dirFn = sort?.dir === "asc" ? asc : desc;
+  const priorityRank = sql`case ${tickets.priority} when 'low' then 0 when 'medium' then 1 when 'high' then 2 when 'critical' then 3 else 4 end`;
+  const statusRank = sql`case ${tickets.status} when 'open' then 0 when 'in_progress' then 1 when 'awaiting_customer_confirmation' then 2 when 'escalation' then 3 when 'resolved' then 4 when 'closed' then 5 else 6 end`;
+  const orderTarget =
+    sort?.id === "ticket"
+      ? tickets.ticketNumber
+      : sort?.id === "subject"
+        ? tickets.subject
+        : sort?.id === "type"
+          ? tickets.type
+          : sort?.id === "category"
+            ? tickets.category
+          : sort?.id === "priority"
+            ? priorityRank
+            : sort?.id === "status"
+              ? statusRank
+              : sort?.id === "billing"
+                ? tickets.billable
+                : sort?.id === "customer"
+                  ? tickets.customerName
+                  : sort?.id === "organization"
+                    ? organizations.name
+                    : sort?.id === "assignee"
+                      ? users.name
+                      : sort?.id === "created"
+                        ? tickets.createdAt
+                        : sort?.id === "updated"
+                          ? tickets.updatedAt
+                          : null;
+  const primaryOrder = orderTarget ? dirFn(orderTarget) : desc(tickets.createdAt);
 
   const [canCreate, canDeleteGlobal, canExport] = await Promise.all([
     can(user, "tickets.create", { type: "global" }, productionContext),
@@ -207,11 +253,18 @@ export default async function TicketsPage({
   }
   if (filterPriority) conditions.push(inArray(tickets.priority, filterPriority));
   if (filterCategory) conditions.push(inArray(tickets.category, filterCategory));
+  if (filterType) conditions.push(inArray(tickets.type, filterType));
   if (filterStream) conditions.push(inArray(tickets.stream, filterStream));
-  if (filterAssignee === "unassigned") {
-    conditions.push(isNull(tickets.assignedToId));
-  } else if (filterAssignee) {
-    conditions.push(eq(tickets.assignedToId, filterAssignee));
+  if (filterAssignee.length > 0) {
+    // Multi-select: "unassigned" matches NULL owner; the rest match by id.
+    const legs: SQL[] = [];
+    if (filterAssignee.includes("unassigned")) {
+      legs.push(isNull(tickets.assignedToId));
+    }
+    const ids = filterAssignee.filter((v) => v !== "unassigned");
+    if (ids.length > 0) legs.push(inArray(tickets.assignedToId, ids));
+    const clause = legs.length === 1 ? legs[0] : or(...legs);
+    if (clause) conditions.push(clause);
   }
   if (filterEscalated) conditions.push(eq(tickets.isEscalated, true));
   if (filterFrom) {
@@ -231,8 +284,12 @@ export default async function TicketsPage({
     const billingCond = billingFilterCondition(filterBilling);
     if (billingCond) conditions.push(billingCond);
   }
-  if (filterOrg) conditions.push(eq(tickets.organizationId, filterOrg));
-  if (filterCustomer) conditions.push(eq(tickets.customerEmail, filterCustomer));
+  if (filterOrg.length > 0) {
+    conditions.push(inArray(tickets.organizationId, filterOrg));
+  }
+  if (filterCustomer.length > 0) {
+    conditions.push(inArray(tickets.customerEmail, filterCustomer));
+  }
 
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
@@ -241,12 +298,13 @@ export default async function TicketsPage({
     (filterStatus ? 1 : 0) +
     (filterPriority ? 1 : 0) +
     (filterCategory ? 1 : 0) +
-    (filterAssignee ? 1 : 0) +
+    (filterType ? 1 : 0) +
+    (filterAssignee.length ? 1 : 0) +
     (filterEscalated ? 1 : 0) +
     (filterFrom || filterTo ? 1 : 0) +
     (filterBilling ? 1 : 0) +
-    (filterOrg ? 1 : 0) +
-    (filterCustomer ? 1 : 0);
+    (filterOrg.length ? 1 : 0) +
+    (filterCustomer.length ? 1 : 0);
 
   // Page slice + total count in parallel. The count powers the numbered pager
   // and "N of T" range; the WHERE only references `tickets` columns (plus
@@ -258,6 +316,7 @@ export default async function TicketsPage({
         ticketNumber: tickets.ticketNumber,
         subject: tickets.subject,
         category: tickets.category,
+        type: tickets.type,
         status: tickets.status,
         priority: tickets.priority,
         isEscalated: tickets.isEscalated,
@@ -278,13 +337,31 @@ export default async function TicketsPage({
       .leftJoin(users, eq(users.id, tickets.assignedToId))
       .leftJoin(organizations, eq(organizations.id, tickets.organizationId))
       .where(where)
-      .orderBy(desc(tickets.createdAt))
+      .orderBy(primaryOrder, desc(tickets.createdAt))
       .limit(limit)
       .offset(offset),
     db.select({ value: count() }).from(tickets).where(where),
   ]);
   const { items: rows } = takePage(rawRows, pageSize);
   const totalItems = totalRow?.value ?? 0;
+
+  // View-model for the client grid: keep raw values for the badges/row-actions,
+  // add server-formatted date strings so no Date math runs during client render.
+  // Both Created and Updated show the exact date + time (e.g. "Jul 24, 2026,
+  // 3:45 PM") rather than a relative "x ago".
+  const tableRows = rows.map((r) => ({
+    ...r,
+    categoryLabel: categoryLabelMap.get(r.category) ?? r.category,
+    typeLabel: typeLabelMap.get(r.type) ?? r.type,
+    createdLabel: formatter.dateTime(r.createdAt, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+    updatedLabel: formatter.dateTime(r.updatedAt, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  }));
 
   // Options for the Organization + Customer filter dropdowns. The customer list
   // is the distinct set of customers across tickets the viewer can see, built
@@ -349,6 +426,7 @@ export default async function TicketsPage({
     "status",
     "priority",
     "category",
+    "type",
     "stream",
     "assignee",
     "escalated",
@@ -416,146 +494,52 @@ export default async function TicketsPage({
         })}
       </div>
 
-      <UrlSearchInput
-        initialValue={search}
-        placeholder={t("search")}
-        className="max-w-md"
-      />
+      {/* Slim toolbar: global search + the two cross-cutting filters that don't
+          map to a single column (everything else lives in the column headers).
+          Labels hidden + matched heights so all three sit on one aligned row. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <UrlSearchInput
+          initialValue={search}
+          placeholder={t("search")}
+          className="max-w-md flex-1 min-w-[16rem]"
+          inputClassName="h-9!"
+        />
+        <UrlFilterSelect
+          name="stream"
+          label={tFilters("stream")}
+          hideLabel
+          value={filterStream?.[0] ?? ""}
+          anyLabel={tFilters("streamAny")}
+          options={[
+            { value: "internal", label: tStream("internal") },
+            { value: "external", label: tStream("external") },
+          ]}
+          triggerClassName="h-9! w-40"
+        />
+        <UrlFilterSelect
+          name="escalated"
+          label={tFilters("escalatedOnly")}
+          hideLabel
+          value={filterEscalated ? "1" : ""}
+          anyLabel={tFilters("escalatedAny")}
+          options={[{ value: "1", label: tFilters("escalatedOnly") }]}
+          triggerClassName="h-9! w-40"
+        />
+      </div>
 
-      <TicketFilters
-        initial={{
-          status: filterStatus ?? [],
-          priority: filterPriority ?? [],
-          category: filterCategory ?? [],
-          stream: filterStream ?? [],
-          assignee: filterAssignee ?? "",
-          escalated: filterEscalated,
-          from: filterFrom ?? "",
-          to: filterTo ?? "",
-          billing: filterBilling ?? [],
-          org: filterOrg ?? "",
-          customer: filterCustomer ?? "",
-          q: search,
-          view,
-        }}
+      <TicketsTable
+        data={tableRows}
+        totalItems={totalItems}
+        pageSize={pageSize}
+        emptyMessage={search ? t("emptyMatching") : t("empty")}
         technicians={technicians}
         organizations={orgOptions}
         customers={customerOptions}
-        activeCount={activeFilterCount}
+        categories={categoryOptions}
+        types={typeOptions}
+        canAssign={canAssignGlobal}
+        canDelete={canDeleteGlobal}
       />
-
-      <Card className="p-0">
-        <CardContent
-          className="p-0"
-          style={{ minHeight: reservedTableHeight(pageSize, totalItems, 57) }}
-        >
-          {rows.length === 0 ? (
-            <div className="py-16 text-center">
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                {search ? t("emptyMatching") : t("empty")}
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="px-4">{t("columns.ticket")}</TableHead>
-                  <TableHead>{t("columns.subject")}</TableHead>
-                  <TableHead>{t("columns.category")}</TableHead>
-                  <TableHead>{t("columns.priority")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
-                  <TableHead>{t("columns.billing")}</TableHead>
-                  <TableHead>{t("columns.customer")}</TableHead>
-                  <TableHead>{t("columns.organization")}</TableHead>
-                  <TableHead>{t("columns.assignee")}</TableHead>
-                  <TableHead>{t("columns.created")}</TableHead>
-                  <TableHead>{t("columns.updated")}</TableHead>
-                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="px-4 font-mono text-xs">
-                      <Link
-                        href={`/admin/tickets/${row.id}`}
-                        className="text-blue-600 hover:underline dark:text-blue-400"
-                      >
-                        {row.ticketNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      <div className="flex items-center gap-2">
-                        {row.isEscalated ? <EscalatedBadge /> : null}
-                        <span>{row.subject}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <CategoryBadge category={row.category} />
-                    </TableCell>
-                    <TableCell>
-                      <PriorityBadge priority={row.priority} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={row.status} />
-                    </TableCell>
-                    <TableCell>
-                      <BillingBadge
-                        billable={row.billable}
-                        invoiceNumber={row.invoiceNumber}
-                      />
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div>{row.customerName}</div>
-                      <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {row.customerEmail}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {/* Verified org (FK match) wins; otherwise the typed
-                          company shown muted + tagged unverified; else —. */}
-                      {row.organizationName ? (
-                        row.organizationName
-                      ) : row.customerCompany ? (
-                        <span className="text-zinc-500 dark:text-zinc-400">
-                          {row.customerCompany}
-                          <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                            {t("orgUnverified")}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-zinc-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {row.assignedToName ?? (
-                        <span className="text-zinc-400">
-                          {t("unassigned")}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatter.dateTime(row.createdAt, { dateStyle: "medium" })}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatRelative(row.updatedAt, t, formatter)}
-                    </TableCell>
-                    <StickyActionsCell>
-                      <TicketRowActions
-                        ticket={row}
-                        technicians={technicians}
-                        canAssign={canAssignGlobal}
-                        canEdit={canAssignGlobal}
-                        canDelete={canDeleteGlobal}
-                      />
-                    </StickyActionsCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
 
       <Pagination
         pathname="/admin/tickets"
@@ -570,19 +554,4 @@ export default async function TicketsPage({
       />
     </div>
   );
-}
-
-type RelativeT = Awaited<ReturnType<typeof getTranslations<"tickets.queue">>>;
-type Formatter = Awaited<ReturnType<typeof getFormatter>>;
-
-function formatRelative(d: Date, t: RelativeT, formatter: Formatter): string {
-  const ms = Date.now() - d.getTime();
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return t("relativeTime.justNow");
-  if (minutes < 60) return t("relativeTime.minutes", { minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t("relativeTime.hours", { hours });
-  const days = Math.floor(hours / 24);
-  if (days < 7) return t("relativeTime.days", { days });
-  return formatter.dateTime(d, { dateStyle: "medium" });
 }

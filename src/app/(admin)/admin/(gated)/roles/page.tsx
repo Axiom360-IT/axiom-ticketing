@@ -2,37 +2,24 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  StickyActionsCell,
-  StickyActionsHead,
-} from "@/components/ui/row-actions";
 import {
   Pagination,
   parsePage,
   parsePageSize,
-  reservedTableHeight,
 } from "@/components/ui/pagination";
-import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { ExportMenu } from "@/components/shared/export-menu";
-import { RoleRowActions } from "@/components/roles/role-row-actions";
+import { RolesTable } from "@/components/roles/roles-table";
 import { listRolesForAdmin } from "@/app/actions/roles";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { parseCsv, parseSort, sortRows } from "@/lib/data-table";
 
 type SearchParams = Promise<{
   q?: string;
   type?: string;
+  sort?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -50,9 +37,10 @@ export default async function RolesListPage({
 
   const sp = await searchParams;
   const q = (sp.q ?? "").trim().toLowerCase();
-  const type = sp.type === "system" || sp.type === "custom" ? sp.type : "";
+  const typeList = parseCsv(sp.type);
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
+  const sort = parseSort(sp.sort, ["name", "type", "users", "description"]);
 
   const [allRows, canCreate, canEdit, canDelete] = await Promise.all([
     listRolesForAdmin(),
@@ -61,27 +49,38 @@ export default async function RolesListPage({
     can(user, "roles.delete", { type: "global" }, productionContext),
   ]);
   const t = await getTranslations("roles.list");
-  const tCommon = await getTranslations("common");
 
   // listRolesForAdmin returns the full set (small list — typically <20).
-  // Filter + paginate at the page level for consistency with other tables.
+  // Filter + sort + paginate in memory. Type filter + column sort live in the
+  // column headers; the search box drives `q`.
   const filtered = allRows.filter((r) => {
     if (q && !`${r.name} ${r.description ?? ""}`.toLowerCase().includes(q)) {
       return false;
     }
-    if (type === "system" && !r.isSystem) return false;
-    if (type === "custom" && r.isSystem) return false;
+    if (
+      typeList.length &&
+      !typeList.includes(r.isSystem ? "system" : "custom")
+    ) {
+      return false;
+    }
     return true;
   });
-  const totalItems = filtered.length;
+  const sorted = sortRows(filtered, sort, {
+    name: (r) => r.name.toLowerCase(),
+    type: (r) => (r.isSystem ? 1 : 0),
+    users: (r) => r.userCount,
+    description: (r) => (r.description ?? "").toLowerCase(),
+  });
+
+  const totalItems = sorted.length;
   const offset = (page - 1) * pageSize;
-  const rows = filtered.slice(offset, offset + pageSize);
-  const hasFilters = q !== "" || type !== "";
+  const rows = sorted.slice(offset, offset + pageSize);
+  const hasFilters = q !== "" || typeList.length > 0;
 
   // Carry the active filters so the export matches what's on screen.
   const exportParams: Record<string, string> = {};
   if (sp.q?.trim()) exportParams.q = sp.q.trim();
-  if (type) exportParams.type = type;
+  if (sp.type?.trim()) exportParams.type = sp.type.trim();
 
   return (
     <div className="space-y-4">
@@ -105,85 +104,20 @@ export default async function RolesListPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[14rem]">
-          <UrlSearchInput
-            initialValue={sp.q ?? ""}
-            placeholder={t("search")}
-            className="max-w-md"
-          />
-        </div>
-        <UrlFilterSelect
-          name="type"
-          label={t("filterType")}
-          value={type}
-          anyLabel={t("filterAny")}
-          options={[
-            { value: "system", label: t("typeSystem") },
-            { value: "custom", label: t("typeCustom") },
-          ]}
-          triggerClassName="w-36"
-        />
-      </div>
+      <UrlSearchInput
+        initialValue={sp.q ?? ""}
+        placeholder={t("search")}
+        className="max-w-md"
+      />
 
-      <Card className="p-0">
-        <CardContent
-          className="p-0"
-          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
-        >
-          {rows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {hasFilters ? t("emptyFiltered") : t("empty")}
-            </div>
-          ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="px-4">{t("columns.name")}</TableHead>
-                <TableHead>{t("columns.type")}</TableHead>
-                <TableHead>{t("columns.users")}</TableHead>
-                <TableHead>{t("columns.description")}</TableHead>
-                <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="px-4">
-                    <Link
-                      href={`/admin/roles/${r.id}`}
-                      className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
-                    >
-                      {r.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {r.isSystem ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
-                        {t("system")}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {t("userCount", { count: r.userCount })}
-                  </TableCell>
-                  <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {r.description ?? ""}
-                  </TableCell>
-                  <StickyActionsCell>
-                    <RoleRowActions
-                      role={r}
-                      canEdit={canEdit}
-                      canDelete={canDelete}
-                    />
-                  </StickyActionsCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          )}
-        </CardContent>
-      </Card>
+      <RolesTable
+        data={rows}
+        totalItems={totalItems}
+        pageSize={pageSize}
+        emptyMessage={hasFilters ? t("emptyFiltered") : t("empty")}
+        canEdit={canEdit}
+        canDelete={canDelete}
+      />
 
       <Pagination
         pathname="/admin/roles"

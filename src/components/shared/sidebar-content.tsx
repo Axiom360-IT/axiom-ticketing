@@ -12,11 +12,13 @@ import {
   Clock,
   GitBranch,
   History,
+  Layers,
   LayoutDashboard,
   LifeBuoy,
   MailWarning,
   Settings,
   Shield,
+  Tags,
   ShoppingCart,
   SlidersHorizontal,
   Ticket,
@@ -39,6 +41,8 @@ type NavLabelKey =
   | "navRoles"
   | "navHierarchy"
   | "navSettings"
+  | "navCategories"
+  | "navTypes"
   | "navAudit";
 
 type GroupLabelKey =
@@ -112,6 +116,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/users", labelKey: "navUsers", icon: Users, color: "text-blue-400", requires: "users.view" },
       { href: "/admin/roles", labelKey: "navRoles", icon: Shield, color: "text-fuchsia-400", requires: "roles.view" },
       { href: "/admin/hierarchy", labelKey: "navHierarchy", icon: GitBranch, color: "text-orange-400", requires: "users.view" },
+      { href: "/admin/categories", labelKey: "navCategories", icon: Tags, color: "text-pink-400", requires: "settings.update" },
+      { href: "/admin/types", labelKey: "navTypes", icon: Layers, color: "text-sky-400", requires: "settings.update" },
       { href: "/admin/settings", labelKey: "navSettings", icon: Settings, color: "text-indigo-400", requires: "settings.view" },
     ],
   },

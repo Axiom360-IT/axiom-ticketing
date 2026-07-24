@@ -1,6 +1,19 @@
 "use server";
 
-import { and, count, desc, eq, gte, ilike, lte, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  type SQL,
+} from "drizzle-orm";
+import { parseSort } from "@/lib/data-table";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -320,14 +333,23 @@ export async function listProcurementForTicket(ticketId: string) {
 }
 
 export type ProcurementListFilters = {
+  /** CSV of statuses (column filter is multi-select). */
   status?: string;
+  /** CSV of types (column filter is multi-select). */
   type?: string;
   /** Free-text match on item name or requester email. */
   q?: string;
   /** Inclusive created-at bounds (YYYY-MM-DD, snapped to day in UTC). */
   from?: string;
   to?: string;
+  /** `<column>:<asc|desc>` column-header sort. */
+  sort?: string;
 };
+
+function csv(raw: string | undefined): string[] | undefined {
+  const list = raw?.split(",").map((s) => s.trim()).filter(Boolean);
+  return list && list.length > 0 ? list : undefined;
+}
 
 export async function listProcurementForAdmin(
   filters: ProcurementListFilters & { page?: number; pageSize?: number },
@@ -345,8 +367,10 @@ export async function listProcurementForAdmin(
   }
 
   const where = [] as SQL[];
-  if (filters.status) where.push(eq(procurementRequests.status, filters.status));
-  if (filters.type) where.push(eq(procurementRequests.type, filters.type));
+  const statusList = csv(filters.status);
+  if (statusList) where.push(inArray(procurementRequests.status, statusList));
+  const typeList = csv(filters.type);
+  if (typeList) where.push(inArray(procurementRequests.type, typeList));
   const q = filters.q?.trim();
   if (q) {
     const term = `%${q}%`;
@@ -383,6 +407,34 @@ export async function listProcurementForAdmin(
 
   const whereClause = where.length > 0 ? and(...where) : undefined;
 
+  // Column-header sort (falls back to newest-first).
+  const sort = parseSort(filters.sort, [
+    "item",
+    "type",
+    "cost",
+    "status",
+    "requester",
+    "created",
+  ]);
+  const dirFn = sort?.dir === "asc" ? asc : desc;
+  const orderTarget =
+    sort?.id === "item"
+      ? procurementRequests.itemName
+      : sort?.id === "type"
+        ? procurementRequests.type
+        : sort?.id === "cost"
+          ? procurementRequests.estimatedCost
+          : sort?.id === "status"
+            ? procurementRequests.status
+            : sort?.id === "requester"
+              ? procurementRequests.requestedByEmail
+              : sort?.id === "created"
+                ? procurementRequests.createdAt
+                : null;
+  const primaryOrder = orderTarget
+    ? dirFn(orderTarget)
+    : desc(procurementRequests.createdAt);
+
   const [rawRows, [totalRow]] = await Promise.all([
     db
       .select({
@@ -398,7 +450,7 @@ export async function listProcurementForAdmin(
       })
       .from(procurementRequests)
       .where(whereClause)
-      .orderBy(desc(procurementRequests.createdAt))
+      .orderBy(primaryOrder, desc(procurementRequests.createdAt))
       .limit(limit)
       .offset(offset),
     db

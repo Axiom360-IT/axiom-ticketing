@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
+import { UserRound } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/tickets/badges";
 import type { CustomerTicketSummary } from "@/lib/customer/queries";
 
@@ -32,6 +33,28 @@ export function CustomerTicketList({ items }: Props) {
                 <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-50 truncate">
                   {ticket.subject}
                 </p>
+                {ticket.assignedToName ? (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300 min-w-0">
+                    <UserRound
+                      className="size-3.5 shrink-0 text-zinc-400 dark:text-zinc-500"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">
+                      {t("assignedTo", { name: ticket.assignedToName })}
+                      {ticket.assignedToEmail ? (
+                        <span className="text-zinc-400 dark:text-zinc-500">
+                          {" · "}
+                          {ticket.assignedToEmail}
+                        </span>
+                      ) : null}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+                    <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
+                    {t("unassigned")}
+                  </p>
+                )}
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                   {t("lastUpdated", {
                     when: formatter.relativeTime(ticket.updatedAt, {

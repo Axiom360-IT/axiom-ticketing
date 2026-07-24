@@ -139,6 +139,60 @@ export function looksForwarded(
   return FORWARD_MARKERS.some((re) => re.test(text));
 }
 
+// Matches a `From:` header line inside a forwarded block (tolerates leading
+// `>` quote markers and bold `*From:*` from some clients).
+const FORWARDED_FROM_LINE = /^\s*(?:>+\s*)?\*?from:\*?\s*(.+)$/im;
+// A bare email address anywhere within that line.
+const EMAIL_ANYWHERE =
+  /([a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)/i;
+
+/**
+ * Pulls the ORIGINAL sender out of a forwarded email's header block. When a
+ * technician forwards a customer's message into the ticket inbox, the visible
+ * `From:` is the technician — but the real requester is named in the forwarded
+ * `From:` line ("---------- Forwarded message ----------\nFrom: Jane <jane@acme.com>").
+ * Extracting it lets the ticket be attributed and org-matched to the actual
+ * customer instead of the forwarder.
+ *
+ * Best-effort and format-tolerant (Gmail / Outlook / Apple Mail). Returns null
+ * when no forwarded sender can be confidently parsed — callers then fall back
+ * to the envelope sender.
+ */
+export function parseForwardedSender(
+  text: string | null | undefined,
+): { email: string; name: string | null } | null {
+  if (!text) return null;
+
+  // Prefer the region at/after the forward marker so we don't accidentally
+  // pick up a `From:` that belongs to the forwarder's own quoted signature.
+  let region = text;
+  for (const re of FORWARD_MARKERS) {
+    const m = re.exec(text);
+    if (m && typeof m.index === "number") {
+      region = text.slice(m.index);
+      break;
+    }
+  }
+
+  const fromLine = region.match(FORWARDED_FROM_LINE);
+  if (!fromLine) return null;
+
+  const line = fromLine[1].trim();
+  const emailMatch = line.match(EMAIL_ANYWHERE);
+  if (!emailMatch) return null;
+  const email = emailMatch[1].toLowerCase();
+
+  // Whatever precedes the address (minus angle brackets / quotes) is the name.
+  const name =
+    line
+      .replace(EMAIL_ANYWHERE, "")
+      .replace(/[<>"]/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || null;
+
+  return { email, name };
+}
+
 /**
  * Strips quoted reply history and trailing signatures from a plaintext
  * email body. Returns the (presumed) new content the sender wrote.

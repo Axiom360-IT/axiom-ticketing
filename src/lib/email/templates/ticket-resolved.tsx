@@ -2,14 +2,35 @@ import { Hr, Link, Section, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
 import { EmailLayout, textStyles } from "./_layout";
 
+// Three emoji feedback buttons. Colors mirror the in-app emoji picker
+// (green / amber / red). Emoji are rendered as text so they display across
+// email clients that don't load remote images.
+const baseCsatButton = {
+  borderRadius: "6px",
+  color: "#ffffff",
+  display: "inline-block",
+  fontSize: "14px",
+  fontWeight: 500,
+  marginRight: "8px",
+  padding: "10px 16px",
+  textDecoration: "none",
+} as const;
+
+const csatButtonStyles = {
+  happy: { ...baseCsatButton, backgroundColor: "#15803d" },
+  neutral: { ...baseCsatButton, backgroundColor: "#b45309" },
+  unhappy: { ...baseCsatButton, backgroundColor: "#b91c1c", marginRight: "0" },
+} as const;
+
 export type TicketResolvedProps = {
   ticketNumber: string;
   customerName: string;
   subject: string;
   agentName: string;
   resolutionNote: string;
-  csatSatisfiedUrl: string;
-  csatUnsatisfiedUrl: string;
+  csatHappyUrl: string;
+  csatNeutralUrl: string;
+  csatUnhappyUrl: string;
   trackingUrl: string;
   locale: string;
 };
@@ -20,8 +41,9 @@ export async function TicketResolvedEmail({
   subject,
   agentName,
   resolutionNote,
-  csatSatisfiedUrl,
-  csatUnsatisfiedUrl,
+  csatHappyUrl,
+  csatNeutralUrl,
+  csatUnhappyUrl,
   trackingUrl,
   locale,
 }: TicketResolvedProps) {
@@ -67,11 +89,14 @@ export async function TicketResolvedEmail({
       <Text style={textStyles.body}>{t("feedbackPrompt")}</Text>
 
       <Section style={{ margin: "16px 0" }}>
-        <Link href={csatSatisfiedUrl} style={textStyles.buttonGood}>
-          {t("satisfiedButton")}
+        <Link href={csatHappyUrl} style={csatButtonStyles.happy}>
+          {t("happyButton")}
         </Link>
-        <Link href={csatUnsatisfiedUrl} style={textStyles.buttonBad}>
-          {t("unsatisfiedButton")}
+        <Link href={csatNeutralUrl} style={csatButtonStyles.neutral}>
+          {t("neutralButton")}
+        </Link>
+        <Link href={csatUnhappyUrl} style={csatButtonStyles.unhappy}>
+          {t("unhappyButton")}
         </Link>
       </Section>
 
@@ -102,10 +127,11 @@ TicketResolvedEmail.PreviewProps = {
   agentName: "Priya",
   resolutionNote:
     "I cleared the corrupt Outlook profile cache from your account. Please restart Outlook and let me know if it loads past the splash screen now.",
-  csatSatisfiedUrl:
-    "https://tickets.axiom360.it/csat/confirm?t=AX-0042&tk=satisfied-token",
-  csatUnsatisfiedUrl:
-    "https://tickets.axiom360.it/csat/confirm?t=AX-0042&tk=unsatisfied-token",
+  csatHappyUrl: "https://tickets.axiom360.it/csat?t=AX-0042&tk=access&r=happy",
+  csatNeutralUrl:
+    "https://tickets.axiom360.it/csat?t=AX-0042&tk=access&r=neutral",
+  csatUnhappyUrl:
+    "https://tickets.axiom360.it/csat?t=AX-0042&tk=access&r=unhappy",
   trackingUrl: "https://tickets.axiom360.it/portal/tickets/AX-0042?token=abc",
   locale: "en",
 } satisfies TicketResolvedProps;

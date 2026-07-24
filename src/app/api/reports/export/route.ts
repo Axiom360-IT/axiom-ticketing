@@ -7,6 +7,8 @@ import { users } from "@/lib/db/schema/auth";
 import { type ExportDataset, parseExportFormat } from "@/lib/export/dataset";
 import { exportResponse } from "@/lib/export/respond";
 import {
+  type CsatStats,
+  loadCsatStats,
   loadProcurementSpend,
   loadTicketHealth,
   parseReportRange,
@@ -33,6 +35,7 @@ function dayStr(d: Date): string {
 function buildDataset(
   tickets: TicketHealth,
   procurement: ProcurementSpend,
+  csat: CsatStats,
   generatedBy: string,
   range?: ReportRange,
 ): ExportDataset {
@@ -109,6 +112,48 @@ function buildDataset(
       },
       {
         kind: "keyValues",
+        title: "Customer satisfaction",
+        items: [
+          { label: "Positive (happy)", value: pct(csat.breakdown.positiveRate) },
+          {
+            label: "Responses",
+            value: `${csat.breakdown.happy} happy · ${csat.breakdown.neutral} okay · ${csat.breakdown.unhappy} unhappy`,
+          },
+          {
+            label: "First-contact happy",
+            value: pct(csat.quality.firstContactRate),
+          },
+          { label: "Rework rate", value: pct(csat.quality.reworkRate) },
+        ],
+      },
+      {
+        kind: "table",
+        title: "CSAT by technician",
+        columns: ["Technician", "Happy", "Okay", "Unhappy", "Positive"],
+        align: ["left", "right", "right", "right", "right"],
+        rows: csat.byTechnician.map((r) => [
+          r.technicianName ?? "Unassigned",
+          r.happy,
+          r.neutral,
+          r.unhappy,
+          pct(r.positiveRate),
+        ]),
+      },
+      {
+        kind: "table",
+        title: "CSAT by organization",
+        columns: ["Organization", "Happy", "Okay", "Unhappy", "Positive"],
+        align: ["left", "right", "right", "right", "right"],
+        rows: csat.byOrganization.map((r) => [
+          r.organizationName ?? "No organization",
+          r.happy,
+          r.neutral,
+          r.unhappy,
+          pct(r.positiveRate),
+        ]),
+      },
+      {
+        kind: "keyValues",
         title: "Procurement spend",
         items: [
           ...(range
@@ -170,9 +215,10 @@ export async function GET(request: Request): Promise<Response> {
     sp.get("to") ?? undefined,
   );
 
-  const [tickets, procurement, me] = await Promise.all([
+  const [tickets, procurement, csat, me] = await Promise.all([
     loadTicketHealth(range),
     loadProcurementSpend(range),
+    loadCsatStats(range),
     db
       .select({ name: users.name })
       .from(users)
@@ -180,6 +226,12 @@ export async function GET(request: Request): Promise<Response> {
       .limit(1),
   ]);
 
-  const dataset = buildDataset(tickets, procurement, me[0]?.name ?? "—", range);
+  const dataset = buildDataset(
+    tickets,
+    procurement,
+    csat,
+    me[0]?.name ?? "—",
+    range,
+  );
   return exportResponse(dataset, format, "reports");
 }

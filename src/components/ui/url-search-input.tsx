@@ -20,6 +20,9 @@ type Props = {
   initialValue: string;
   placeholder?: string;
   className?: string;
+  /** Extra classes for the inner <input> (e.g. a height to match sibling
+   *  controls on a filter row). */
+  inputClassName?: string;
   /** Debounce delay in ms. Defaults to 300. */
   debounceMs?: number;
 };
@@ -29,6 +32,7 @@ export function UrlSearchInput({
   initialValue,
   placeholder,
   className,
+  inputClassName,
   debounceMs = 300,
 }: Props) {
   const router = useRouter();
@@ -97,7 +101,7 @@ export function UrlSearchInput({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
-        className="pl-8 pr-8"
+        className={cn("pl-8 pr-8", inputClassName)}
       />
       {showSpinner ? (
         <span className="absolute right-2 top-1/2 -translate-y-1/2">

@@ -6,6 +6,8 @@ import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { loadActiveTicketCategories } from "@/lib/tickets/categories";
+import { loadActiveTicketTypes } from "@/lib/tickets/types";
 
 export async function generateMetadata() {
   const t = await getTranslations("tickets.createOnBehalf");
@@ -35,6 +37,17 @@ export default async function NewTicketPage() {
     ? (await listActiveOrganizations()).map((o) => ({ id: o.id, name: o.name }))
     : [];
 
+  const categories = (await loadActiveTicketCategories()).map((c) => ({
+    value: c.value,
+    label: c.label,
+  }));
+
+  const types = (await loadActiveTicketTypes()).map((tp) => ({
+    value: tp.value,
+    label: tp.label,
+    isDefault: tp.isDefault,
+  }));
+
   const t = await getTranslations("tickets.createOnBehalf");
 
   return (
@@ -51,7 +64,11 @@ export default async function NewTicketPage() {
           <CardTitle>{t("cardTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <CreateOnBehalfForm organizations={organizations} />
+          <CreateOnBehalfForm
+            organizations={organizations}
+            categories={categories}
+            types={types}
+          />
         </CardContent>
       </Card>
     </div>

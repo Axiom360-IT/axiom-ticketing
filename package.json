@@ -29,6 +29,9 @@
     "db:add-sla-breach-column": "tsx --env-file=.env.local src/lib/db/add-sla-breach-reminded-column.ts",
     "db:add-customer-followup-column": "tsx --env-file=.env.local src/lib/db/add-customer-followup-column.ts",
     "db:add-invoice-column": "tsx --env-file=.env.local src/lib/db/add-invoice-number-column.ts",
+    "db:add-csat-reviews": "tsx --env-file=.env.local src/lib/db/add-csat-reviews.ts",
+    "db:add-ticket-categories": "tsx --env-file=.env.local src/lib/db/add-ticket-categories.ts",
+    "db:add-ticket-types": "tsx --env-file=.env.local src/lib/db/add-ticket-types.ts",
     "db:harden-audit": "tsx --env-file=.env.local src/lib/db/apply-audit-hardening.ts",
     "db:reset-for-production": "tsx --env-file=.env.local src/lib/db/reset-for-production.ts",
     "db:list-users": "tsx --env-file=.env.local src/lib/db/list-users.ts"
@@ -41,6 +44,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.0.8",
+    "@tanstack/react-table": "^8.21.3",
     "@tiptap/extension-link": "^3.23.2",
     "@tiptap/pm": "^3.23.2",
     "@tiptap/react": "^3.23.2",

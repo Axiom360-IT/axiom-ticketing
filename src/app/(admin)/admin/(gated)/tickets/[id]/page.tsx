@@ -18,6 +18,7 @@ import {
   EscalatedBadge,
   PriorityBadge,
   StatusBadge,
+  TypeBadge,
 } from "@/components/tickets/badges";
 import { EscalateModal } from "@/components/tickets/escalate-modal";
 import {
@@ -37,6 +38,14 @@ import { listWorkLogsForTicket } from "@/app/actions/work-logs";
 import { listTicketCollaborators } from "@/app/actions/ticket-assignees";
 import { listActiveOrganizations } from "@/app/actions/organizations";
 import { listActiveParticipants } from "@/lib/tickets/participants";
+import { getLatestTicketReview } from "@/lib/tickets/reviews";
+import { TicketCategoryControl } from "@/components/tickets/ticket-category-control";
+import { TicketTypeControl } from "@/components/tickets/ticket-type-control";
+import {
+  getCategoryLabelMap,
+  loadActiveTicketCategories,
+} from "@/lib/tickets/categories";
+import { getTypeLabelMap, loadActiveTicketTypes } from "@/lib/tickets/types";
 import { approvedMessages } from "@/lib/messages/visibility";
 import { getAttachmentLimits } from "@/lib/storage/limits";
 import { can } from "@/lib/auth/can";
@@ -184,6 +193,18 @@ export default async function TicketDetailPage({
   const orgsForControl = canManageOrg ? await listActiveOrganizations() : [];
 
   const workLogEntries = await listWorkLogsForTicket(ticket.id);
+
+  const latestReview = await getLatestTicketReview(ticket.id);
+
+  const [categoryOptions, categoryLabelMap, typeOptions, typeLabelMap] =
+    await Promise.all([
+      loadActiveTicketCategories(),
+      getCategoryLabelMap(),
+      loadActiveTicketTypes(),
+      getTypeLabelMap(),
+    ]);
+  const categoryLabel = categoryLabelMap[ticket.category] ?? ticket.category;
+  const typeLabel = typeLabelMap[ticket.type] ?? ticket.type;
 
   const attachmentLimits = await getAttachmentLimits();
 
@@ -371,7 +392,8 @@ export default async function TicketDetailPage({
         <span>·</span>
         <StatusBadge status={ticket.status} />
         <PriorityBadge priority={ticket.priority} />
-        <CategoryBadge category={ticket.category} />
+        <TypeBadge type={ticket.type} label={typeLabel} />
+        <CategoryBadge category={ticket.category} label={categoryLabel} />
         <span>·</span>
         <span>
           {t("openedBy", {
@@ -538,7 +560,40 @@ export default async function TicketDetailPage({
               </CardHeader>
               <CardContent>
                 <ReopenButton ticketId={ticket.id} />
-                {csatLine ? (
+                {latestReview ? (
+                  <div className="mt-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                      <span aria-hidden="true" className="text-base">
+                        {latestReview.rating === "happy"
+                          ? "😊"
+                          : latestReview.rating === "neutral"
+                            ? "😐"
+                            : "☹️"}
+                      </span>
+                      <span>
+                        {latestReview.rating === "happy"
+                          ? tCsat("responseHappy")
+                          : latestReview.rating === "neutral"
+                            ? tCsat("responseNeutral")
+                            : tCsat("responseUnhappy")}
+                      </span>
+                      <span className="ml-auto text-xs font-normal text-zinc-500 dark:text-zinc-400">
+                        {formatter.dateTime(latestReview.createdAt, {
+                          dateStyle: "medium",
+                        })}
+                      </span>
+                    </div>
+                    {latestReview.comment ? (
+                      <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300 break-words whitespace-pre-wrap">
+                        {`“${latestReview.comment}”`}
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 text-xs italic text-zinc-500 dark:text-zinc-400">
+                        {tCsat("reviewNoComment")}
+                      </p>
+                    )}
+                  </div>
+                ) : csatLine ? (
                   <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                     {csatLine}
                   </p>
@@ -614,6 +669,57 @@ export default async function TicketDetailPage({
               </CardContent>
             </Card>
           ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {t("typeTitle")}
+                <InfoHint label={t("typeHelp")} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {canUpdate ? (
+                <TicketTypeControl
+                  ticketId={ticket.id}
+                  current={ticket.type}
+                  currentLabel={typeLabel}
+                  types={typeOptions.map((tp) => ({
+                    value: tp.value,
+                    label: tp.label,
+                  }))}
+                />
+              ) : (
+                <TypeBadge type={ticket.type} label={typeLabel} />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {t("categoryTitle")}
+                <InfoHint label={t("categoryHelp")} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {canUpdate ? (
+                <TicketCategoryControl
+                  ticketId={ticket.id}
+                  current={ticket.category}
+                  currentLabel={categoryLabel}
+                  categories={categoryOptions.map((c) => ({
+                    value: c.value,
+                    label: c.label,
+                  }))}
+                />
+              ) : (
+                <CategoryBadge
+                  category={ticket.category}
+                  label={categoryLabel}
+                />
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

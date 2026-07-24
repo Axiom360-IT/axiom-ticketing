@@ -9,6 +9,8 @@ import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import {
+  looksForwarded,
+  parseForwardedSender,
   shouldAcceptInbound,
   stripQuotesAndSignatures,
 } from "@/lib/email/inbound-filter";
@@ -37,6 +39,7 @@ import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { classifyStream } from "@/lib/tickets/stream";
+import { resolveTicketOrgForGuest } from "@/lib/tickets/org";
 import {
   attachmentStorageKey,
   uploadObject,
@@ -804,12 +807,49 @@ async function createTicketFromInbound(
       ? rawSubject.slice(0, SUBJECT_MAX)
       : "(no subject)";
 
-  // Stream classification mirrors the public createTicket path —
-  // role beats domain via `classifyStream` (a staff member emailing
-  // in from a gmail address still counts as internal).
-  const stream = await classifyStream(fromEmail);
+  // Effective customer. When a staff member FORWARDS a customer's email into
+  // the inbox, the envelope From is the forwarder — but the real requester is
+  // named in the forwarded "From:" line. Pull it out so the ticket is
+  // attributed and (below) org-matched to the actual customer, not whoever
+  // relayed it. Falls back to the envelope sender when not a parseable forward.
+  let customerEmail = fromEmail;
+  let customerName = fromName;
+  if (looksForwarded(payload.subject, payload.text ?? "")) {
+    const original = parseForwardedSender(payload.text);
+    if (original && original.email !== fromEmail) {
+      customerEmail = original.email;
+      customerName = original.name ?? original.email;
+    }
+  }
 
-  const ticketNumber = await generateTicketNumber();
+  // Resolve the organization from the (effective) customer's email domain —
+  // exactly like the public web form — so a ticket from a registered client
+  // domain is auto-linked to that org and its number carries the org's
+  // abbreviation instead of the default "AX-". Forwarded tickets resolve from
+  // the ORIGINAL sender's domain thanks to the extraction above.
+  const resolvedOrg = await resolveTicketOrgForGuest(customerEmail, null);
+
+  // Look up the CUSTOMER's own account (not the forwarder's) so a registered
+  // client gets their ticket linked to their portal profile.
+  const [customerUser] =
+    customerEmail === fromEmail
+      ? [knownUser]
+      : await db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(eq(users.email, customerEmail))
+          .limit(1);
+  const resolvedCustomerName = customerUser?.name ?? customerName;
+
+  // Stream classification mirrors the public createTicket path — role beats
+  // domain via `classifyStream` (a staff member emailing in from a gmail
+  // address still counts as internal). Classify the effective customer.
+  const stream = await classifyStream(customerEmail);
+
+  const ticketNumber = await generateTicketNumber(
+    resolvedOrg.prefix,
+    resolvedOrg.timeZone,
+  );
   const createdAt = new Date();
   const { responseDueAt, resolutionDueAt } = await computeDueTimesForNewTicket(
     { createdAt, priority: DEFAULT_INBOUND_PRIORITY },
@@ -827,9 +867,11 @@ async function createTicketFromInbound(
         status: "open",
         stream,
         origin: "email",
-        customerEmail: fromEmail,
-        customerName: knownUser?.name ?? fromName,
-        customerId: knownUser?.id ?? null,
+        organizationId: resolvedOrg.organizationId,
+        orgMatchStatus: resolvedOrg.matchStatus,
+        customerEmail,
+        customerName: resolvedCustomerName,
+        customerId: customerUser?.id ?? null,
         createdAt,
         responseDueAt,
         resolutionDueAt,
@@ -840,8 +882,8 @@ async function createTicketFromInbound(
       .insert(messages)
       .values({
         ticketId: t.id,
-        authorEmail: fromEmail,
-        authorName: knownUser?.name ?? fromName,
+        authorEmail: customerEmail,
+        authorName: resolvedCustomerName,
         authorType: "customer",
         body,
         channel: "email",
@@ -860,7 +902,10 @@ async function createTicketFromInbound(
       subject,
       stream,
       origin: "email",
-      knownCustomer: knownUser !== undefined,
+      knownCustomer: customerUser !== undefined,
+      organizationId: resolvedOrg.organizationId,
+      orgMatchStatus: resolvedOrg.matchStatus,
+      forwarded: customerEmail !== fromEmail,
     },
   });
 
@@ -873,16 +918,19 @@ async function createTicketFromInbound(
     const trackingUrl = ticketTrackingUrl({
       appUrl,
       ticketNumber,
-      customerEmail: fromEmail,
-      customerId: knownUser?.id ?? null,
+      customerEmail,
+      customerId: customerUser?.id ?? null,
     });
+    // Send the confirmation to the EFFECTIVE customer — for a forwarded email
+    // that's the original requester (looping them into their new ticket), not
+    // the staff member who relayed it.
     await sendEmail({
-      to: payload.fromEmail,
+      to: customerEmail,
       template: {
         template: "ticket_created",
         data: {
           ticketNumber,
-          customerName: knownUser?.name ?? fromName,
+          customerName: resolvedCustomerName,
           subject,
           trackingUrl,
         },
@@ -902,7 +950,7 @@ async function createTicketFromInbound(
     ticketNumber,
     ticketId,
     messageId,
-    customerName: knownUser?.name ?? fromName,
+    customerName: resolvedCustomerName,
     subject,
   };
 }

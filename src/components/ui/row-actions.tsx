@@ -89,7 +89,7 @@ export function RowActionIcons({ ariaLabelPrefix, view, edit, remove }: Props) {
         <IconButton
           onClick={view}
           label={`${t("view")} ${ariaLabelPrefix}`}
-          tone="neutral"
+          tone="view"
         >
           <Eye className="h-4 w-4" aria-hidden="true" />
         </IconButton>
@@ -98,7 +98,7 @@ export function RowActionIcons({ ariaLabelPrefix, view, edit, remove }: Props) {
         <IconButton
           onClick={edit}
           label={`${t("edit")} ${ariaLabelPrefix}`}
-          tone="neutral"
+          tone="edit"
         >
           <Pencil className="h-4 w-4" aria-hidden="true" />
         </IconButton>
@@ -127,15 +127,19 @@ function IconButton({
   children: React.ReactNode;
   onClick: () => void;
   label: string;
-  tone: "neutral" | "destructive" | "positive";
+  tone: "view" | "edit" | "destructive" | "positive";
   disabled?: boolean;
 }) {
+  // Icons are colored by default (not just on hover) so the action reads at a
+  // glance; hover adds a matching background tint.
   const toneClass =
     tone === "destructive"
-      ? "text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-950 dark:hover:text-red-400"
+      ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
       : tone === "positive"
-        ? "text-zinc-500 hover:bg-green-50 hover:text-green-600 dark:text-zinc-400 dark:hover:bg-green-950 dark:hover:text-green-400"
-        : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50";
+        ? "text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
+        : tone === "edit"
+          ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950"
+          : "text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950";
 
   return (
     <button

@@ -22,6 +22,11 @@ export const tickets = pgTable(
     subject: text("subject").notNull(),
     description: text("description").notNull(),
     category: text("category").notNull(),
+    // Work type (admin-managed via `ticket_types`): service_request | incident |
+    // change | project | alert (extensible). Defaults to the standard
+    // "service_request" so existing rows and untriaged tickets have a value.
+    // Validated in the app layer against the active types (like category).
+    type: text("type").notNull().default("service_request"),
     priority: text("priority").notNull(),
     status: text("status").notNull().default("open"),
     stream: text("stream").notNull(),
@@ -88,6 +93,13 @@ export const tickets = pgTable(
     // it tracks whatever roles exist; NULL when not escalated.
     escalationTargetRole: text("escalation_target_role"),
     csatResponse: text("csat_response"),
+    // Three-point emoji rating (CSAT feedback): happy | neutral | unhappy.
+    // happy/neutral close the ticket; unhappy reopens it. `csatResponse` is
+    // kept in lock-step as the binary state driver (happy/neutral -> satisfied,
+    // unhappy -> unsatisfied) so the atomic close/reopen guards and existing
+    // CSAT reports work unchanged; full per-review history + comments live in
+    // the `ticket_reviews` table.
+    csatRating: text("csat_rating"),
     csatRespondedAt: timestamp("csat_responded_at", { withTimezone: true }),
     responseDueAt: timestamp("response_due_at", { withTimezone: true }),
     resolutionDueAt: timestamp("resolution_due_at", { withTimezone: true }),
@@ -151,10 +163,10 @@ export const tickets = pgTable(
       foreignColumns: [t.id],
       name: "tickets_duplicate_of_id_fk",
     }).onDelete("set null"),
-    check(
-      "tickets_category_check",
-      sql`${t.category} IN ('hardware','software','network','access','other')`,
-    ),
+    // NOTE: `category` used to be CHECK-constrained to a fixed set. It's now
+    // an admin-managed list in `ticket_categories`, so the closed-set guard
+    // moved to the application layer (create/edit actions validate against the
+    // active categories). See src/lib/db/schema/ticket-categories.ts.
     check(
       "tickets_priority_check",
       sql`${t.priority} IN ('low','medium','high','critical')`,
@@ -179,6 +191,10 @@ export const tickets = pgTable(
     check(
       "tickets_csat_check",
       sql`${t.csatResponse} IS NULL OR ${t.csatResponse} IN ('satisfied','unsatisfied')`,
+    ),
+    check(
+      "tickets_csat_rating_check",
+      sql`${t.csatRating} IS NULL OR ${t.csatRating} IN ('happy','neutral','unhappy')`,
     ),
     check(
       "tickets_escalation_reason_check",

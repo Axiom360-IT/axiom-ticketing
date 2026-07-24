@@ -62,15 +62,12 @@ export default async function PortalTicketDetailPage({
         <CustomerMessageThread messages={messages} />
       ) : null}
 
-      {/* CSAT prompt — shown when the ticket is resolved AND the
-          customer hasn't given feedback yet. After they click Yes/No
-          the action revalidates and the prompt either becomes a recap
-          banner (csatResponse now set) or the ticket reopens. */}
-      {ticket.status === "resolved" || ticket.csatResponse ? (
-        <CustomerCsatPrompt
-          ticketId={ticket.id}
-          csatResponse={ticket.csatResponse}
-        />
+      {/* CSAT prompt — shown when the ticket is resolved AND the customer
+          hasn't rated it yet. After they pick an emoji the action revalidates
+          and the prompt either becomes a recap banner (csatRating now set) or
+          the ticket reopens. */}
+      {ticket.status === "resolved" || ticket.csatRating || ticket.csatResponse ? (
+        <CustomerCsatPrompt ticketId={ticket.id} csatRating={ticket.csatRating} />
       ) : null}
 
       {ticket.status === "closed" ? (

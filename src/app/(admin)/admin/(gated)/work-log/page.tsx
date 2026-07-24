@@ -1,31 +1,14 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  StickyActionsCell,
-  StickyActionsHead,
-} from "@/components/ui/row-actions";
 import {
   Pagination,
   pageWindow,
   parsePage,
   parsePageSize,
-  reservedTableHeight,
   takePage,
 } from "@/components/ui/pagination";
 import { AddTimeModal } from "@/components/work-logs/add-time-modal";
-import { TimesheetFilters } from "@/components/work-logs/timesheet-filters";
-import { TimesheetRowActions } from "@/components/work-logs/timesheet-row-actions";
-import { BillingBadge } from "@/components/tickets/badges";
+import { WorkLogTable } from "@/components/work-logs/work-log-table";
 import { getSessionUser } from "@/lib/auth/session";
 import { listAssignableTechnicians } from "@/lib/tickets/load";
 import {
@@ -35,12 +18,11 @@ import {
   listWorkLogs,
 } from "@/lib/work-logs/queries";
 
-// Filter query string contract:
-//   ?technician=<uuid>     (view_all only; ignored otherwise)
-//   &organization=<uuid>
-//   &service=onsite|remote
-//   &billable=yes|no|monthly_plan|project|rework
-//   &from=YYYY-MM-DD  &to=YYYY-MM-DD   (inclusive, on entry date)
+// Filter query string contract (all now driven by the column headers):
+//   ?technician=<uuid>  (view_all only)  &organization=<uuid>
+//   &service=onsite|remote  &billable=yes|no|monthly_plan|project|rework
+//   &from=YYYY-MM-DD  &to=YYYY-MM-DD  (inclusive, on entry date)
+//   &sort=<column>:<asc|desc>
 type SearchParams = Promise<{
   technician?: string;
   organization?: string;
@@ -48,17 +30,10 @@ type SearchParams = Promise<{
   billable?: string;
   from?: string;
   to?: string;
+  sort?: string;
   page?: string;
   pageSize?: string;
 }>;
-
-const BILLABLE_VALUES = [
-  "yes",
-  "no",
-  "monthly_plan",
-  "project",
-  "rework",
-] as const;
 
 function formatMinutes(total: number): string {
   const h = Math.floor(total / 60);
@@ -81,20 +56,9 @@ export default async function WorkLogPage({
   const canViewAll = user.permissions.has("worklog.view_all");
 
   const t = await getTranslations("timesheet");
-  const tWorkLog = await getTranslations("tickets.workLog");
-  const tBillable = await getTranslations("tickets.billable");
-  const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
 
   const sp = await searchParams;
-  const filters = {
-    technician: sp.technician?.trim() || "",
-    organization: sp.organization?.trim() || "",
-    service: sp.service?.trim() || "",
-    billable: sp.billable?.trim() || "",
-    from: sp.from?.trim() || "",
-    to: sp.to?.trim() || "",
-  };
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
@@ -109,12 +73,13 @@ export default async function WorkLogPage({
     listWorkLogs(
       user,
       {
-        technicianId: filters.technician || undefined,
-        organizationId: filters.organization || undefined,
-        serviceType: filters.service || undefined,
-        billable: filters.billable || undefined,
-        from: filters.from || undefined,
-        to: filters.to || undefined,
+        technicianId: sp.technician?.trim() || undefined,
+        organizationId: sp.organization?.trim() || undefined,
+        serviceType: sp.service?.trim() || undefined,
+        billable: sp.billable?.trim() || undefined,
+        from: sp.from?.trim() || undefined,
+        to: sp.to?.trim() || undefined,
+        sort: sp.sort,
       },
       { limit, offset },
     ),
@@ -128,11 +93,9 @@ export default async function WorkLogPage({
 
   const { items: rows } = takePage(rawRows, pageSize);
 
-  // An entry is editable only by its ORIGINAL author (req 3.5 / 4.6 — frozen
-  // history: not even an admin or the new owner may edit someone else's entry),
-  // and only while that author still owns the ticket (current assignee or merge
-  // co-assignee). Once reassigned away, the author's own entry becomes
-  // read-only here too — matching the server-side gate.
+  // An entry is editable only by its ORIGINAL author, and only while that
+  // author still owns the ticket (current assignee or merge co-assignee) —
+  // frozen history, matching the server-side gate. Precomputed here.
   const collaboratorSet = new Set(collaboratorTicketIds);
   const viewerId = user.id;
   function canManageRow(
@@ -141,20 +104,27 @@ export default async function WorkLogPage({
     technicianId: string | null,
   ): boolean {
     if (technicianId !== viewerId) return false;
-    // Author-only is not enough — the author must still be on the ticket. This
-    // applies to EVERY role (a Super Admin can't edit their own entry once
-    // they've been reassigned away), matching the server-side guard.
     return assignedToId === viewerId || collaboratorSet.has(ticketId);
   }
 
-  function billableLabel(value: string | null): string {
-    if (!value) return "—";
-    return (BILLABLE_VALUES as readonly string[]).includes(value)
-      ? tBillable(value as (typeof BILLABLE_VALUES)[number])
-      : value;
-  }
-
-  const colSpan = canViewAll ? 8 : 7;
+  const tableRows = rows.map((row) => ({
+    id: row.id,
+    ticketId: row.ticketId,
+    ticketNumber: row.ticketNumber,
+    organizationName: row.organizationName,
+    technicianName: row.technicianName,
+    description: row.description,
+    minutes: row.minutes,
+    serviceType: row.serviceType,
+    billable: row.billable,
+    invoiceNumber: row.invoiceNumber,
+    createdLabel: formatter.dateTime(row.createdAt, { dateStyle: "medium" }),
+    canManage: canManageRow(
+      row.ticketAssignedToId,
+      row.ticketId,
+      row.technicianId,
+    ),
+  }));
 
   return (
     <div className="space-y-5">
@@ -168,37 +138,6 @@ export default async function WorkLogPage({
         <AddTimeModal tickets={loggable} />
       </div>
 
-      <TimesheetFilters
-        canViewAll={canViewAll}
-        technicianOptions={technicians.map((tech) => ({
-          value: tech.id,
-          label: tech.name,
-        }))}
-        organizationOptions={organizations.map((o) => ({
-          value: o.id,
-          label: o.name,
-        }))}
-        serviceOptions={[
-          { value: "remote", label: tWorkLog("serviceRemote") },
-          { value: "onsite", label: tWorkLog("serviceOnsite") },
-        ]}
-        billableOptions={BILLABLE_VALUES.map((v) => ({
-          value: v,
-          label: tBillable(v),
-        }))}
-        initial={filters}
-        labels={{
-          technician: t("filters.technician"),
-          organization: t("filters.organization"),
-          service: t("filters.service"),
-          billable: t("filters.billable"),
-          from: t("filters.from"),
-          to: t("filters.to"),
-          clear: t("filters.clear"),
-          any: t("filters.any"),
-        }}
-      />
-
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
           {t("totalLabel")}
@@ -208,125 +147,32 @@ export default async function WorkLogPage({
         </span>
       </div>
 
-      <Card>
-        <CardContent
-          className="p-0"
-          style={{ minHeight: reservedTableHeight(pageSize, totalCount) }}
-        >
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">{t("columns.ticket")}</TableHead>
-                  {canViewAll ? (
-                    <TableHead scope="col">
-                      {t("columns.technician")}
-                    </TableHead>
-                  ) : null}
-                  <TableHead scope="col">{t("columns.description")}</TableHead>
-                  <TableHead scope="col">{t("columns.time")}</TableHead>
-                  <TableHead scope="col">{t("columns.service")}</TableHead>
-                  <TableHead scope="col">{t("columns.billable")}</TableHead>
-                  <TableHead scope="col">{t("columns.invoice")}</TableHead>
-                  <TableHead scope="col">{t("columns.date")}</TableHead>
-                  <StickyActionsHead>
-                    <span className="sr-only">{tCommon("actions")}</span>
-                  </StickyActionsHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={colSpan + 1}
-                      className="py-10 text-center text-sm text-zinc-500 dark:text-zinc-400"
-                    >
-                      {t("empty")}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <Link
-                          href={`/admin/tickets/${row.ticketId}`}
-                          className="font-mono text-blue-600 hover:underline dark:text-blue-400"
-                        >
-                          {row.ticketNumber}
-                        </Link>
-                        {row.organizationName ? (
-                          <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-                            {row.organizationName}
-                          </span>
-                        ) : null}
-                      </TableCell>
-                      {canViewAll ? (
-                        <TableCell>
-                          {row.technicianName ?? tWorkLog("unknownTech")}
-                        </TableCell>
-                      ) : null}
-                      <TableCell className="max-w-xs">
-                        <span className="block truncate" title={row.description}>
-                          {row.description}
-                        </span>
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatMinutes(row.minutes)}
-                      </TableCell>
-                      <TableCell>
-                        {row.serviceType === "onsite"
-                          ? tWorkLog("serviceOnsite")
-                          : tWorkLog("serviceRemote")}
-                      </TableCell>
-                      <TableCell>{billableLabel(row.billable)}</TableCell>
-                      <TableCell>
-                        <BillingBadge
-                          billable={row.billable}
-                          invoiceNumber={row.invoiceNumber}
-                        />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                        {formatter.dateTime(row.createdAt, {
-                          dateStyle: "medium",
-                        })}
-                      </TableCell>
-                      <StickyActionsCell>
-                        <TimesheetRowActions
-                          canManage={canManageRow(
-                            row.ticketAssignedToId,
-                            row.ticketId,
-                            row.technicianId,
-                          )}
-                          entry={{
-                            id: row.id,
-                            description: row.description,
-                            minutes: row.minutes,
-                            serviceType: row.serviceType,
-                            ticketNumber: row.ticketNumber,
-                          }}
-                        />
-                      </StickyActionsCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <WorkLogTable
+        data={tableRows}
+        totalItems={totalCount}
+        pageSize={pageSize}
+        emptyMessage={t("empty")}
+        canViewAll={canViewAll}
+        technicianOptions={technicians.map((tech) => ({
+          value: tech.id,
+          label: tech.name,
+        }))}
+        organizationOptions={organizations.map((o) => ({
+          value: o.id,
+          label: o.name,
+        }))}
+      />
 
       <Pagination
         pathname="/admin/work-log"
         page={page}
         pageSize={pageSize}
         totalItems={totalCount}
-        searchParams={
-          new URLSearchParams(
-            Object.entries(sp).filter(
-              ([, v]) => typeof v === "string" && v.length > 0,
-            ) as [string, string][],
-          )
-        }
+        searchParams={new URLSearchParams(
+          Object.entries(sp).filter(
+            ([, v]) => typeof v === "string" && v.length > 0,
+          ) as [string, string][],
+        )}
       />
     </div>
   );

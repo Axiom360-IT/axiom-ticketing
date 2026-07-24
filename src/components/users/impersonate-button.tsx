@@ -22,7 +22,9 @@ export function ImpersonateButton({ userId }: { userId: string }) {
           setError(res.error);
           return;
         }
-        router.push("/admin");
+        // Land on the impersonated user's OWN home (portal for customers,
+        // console for staff) so the admin sees their real experience.
+        router.push(res.redirectTo);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : t("genericError"));

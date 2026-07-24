@@ -36,6 +36,9 @@ type Props = {
   showAny?: boolean;
   /** Width class for the trigger; defaults to a sensible auto width. */
   triggerClassName?: string;
+  /** Hide the visible label (keeps it as the trigger's aria-label). Use when
+   *  the trigger text already conveys the filter, e.g. a single-row toolbar. */
+  hideLabel?: boolean;
 };
 
 export function UrlFilterSelect({
@@ -46,6 +49,7 @@ export function UrlFilterSelect({
   anyLabel = "Any",
   showAny = true,
   triggerClassName,
+  hideLabel = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -70,10 +74,12 @@ export function UrlFilterSelect({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-xs text-zinc-500 dark:text-zinc-400 inline-flex items-center gap-1.5">
-        {label}
-        {pending ? <Spinner size="sm" label={`Updating ${label}`} /> : null}
-      </label>
+      {hideLabel ? null : (
+        <label className="text-xs text-zinc-500 dark:text-zinc-400 inline-flex items-center gap-1.5">
+          {label}
+          {pending ? <Spinner size="sm" label={`Updating ${label}`} /> : null}
+        </label>
+      )}
       <Select
         // SelectItem disallows empty value="" — use a distinct sentinel
         // for the "any" choice and translate at the boundary.

@@ -22,6 +22,8 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { type ExportDataset, parseExportFormat } from "@/lib/export/dataset";
 import { exportResponse } from "@/lib/export/respond";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
+import { loadAllTicketCategories } from "@/lib/tickets/categories";
+import { loadAllTicketTypes } from "@/lib/tickets/types";
 import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +35,6 @@ const EXPORT_CAP = 5000;
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
-const CATEGORIES = ["hardware", "software", "network", "access", "other"] as const;
 const STREAMS = ["internal", "external"] as const;
 
 // Friendly labels for the raw billable category (no code-y underscores in the
@@ -82,9 +83,21 @@ export async function GET(request: Request): Promise<Response> {
       : sp.get("view") === "all"
         ? "all"
         : "active";
+  // Categories are admin-managed; allow filtering by any known value (incl.
+  // retired ones) and resolve labels for the export cells.
+  const [allCategories, allTypes] = await Promise.all([
+    loadAllTicketCategories(),
+    loadAllTicketTypes(),
+  ]);
+  const categoryValues = allCategories.map((c) => c.value);
+  const categoryLabelMap = new Map(allCategories.map((c) => [c.value, c.label]));
+  const typeValues = allTypes.map((t) => t.value);
+  const typeLabelMap = new Map(allTypes.map((t) => [t.value, t.label]));
+
   const fStatus = enumCsv(sp.get("status"), STATUSES);
   const fPriority = enumCsv(sp.get("priority"), PRIORITIES);
-  const fCategory = enumCsv(sp.get("category"), CATEGORIES);
+  const fCategory = enumCsv(sp.get("category"), categoryValues);
+  const fType = enumCsv(sp.get("type"), typeValues);
   const fStream = enumCsv(sp.get("stream"), STREAMS);
   const fAssignee = sp.get("assignee")?.trim() || undefined;
   const fEscalated = sp.get("escalated") === "1";
@@ -117,6 +130,7 @@ export async function GET(request: Request): Promise<Response> {
   }
   if (fPriority) conditions.push(inArray(tickets.priority, fPriority));
   if (fCategory) conditions.push(inArray(tickets.category, fCategory));
+  if (fType) conditions.push(inArray(tickets.type, fType));
   if (fStream) conditions.push(inArray(tickets.stream, fStream));
   if (fAssignee === "unassigned") conditions.push(isNull(tickets.assignedToId));
   else if (fAssignee) conditions.push(eq(tickets.assignedToId, fAssignee));
@@ -145,6 +159,7 @@ export async function GET(request: Request): Promise<Response> {
       status: tickets.status,
       priority: tickets.priority,
       category: tickets.category,
+      type: tickets.type,
       stream: tickets.stream,
       isEscalated: tickets.isEscalated,
       billable: tickets.billable,
@@ -187,6 +202,7 @@ export async function GET(request: Request): Promise<Response> {
           "Subject",
           "Status",
           "Priority",
+          "Type",
           "Category",
           "Stream",
           "Billable",
@@ -203,7 +219,8 @@ export async function GET(request: Request): Promise<Response> {
           r.isEscalated ? `${r.subject} (escalated)` : r.subject,
           r.status,
           r.priority,
-          r.category,
+          typeLabelMap.get(r.type) ?? r.type,
+          categoryLabelMap.get(r.category) ?? r.category,
           r.stream,
           r.billable ? (BILLABLE_LABEL[r.billable] ?? r.billable) : "",
           r.invoiceNumber ?? "",

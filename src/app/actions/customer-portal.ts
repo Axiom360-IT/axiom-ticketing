@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -32,10 +32,11 @@ import {
   htmlToPlainText,
   sanitizeMessageHtml,
 } from "@/lib/messages/sanitize";
-import { verifyGuestToken } from "@/lib/tokens";
+import { verifyCsatAccessToken, verifyGuestToken } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
-import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
+import type { CsatRating } from "@/lib/tickets/csat";
+import { recordCsatResponse } from "@/lib/tickets/csat-apply";
 
 const emailSchema = z.string().trim().toLowerCase().email();
 const nameSchema = z.string().trim().min(1).max(120);
@@ -919,10 +920,9 @@ export async function customerCreateTicket(
 // is verified against `tickets.customer_id`.
 
 const csatSubmitSchema = z.object({
-  response: z.enum(["satisfied", "unsatisfied"]),
-  // Optional explanation when the customer says "not fixed". Posted as a
-  // message on the ticket so the assigned tech has the customer's words
-  // to act on (not just "reopened, no context").
+  rating: z.enum(["happy", "neutral", "unhappy"]),
+  // Free-text feedback. Optional for happy/neutral; the shared
+  // `recordCsatResponse` enforces it as MANDATORY for `unhappy`.
   comment: z.string().trim().max(2000).optional(),
 });
 
@@ -932,10 +932,10 @@ export type CustomerCsatResult =
 
 export async function submitCsatFromPortal(
   ticketId: string,
-  response: "satisfied" | "unsatisfied",
+  rating: CsatRating,
   comment?: string,
 ): Promise<CustomerCsatResult> {
-  const parsed = csatSubmitSchema.safeParse({ response, comment });
+  const parsed = csatSubmitSchema.safeParse({ rating, comment });
   if (!parsed.success) {
     return {
       ok: false,
@@ -955,6 +955,7 @@ export async function submitCsatFromPortal(
       status: tickets.status,
       assignedToId: tickets.assignedToId,
       customerId: tickets.customerId,
+      customerEmail: tickets.customerEmail,
       customerName: tickets.customerName,
       csatResponse: tickets.csatResponse,
       subject: tickets.subject,
@@ -985,178 +986,127 @@ export async function submitCsatFromPortal(
     .limit(1);
   if (!profile) throw new NotFoundError();
 
-  const now = new Date();
-  let newStatus: "closed" | "open" | "in_progress";
+  // All the shared logic — atomic close/reopen guard, the append-only
+  // ticket_reviews record with technician snapshot, the audit entry, the
+  // thread comment on reopen, and the staff notifications — lives in
+  // recordCsatResponse so the portal and the email link behave identically.
+  const result = await recordCsatResponse({
+    ticket: {
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      status: ticket.status,
+      assignedToId: ticket.assignedToId,
+      customerId: ticket.customerId,
+      customerEmail: ticket.customerEmail,
+      customerName: ticket.customerName,
+      subject: ticket.subject,
+    },
+    rating: parsed.data.rating,
+    comment: parsed.data.comment,
+    respondent: { id: user.id, email: profile.email, name: profile.name },
+    via: "portal",
+    actorId: user.id,
+  });
 
-  if (parsed.data.response === "satisfied") {
-    newStatus = "closed";
-    // Atomic guard (mirrors the email-link route): only close if the ticket is
-    // still resolved and unanswered, so a rapid double-submit can't race a
-    // reopen and fire both a "closed" and "reopened" email.
-    const won = await db
-      .update(tickets)
-      .set({
-        csatResponse: "satisfied",
-        csatRespondedAt: now,
-        status: "closed",
-        closedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(tickets.id, ticket.id),
-          eq(tickets.status, "resolved"),
-          isNull(tickets.csatResponse),
-        ),
-      )
-      .returning({ id: tickets.id });
-    if (won.length === 0) {
-      return {
-        ok: false,
-        error: "You've already given feedback on this ticket.",
-      };
-    }
-    await audit({
-      actorId: user.id,
-      action: "ticket.csat.satisfied",
-      targetType: "ticket",
-      targetId: ticket.ticketNumber,
-      before: { status: "resolved" },
-      after: { status: "closed", csatResponse: "satisfied", source: "portal" },
-    });
-
-    // Staff oversight notification that the ticket closed.
-    try {
-      await dispatchTicketClosedStaff({
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticketNumber,
-        subject: ticket.subject,
-        reason: "csat",
-        appUrl: getAppUrl(),
-      });
-    } catch (err) {
-      console.error("[customerSubmitCsat] staff close notification failed:", err);
-    }
-  } else {
-    // Unsatisfied → reopen. If still assigned, go to in_progress;
-    // otherwise back to open. Matches the email-link route handler.
-    newStatus = ticket.assignedToId ? "in_progress" : "open";
-
-    const trimmedComment = parsed.data.comment?.trim() ?? "";
-
-    // Atomic guard (mirrors the email-link route): the conditional update only
-    // matches if the ticket is still resolved and unanswered, so the loser of a
-    // race reopens nothing and posts no comment.
-    const won = await transactional(async (tx) => {
-      const updated = await tx
-        .update(tickets)
-        .set({
-          csatResponse: "unsatisfied",
-          csatRespondedAt: now,
-          status: newStatus,
-          resolvedAt: null,
-          reopenedCount: sql`${tickets.reopenedCount} + 1`,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(tickets.id, ticket.id),
-            eq(tickets.status, "resolved"),
-            isNull(tickets.csatResponse),
-          ),
-        )
-        .returning({ id: tickets.id });
-      if (updated.length === 0) return false;
-
-      // Persist the customer's "still not fixed" comment as a real
-      // message on the thread so the assigned tech sees it in context.
-      // Stored as plain text — the textarea is a single-line input, not
-      // the rich composer.
-      if (trimmedComment.length > 0) {
-        await tx.insert(messages).values({
-          ticketId: ticket.id,
-          authorId: user.id,
-          authorEmail: profile.email,
-          authorName: profile.name,
-          authorType: "customer",
-          body: trimmedComment,
-          bodyFormat: "text",
-          channel: "portal",
-        });
-      }
-      return true;
-    });
-
-    if (!won) {
-      return {
-        ok: false,
-        error: "You've already given feedback on this ticket.",
-      };
-    }
-
-    await audit({
-      actorId: user.id,
-      action: "ticket.csat.unsatisfied",
-      targetType: "ticket",
-      targetId: ticket.ticketNumber,
-      before: { status: "resolved" },
-      after: {
-        status: newStatus,
-        csatResponse: "unsatisfied",
-        source: "portal",
-        commentLength: trimmedComment.length,
-      },
-    });
-
-    // Notify the assigned tech + Coordinator role that the customer
-    // pushed back. Goes through the dispatcher so per-user
-    // email/SMS/bell prefs are honored.
-    try {
-      const appUrl = getAppUrl();
-      const adminTicketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.csat_unsatisfied",
-          recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-          recipientRoles: ["Coordinator"],
-          ticketId: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "csat_unsatisfied_staff",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                subject: ticket.subject,
-                customerName: profile.name,
-                ticketUrl: adminTicketUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-          },
-          sms: {
-            template: {
-              template: "csat_unsatisfied_staff",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                ticketUrl: adminTicketUrl,
-              },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { customerName: profile.name },
-            linkUrl: `/admin/tickets/${ticket.id}`,
-          },
-        },
-      });
-    } catch (err) {
-      console.error("[submitCsatFromPortal] dispatch failed:", err);
-    }
+  if (!result.ok) {
+    const error =
+      result.reason === "comment_required"
+        ? "Please tell us what went wrong so we can put it right."
+        : result.reason === "not_resolved"
+          ? "Feedback is only available on resolved tickets."
+          : "You've already given feedback on this ticket.";
+    return { ok: false, error };
   }
 
   revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
   revalidatePath("/portal/tickets");
   revalidatePath(`/admin/tickets/${ticket.id}`);
-  return { ok: true, newStatus };
+  return { ok: true, newStatus: result.newStatus };
+}
+
+// ── Token-authenticated CSAT submission (hosted email-link page) ──────
+//
+// Backs the `/csat` feedback page reached from the resolution email. The
+// ticket-scoped access token authorizes the submit — no session required — so a
+// guest can rate + comment just like an authenticated customer. Delegates to
+// the same `recordCsatResponse` as the portal path.
+
+export async function submitCsatByToken(
+  token: string,
+  ticketNumber: string,
+  rating: CsatRating,
+  comment?: string,
+): Promise<CustomerCsatResult> {
+  const parsed = csatSubmitSchema.safeParse({ rating, comment });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid response.",
+    };
+  }
+
+  if (!verifyCsatAccessToken(token, ticketNumber)) {
+    return { ok: false, error: "This feedback link is invalid or has expired." };
+  }
+
+  const [ticket] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      status: tickets.status,
+      assignedToId: tickets.assignedToId,
+      customerId: tickets.customerId,
+      customerEmail: tickets.customerEmail,
+      customerName: tickets.customerName,
+      csatResponse: tickets.csatResponse,
+      subject: tickets.subject,
+    })
+    .from(tickets)
+    .where(eq(tickets.ticketNumber, ticketNumber))
+    .limit(1);
+
+  if (!ticket) {
+    return { ok: false, error: "Ticket not found." };
+  }
+  if (ticket.csatResponse) {
+    return { ok: false, error: "You've already given feedback on this ticket." };
+  }
+
+  const result = await recordCsatResponse({
+    ticket: {
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      status: ticket.status,
+      assignedToId: ticket.assignedToId,
+      customerId: ticket.customerId,
+      customerEmail: ticket.customerEmail,
+      customerName: ticket.customerName,
+      subject: ticket.subject,
+    },
+    rating: parsed.data.rating,
+    // The email responder is the ticket's customer; attribute by email +
+    // (when the ticket is owned by a registered account) their user id.
+    respondent: {
+      id: ticket.customerId,
+      email: ticket.customerEmail,
+      name: ticket.customerName,
+    },
+    comment: parsed.data.comment,
+    via: "email",
+    actorId: null,
+  });
+
+  if (!result.ok) {
+    const error =
+      result.reason === "comment_required"
+        ? "Please tell us what went wrong so we can put it right."
+        : result.reason === "not_resolved"
+          ? "Feedback is only available on resolved tickets."
+          : "You've already given feedback on this ticket.";
+    return { ok: false, error };
+  }
+
+  revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
+  revalidatePath(`/admin/tickets/${ticket.id}`);
+  return { ok: true, newStatus: result.newStatus };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type ParsedInbound,
+  parseForwardedSender,
   shouldAcceptInbound,
   stripQuotesAndSignatures,
 } from "./inbound-filter";
@@ -321,5 +322,86 @@ On Mon, Jan 8, 2026, Priya wrote:
     expect(
       stripQuotesAndSignatures(text, { subject: "Re: Your ticket" }),
     ).toBe("Yes please proceed.");
+  });
+});
+
+describe("parseForwardedSender", () => {
+  it("parses a Gmail-style forwarded block", () => {
+    const text = `FYI, please handle this for the client.
+
+---------- Forwarded message ---------
+From: Jane Client <jane@acme-corp.com>
+Date: Mon, Jul 7, 2026 at 9:00 AM
+Subject: Printer down
+To: Support Tech <tech@axiom360.it>
+
+Our office printer is completely dead.`;
+    expect(parseForwardedSender(text)).toEqual({
+      email: "jane@acme-corp.com",
+      name: "Jane Client",
+    });
+  });
+
+  it("parses an Outlook-style forwarded block (no marker line)", () => {
+    const text = `Please action this.
+
+From: Customer <c@client.com>
+Sent: Monday, July 7, 2026 9:00 AM
+To: Tech <tech@axiom360.it>
+Subject: Printer down
+
+The printer is completely dead.`;
+    expect(parseForwardedSender(text)).toEqual({
+      email: "c@client.com",
+      name: "Customer",
+    });
+  });
+
+  it("parses an Apple Mail 'Begin forwarded message' block", () => {
+    const text = `Passing this along.
+
+Begin forwarded message:
+
+From: "Bob Jones" <bob@widgets.io>
+Date: 7 July 2026
+Subject: Access request
+
+I need VPN access.`;
+    expect(parseForwardedSender(text)).toEqual({
+      email: "bob@widgets.io",
+      name: "Bob Jones",
+    });
+  });
+
+  it("handles a bare email with no display name", () => {
+    const text = `---------- Forwarded message ---------
+From: dave@example.org
+Subject: Help`;
+    expect(parseForwardedSender(text)).toEqual({
+      email: "dave@example.org",
+      name: null,
+    });
+  });
+
+  it("lower-cases the parsed address", () => {
+    const text = `Begin forwarded message:
+From: Jane <Jane.Client@Acme-Corp.COM>`;
+    expect(parseForwardedSender(text)?.email).toBe("jane.client@acme-corp.com");
+  });
+
+  it("returns null when there is no forwarded From line", () => {
+    expect(parseForwardedSender("Just a normal note, no forward.")).toBeNull();
+    expect(parseForwardedSender("")).toBeNull();
+    expect(parseForwardedSender(null)).toBeNull();
+  });
+
+  it("prefers the From after the forward marker over an earlier one", () => {
+    // A forwarder's own signature could contain a 'From:' — the marker wins.
+    const text = `From: tech@axiom360.it note in my signature
+
+---------- Forwarded message ---------
+From: Real Client <real@client.com>
+Subject: Issue`;
+    expect(parseForwardedSender(text)?.email).toBe("real@client.com");
   });
 });

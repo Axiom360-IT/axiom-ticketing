@@ -2,33 +2,20 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  StickyActionsCell,
-  StickyActionsHead,
-} from "@/components/ui/row-actions";
 import {
   Pagination,
   parsePage,
   parsePageSize,
-  reservedTableHeight,
 } from "@/components/ui/pagination";
 import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
 import { ExportMenu } from "@/components/shared/export-menu";
-import { UserRowActions } from "@/components/users/user-row-actions";
+import { UsersTable } from "@/components/users/users-table";
 import { listAllRoles, listUsersForAdmin } from "@/app/actions/users";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { parseSort, sortRows } from "@/lib/data-table";
 import { cn } from "@/lib/utils";
 
 type Audience = "internal" | "external";
@@ -38,6 +25,7 @@ type SearchParams = Promise<{
   roleId?: string;
   status?: "active" | "inactive" | "all";
   tab?: Audience;
+  sort?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -55,7 +43,6 @@ export default async function UsersListPage({
   }
 
   const t = await getTranslations("users.list");
-  const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
 
   const sp = await searchParams;
@@ -63,14 +50,16 @@ export default async function UsersListPage({
   const audience: Audience = tab === "external" ? "external" : "internal";
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
+  const sort = parseSort(sp.sort, [
+    "name",
+    "email",
+    "roles",
+    "status",
+    "createdAt",
+  ]);
 
-  // For row-action ICON visibility we use the raw permission grant —
-  // the per-target check (descendant hierarchy, last-active-Super-Admin,
-  // self-action) runs server-side when the user clicks. Showing the
-  // icon for users you ultimately can't edit gives a confusing "click
-  // → forbidden" — but the alternative is N can() calls per page render
-  // (one per row). The dialog shows the actionable error if the action
-  // is refused.
+  // For row-action ICON visibility we use the raw permission grant — the
+  // per-target check runs server-side when the user clicks.
   const canEdit = user.permissions.has("users.update");
   const canDeactivate = user.permissions.has("users.deactivate");
   const canReactivate = user.permissions.has("users.reactivate");
@@ -81,13 +70,20 @@ export default async function UsersListPage({
     can(user, "users.create", { type: "global" }, productionContext),
   ]);
 
-  // listUsersForAdmin filters in JS (audience + role + query) — paginate
-  // here on the post-filter list. Acceptable at small org scale; if the
-  // user table grows beyond a few thousand active rows, push filters
-  // into SQL and switch to LIMIT/OFFSET in the helper.
-  const totalItems = allRows.length;
+  // listUsersForAdmin filters in JS — sort + paginate the post-filter list.
+  const sorted = sortRows(allRows, sort, {
+    name: (u) => u.name.toLowerCase(),
+    email: (u) => u.email.toLowerCase(),
+    roles: (u) => u.roles.map((r) => r.name).join(", ").toLowerCase(),
+    status: (u) => (u.isActive ? 1 : 0),
+    createdAt: (u) => u.createdAt.getTime(),
+  });
+  const totalItems = sorted.length;
   const offset = (page - 1) * pageSize;
-  const rows = allRows.slice(offset, offset + pageSize);
+  const rows = sorted.slice(offset, offset + pageSize).map((u) => ({
+    ...u,
+    createdLabel: formatter.dateTime(u.createdAt, { dateStyle: "medium" }),
+  }));
 
   function tabHref(target: Audience): string {
     const params = new URLSearchParams();
@@ -145,6 +141,7 @@ export default async function UsersListPage({
         {audience === "internal" ? t("tabHintInternal") : t("tabHintExternal")}
       </p>
 
+      {/* Search + status scope. The role filter lives in the Roles column. */}
       <div className="flex flex-wrap gap-2 items-end">
         <div className="flex-1 min-w-[14rem]">
           <UrlSearchInput
@@ -153,22 +150,9 @@ export default async function UsersListPage({
             className="max-w-md"
           />
         </div>
-
-        <UrlFilterSelect
-          name="roleId"
-          label={t("filterRole")}
-          value={roleId ?? ""}
-          anyLabel={t("filterRoleAll")}
-          options={roles.map((r) => ({ value: r.id, label: r.name }))}
-          triggerClassName="w-44"
-        />
-
         <UrlFilterSelect
           name="status"
           label={t("filterStatus")}
-          // Empty string is the "default = active" UI sentinel here, but
-          // the URL needs explicit values to round-trip. Always pass the
-          // current value through; never blank.
           value={status}
           showAny={false}
           options={[
@@ -180,84 +164,17 @@ export default async function UsersListPage({
         />
       </div>
 
-      <Card className="p-0">
-        <CardContent
-          className="p-0"
-          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
-        >
-          {rows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t("empty")}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="px-4">{t("columns.name")}</TableHead>
-                  <TableHead>{t("columns.email")}</TableHead>
-                  <TableHead>{t("columns.roles")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
-                  <TableHead>{t("columns.createdAt")}</TableHead>
-                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="px-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/admin/users/${u.id}`}
-                          className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
-                        >
-                          {u.name}
-                        </Link>
-                        {u.id === user.id ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900">
-                            {t("selfBadge")}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-zinc-600 dark:text-zinc-300">
-                      {u.email}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {u.roles.length > 0 ? (
-                        <span>
-                          {u.roles.map((r) => r.name).join(", ")}
-                        </span>
-                      ) : (
-                        <span className="text-zinc-400">{t("noRoles")}</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        active={u.isActive}
-                        tActive={t("filterStatusActive")}
-                        tInactive={t("filterStatusInactive")}
-                      />
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatter.dateTime(u.createdAt, { dateStyle: "medium" })}
-                    </TableCell>
-                    <StickyActionsCell>
-                      <UserRowActions
-                        user={u}
-                        isSelf={u.id === user.id}
-                        canEdit={canEdit}
-                        canDeactivate={canDeactivate}
-                        canReactivate={canReactivate}
-                        allRoles={roles}
-                      />
-                    </StickyActionsCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <UsersTable
+        data={rows}
+        totalItems={totalItems}
+        pageSize={pageSize}
+        emptyMessage={t("empty")}
+        currentUserId={user.id}
+        allRoles={roles}
+        canEdit={canEdit}
+        canDeactivate={canDeactivate}
+        canReactivate={canReactivate}
+      />
 
       <Pagination
         pathname="/admin/users"
@@ -298,26 +215,3 @@ function TabLink({
     </Link>
   );
 }
-
-function StatusBadge({
-  active,
-  tActive,
-  tInactive,
-}: {
-  active: boolean;
-  tActive: string;
-  tInactive: string;
-}) {
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
-        active
-          ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900"
-          : "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-400 dark:border-zinc-800"
-      }`}
-    >
-      {active ? tActive : tInactive}
-    </span>
-  );
-}
-

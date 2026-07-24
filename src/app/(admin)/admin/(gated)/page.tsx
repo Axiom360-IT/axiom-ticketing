@@ -58,6 +58,7 @@ import {
   loadPlanWatch,
   type PlanWatch as PlanWatchData,
 } from "@/lib/billing/plan-watch";
+import { loadDashboardCsat } from "@/lib/reports/queries";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/auth/permissions";
 
@@ -211,7 +212,7 @@ export default async function AdminLanding() {
   // permission (organizations.view, which no Technician role holds).
   const canViewOrgs = user.permissions.has("organizations.view");
 
-  const [stats, chart, myQueue, slaBoard, escalations, triage, planWatch] =
+  const [stats, chart, myQueue, slaBoard, escalations, triage, planWatch, csat] =
     await Promise.all([
       strictTech ? Promise.resolve(null) : getStats(user.permissions),
       strictTech ? Promise.resolve(null) : getChartData(user.permissions),
@@ -224,6 +225,11 @@ export default async function AdminLanding() {
         ? loadTriagePanel(user, canModerate, canTriageOrgs)
         : Promise.resolve(null),
       !strictTech && canViewOrgs ? loadPlanWatch() : Promise.resolve(null),
+      // CSAT summary is an oversight metric — shown to non-strict-tech viewers
+      // who can see tickets, hidden (below) until there's at least one response.
+      !strictTech && canViewTickets
+        ? loadDashboardCsat()
+        : Promise.resolve(null),
     ]);
 
   // My Queue is a personal work surface: always shown to a strict Technician
@@ -386,6 +392,100 @@ export default async function AdminLanding() {
             icon={CircleCheck}
             tone="emerald"
           />
+        </section>
+      ) : null}
+
+      {/* ── Customer satisfaction (hidden until there's feedback) ── */}
+      {csat && csat.breakdown.total > 0 ? (
+        <section aria-label={t("csatLabel")}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("csatTitle")}</CardTitle>
+              <CardDescription>
+                {t("csatSubtitle", { total: csat.breakdown.total })}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-semibold tabular-nums">
+                    {Math.round((csat.breakdown.positiveRate ?? 0) * 100)}%
+                  </span>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {t("csatPositive")}
+                  </span>
+                </div>
+                <div className="ml-auto flex items-center gap-4 text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
+                  {[
+                    { emoji: "😊", count: csat.breakdown.happy },
+                    { emoji: "😐", count: csat.breakdown.neutral },
+                    { emoji: "☹️", count: csat.breakdown.unhappy },
+                  ].map((r) => (
+                    <span key={r.emoji} className="inline-flex items-center gap-1">
+                      <span aria-hidden="true">{r.emoji}</span>
+                      <span>{r.count}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quality signals */}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                <span className="text-zinc-600 dark:text-zinc-300">
+                  {t("csatFirstContact", {
+                    rate:
+                      csat.quality.firstContactRate !== null
+                        ? Math.round(csat.quality.firstContactRate * 100)
+                        : 0,
+                  })}
+                </span>
+                <span className="text-zinc-600 dark:text-zinc-300">
+                  {t("csatRework", {
+                    rate:
+                      csat.quality.reworkRate !== null
+                        ? Math.round(csat.quality.reworkRate * 100)
+                        : 0,
+                  })}
+                </span>
+              </div>
+
+              {/* Top technicians by feedback volume */}
+              {csat.byTechnician.length > 0 ? (
+                <ul className="space-y-1.5 text-sm border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                  {csat.byTechnician.map((tech) => (
+                    <li
+                      key={tech.technicianId ?? "unassigned"}
+                      className="flex items-center gap-3"
+                    >
+                      <span className="truncate min-w-0 flex-1 text-zinc-700 dark:text-zinc-200">
+                        {tech.technicianName ?? t("csatUnassigned")}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-xs text-zinc-500 dark:text-zinc-400">
+                        {[
+                          { emoji: "😊", count: tech.happy },
+                          { emoji: "😐", count: tech.neutral },
+                          { emoji: "☹️", count: tech.unhappy },
+                        ].map((r) => (
+                          <span
+                            key={r.emoji}
+                            className="inline-flex items-center gap-1 ml-2 first:ml-0"
+                          >
+                            <span aria-hidden="true">{r.emoji}</span>
+                            <span>{r.count}</span>
+                          </span>
+                        ))}
+                      </span>
+                      <span className="shrink-0 w-10 text-right tabular-nums font-medium">
+                        {tech.positiveRate !== null
+                          ? `${Math.round(tech.positiveRate * 100)}%`
+                          : "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </CardContent>
+          </Card>
         </section>
       ) : null}
 

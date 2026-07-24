@@ -734,7 +734,13 @@ export async function listUsersForAdmin(opts: {
     );
   }
   if (opts.roleId) {
-    rows = rows.filter((u) => u.roles.some((r) => r.id === opts.roleId));
+    // Multi-select role filter (CSV of role ids) — match users holding ANY.
+    const wanted = new Set(
+      opts.roleId.split(",").map((s) => s.trim()).filter(Boolean),
+    );
+    if (wanted.size > 0) {
+      rows = rows.filter((u) => u.roles.some((r) => wanted.has(r.id)));
+    }
   }
   if (opts.audience === "internal") {
     rows = rows.filter((u) =>

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
+import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { customerVisibleMessages } from "@/lib/messages/visibility";
@@ -14,6 +15,10 @@ export type CustomerTicketSummary = {
   createdAt: Date;
   updatedAt: Date;
   resolvedAt: Date | null;
+  // The technician handling the ticket (null when not yet assigned), shown to
+  // the customer so they know who's on it.
+  assignedToName: string | null;
+  assignedToEmail: string | null;
 };
 
 export type CustomerTicket = {
@@ -29,6 +34,7 @@ export type CustomerTicket = {
   resolvedAt: Date | null;
   closedAt: Date | null;
   csatResponse: string | null;
+  csatRating: string | null;
 };
 
 export type CustomerAttachment = {
@@ -64,8 +70,11 @@ export async function listMyTickets(
       createdAt: tickets.createdAt,
       updatedAt: tickets.updatedAt,
       resolvedAt: tickets.resolvedAt,
+      assignedToName: users.name,
+      assignedToEmail: users.email,
     })
     .from(tickets)
+    .leftJoin(users, eq(users.id, tickets.assignedToId))
     .where(and(eq(tickets.customerId, userId), ne(tickets.status, "draft")))
     .orderBy(desc(tickets.updatedAt));
 }
@@ -93,6 +102,7 @@ export async function getMyTicketByNumber(
       resolvedAt: tickets.resolvedAt,
       closedAt: tickets.closedAt,
       csatResponse: tickets.csatResponse,
+      csatRating: tickets.csatRating,
     })
     .from(tickets)
     .where(
@@ -131,6 +141,7 @@ export async function getGuestTicket(
       resolvedAt: tickets.resolvedAt,
       closedAt: tickets.closedAt,
       csatResponse: tickets.csatResponse,
+      csatRating: tickets.csatRating,
     })
     .from(tickets)
     .where(

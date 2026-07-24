@@ -55,9 +55,11 @@ import {
   type Priority,
 } from "@/lib/sla";
 import { generateTicketNumber } from "@/lib/ticket-number";
+import { isActiveCategoryValue } from "@/lib/tickets/categories";
+import { isActiveTypeValue } from "@/lib/tickets/types";
 import {
+  csatFeedbackUrl,
   guestTicketUrl,
-  signCsatToken,
   signDraftUploadToken,
   ticketTrackingUrl,
   verifyDraftUploadToken,
@@ -66,13 +68,6 @@ import { verifyTurnstile } from "@/lib/turnstile";
 
 // ── Public ticket submission (no auth required) ──────────────────────
 
-const TICKET_CATEGORIES = [
-  "hardware",
-  "software",
-  "network",
-  "access",
-  "other",
-] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 // Module-private — Next.js 16 forbids non-async-function exports from
@@ -491,7 +486,8 @@ const createOnBehalfSchema = z.object({
     .trim()
     .min(3, "Subject must be at least 3 characters")
     .max(150, "Subject must be at most 150 characters"),
-  category: z.enum(TICKET_CATEGORIES),
+  category: z.string().trim().min(1, "Category is required"),
+  type: z.string().trim().min(1, "Type is required"),
   priority: z.enum(TICKET_PRIORITIES),
   // Staff pick the organization from a dropdown of registered orgs (CR-02).
   organizationId: z.string().uuid().optional(),
@@ -525,6 +521,15 @@ export async function createTicketOnBehalf(
   }
   const data = parsed.data;
 
+  // Category + type are admin-managed — validate the picked values against the
+  // active lists (the closed-set guard that used to be a DB CHECK).
+  if (!(await isActiveCategoryValue(data.category))) {
+    return { ok: false, error: "Invalid category." };
+  }
+  if (!(await isActiveTypeValue(data.type))) {
+    return { ok: false, error: "Invalid type." };
+  }
+
   const stream = await classifyStream(data.customerEmail);
   const org = await resolveTicketOrgById(data.organizationId ?? null);
   // A staff member explicitly picked the org from the registry, so it's a
@@ -549,6 +554,7 @@ export async function createTicketOnBehalf(
         subject: data.subject,
         description: data.description,
         category: data.category,
+        type: data.type,
         priority: data.priority,
         status: "open",
         stream,
@@ -1775,8 +1781,9 @@ export async function resolveTicket(
       customerEmail: ticket.customerEmail,
       customerId: ticket.customerId,
     });
-    const satToken = signCsatToken(ticket.ticketNumber, "satisfied");
-    const unsatToken = signCsatToken(ticket.ticketNumber, "unsatisfied");
+    const csatHappyUrl = csatFeedbackUrl(appUrl, ticket.ticketNumber, "happy");
+    const csatNeutralUrl = csatFeedbackUrl(appUrl, ticket.ticketNumber, "neutral");
+    const csatUnhappyUrl = csatFeedbackUrl(appUrl, ticket.ticketNumber, "unhappy");
     if (ticket.customerId) {
       // Authenticated customer — dispatcher fans out email + SMS + in-app
       // based on their notification preferences.
@@ -1797,8 +1804,9 @@ export async function resolveTicket(
                 agentName: agent.name,
                 resolutionNote:
                   parsed.data.kind === "note" ? parsed.data.note : "",
-                csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
-                csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
+                csatHappyUrl,
+                csatNeutralUrl,
+                csatUnhappyUrl,
                 trackingUrl,
               },
             },
@@ -1834,8 +1842,9 @@ export async function resolveTicket(
             agentName: agent.name,
             resolutionNote:
               parsed.data.kind === "note" ? parsed.data.note : "",
-            csatSatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${satToken}`,
-            csatUnsatisfiedUrl: `${appUrl}/csat/confirm?t=${ticket.ticketNumber}&tk=${unsatToken}`,
+            csatHappyUrl,
+            csatNeutralUrl,
+            csatUnhappyUrl,
             trackingUrl,
           },
         },
@@ -1883,6 +1892,11 @@ export async function reopenTicket(ticketId: string): Promise<void> {
       resolvedAt: null,
       closedAt: null,
       reopenedCount: sql`${tickets.reopenedCount} + 1`,
+      // Clear the ticket-level CSAT so the next resolution can be rated afresh.
+      // Prior ratings stay in the ticket_reviews history.
+      csatResponse: null,
+      csatRating: null,
+      csatRespondedAt: null,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));
@@ -2077,6 +2091,99 @@ export async function setTicketPriority(
     targetId: ticket.ticketNumber,
     before: { priority: ticket.priority },
     after: { priority },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+// ── Set the ticket category (triage) ─────────────────────────────────
+//
+// Most tickets arrive as the default category (customers/inbound never pick
+// one); this lets staff classify a ticket during triage. The category list is
+// admin-managed, so the value is validated against the ACTIVE categories.
+
+export async function setTicketCategory(
+  ticketId: string,
+  category: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (!(await isActiveCategoryValue(category))) {
+    return { ok: false, error: "Invalid category." };
+  }
+  if (ticket.category === category) return { ok: true };
+
+  await db
+    .update(tickets)
+    .set({ category, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.category_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { category: ticket.category },
+    after: { category },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+// ── Set the ticket type (triage) ─────────────────────────────────────
+//
+// The "type of work" (service request / incident / change / …). Admin-managed
+// list, so the value is validated against the ACTIVE types.
+
+export async function setTicketType(
+  ticketId: string,
+  type: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (!(await isActiveTypeValue(type))) {
+    return { ok: false, error: "Invalid type." };
+  }
+  if (ticket.type === type) return { ok: true };
+
+  await db
+    .update(tickets)
+    .set({ type, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.type_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { type: ticket.type },
+    after: { type },
   });
 
   revalidatePath("/admin/tickets");

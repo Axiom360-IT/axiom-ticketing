@@ -89,6 +89,37 @@ export function TechLoadBar({
   );
 }
 
+export function CsatTrendChart({
+  data,
+  label,
+}: {
+  data: { month: string; positive: number | null; total: number }[];
+  label: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={data} margin={{ left: 8, right: 8, top: 8 }}>
+        <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
+        <YAxis
+          domain={[0, 100]}
+          tickLine={false}
+          axisLine={false}
+          fontSize={11}
+          width={34}
+          unit="%"
+        />
+        <Tooltip formatter={(value) => [`${value}%`, label]} />
+        <Bar
+          dataKey="positive"
+          name={label}
+          fill="#10b981"
+          radius={[4, 4, 0, 0]}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function StageBar({ data }: { data: { name: string; total: number }[] }) {
   const narrow = useNarrowViewport();
   return (

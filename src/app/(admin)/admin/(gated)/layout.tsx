@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { isStrictCustomer } from "@/lib/auth/can";
 import { getActiveImpersonation, getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -38,6 +39,14 @@ export default async function AdminGatedLayout({
   const user = await getSessionUser();
   if (!user) {
     redirect("/admin/login");
+  }
+
+  // A customer (including one being impersonated) has no place in the staff
+  // console — the admin shell would render with their empty permissions. Send
+  // them to their portal, which is their real experience. The impersonator can
+  // still end impersonation from the banner shown in the portal layout.
+  if (isStrictCustomer(user)) {
+    redirect("/portal");
   }
 
   // For the topbar: when impersonating, show the IMPERSONATED user's

@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth/session";
+import { getActiveImpersonation, getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { CustomerSidebar } from "@/components/customer/customer-sidebar";
 import { CustomerTopbar } from "@/components/customer/customer-topbar";
+import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { getRecentNotifications } from "@/app/actions/notifications";
 import { loadBranding } from "@/lib/branding/load";
 import { claimTicketsForCustomer } from "@/lib/customer/reconcile";
@@ -47,10 +48,18 @@ export default async function PortalAuthedLayout({
   const branding = await loadBranding();
   const initialNotifs = await getRecentNotifications();
 
+  // When an admin is impersonating this customer, show the banner here too so
+  // they can see the customer's real portal AND still end impersonation (the
+  // admin console redirects them here, so the banner must live in the portal).
+  const imp = await getActiveImpersonation();
+
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <CustomerSidebar branding={branding} />
       <div className="flex-1 flex flex-col min-w-0">
+        {imp && profile ? (
+          <ImpersonationBanner targetName={profile.name} />
+        ) : null}
         <CustomerTopbar
           email={profile?.email ?? ""}
           name={profile?.name ?? ""}

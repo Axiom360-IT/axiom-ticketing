@@ -16,34 +16,30 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createTicketOnBehalf } from "@/app/actions/tickets";
 
-const CATEGORY_OPTIONS = [
-  "hardware",
-  "software",
-  "network",
-  "access",
-  "other",
-] as const;
-
 const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
 
-type CategoryValue = (typeof CATEGORY_OPTIONS)[number];
 type PriorityValue = (typeof PRIORITY_OPTIONS)[number];
 
 // Sentinel for "no organization" (the Select needs a non-empty value).
 const NO_ORG = "__none__";
 
 type OrgOption = { id: string; name: string };
+type CategoryOption = { value: string; label: string };
+type TypeOption = { value: string; label: string; isDefault?: boolean };
 
 export function CreateOnBehalfForm({
   organizations = [],
+  categories = [],
+  types = [],
 }: {
   organizations?: OrgOption[];
+  categories?: CategoryOption[];
+  types?: TypeOption[];
 }) {
   const router = useRouter();
   const tFields = useTranslations("tickets.submit.fields");
   const tSubmit = useTranslations("tickets.submit");
   const tActions = useTranslations("tickets.actions");
-  const tCategory = useTranslations("tickets.category");
   const tPriority = useTranslations("tickets.priority");
   const tCommon = useTranslations("common");
 
@@ -52,7 +48,9 @@ export function CreateOnBehalfForm({
     customerEmail: "",
     organizationId: NO_ORG,
     subject: "",
-    category: "" as "" | CategoryValue,
+    // Pre-select the default type (usually Service Request).
+    type: (types.find((t) => t.isDefault) ?? types[0])?.value ?? "",
+    category: "" as string,
     priority: "" as "" | PriorityValue,
     description: "",
   });
@@ -69,7 +67,7 @@ export function CreateOnBehalfForm({
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!data.category || !data.priority) {
+    if (!data.category || !data.priority || !data.type) {
       setError(tSubmit("chooseCategoryPriority"));
       return;
     }
@@ -81,6 +79,7 @@ export function CreateOnBehalfForm({
         data.organizationId === NO_ORG ? undefined : data.organizationId,
       subject: data.subject,
       category: data.category,
+      type: data.type,
       priority: data.priority,
       description: data.description,
     });
@@ -156,23 +155,43 @@ export function CreateOnBehalfForm({
         />
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="type">{tFields("type")}</Label>
+        <Select
+          items={Object.fromEntries(types.map((tp) => [tp.value, tp.label]))}
+          value={data.type}
+          onValueChange={(v) => update("type", v ?? "")}
+        >
+          <SelectTrigger id="type">
+            <SelectValue placeholder={tFields("typePlaceholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            {types.map((tp) => (
+              <SelectItem key={tp.value} value={tp.value}>
+                {tp.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
           <Label htmlFor="category">{tFields("category")}</Label>
           <Select
             items={Object.fromEntries(
-              CATEGORY_OPTIONS.map((v) => [v, tCategory(v)]),
+              categories.map((c) => [c.value, c.label]),
             )}
             value={data.category}
-            onValueChange={(v) => update("category", v as typeof data.category)}
+            onValueChange={(v) => update("category", v ?? "")}
           >
             <SelectTrigger id="category">
               <SelectValue placeholder={tFields("categoryPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              {CATEGORY_OPTIONS.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {tCategory(value)}
+              {categories.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -122,19 +122,72 @@ export function verifyGuestToken(
 
 // ── CSAT tokens ──────────────────────────────────────────────────────
 //
-// Encodes (ticket_number, response) so a single email link is one-click
-// confirmation. Cannot be replayed for a different ticket.
+// Encodes (ticket_number, rating) so a single email link carries the
+// customer's chosen emoji rating to the hosted feedback page. Cannot be
+// replayed for a different ticket.
 
-export type CsatResponse = "satisfied" | "unsatisfied";
+import type { CsatRating } from "./tickets/csat";
 
 export function signCsatToken(
   ticketNumber: string,
-  response: CsatResponse,
+  rating: CsatRating,
 ): string {
   const secret = getCsatSecret();
-  const payload = `${ticketNumber}|${response}`;
+  const payload = `${ticketNumber}|${rating}`;
   const sig = sign(secret, payload);
   return Buffer.from(`${payload}:${sig}`).toString("base64url");
+}
+
+// ── CSAT access tokens (hosted feedback page) ────────────────────────
+//
+// Ticket-scoped (NOT rating-bound): authorizes submitting a rating + comment
+// for one ticket via the hosted `/csat` page. The rating is chosen on the page
+// (a form field), so a single token backs all three emoji — letting the
+// customer change their mind before submitting. Like the guest token it's
+// stateless HMAC and carries no expiry of its own; feedback is only actionable
+// while the ticket is `resolved`, and recording is single-shot (guarded on
+// `csat_response IS NULL`).
+
+export function signCsatAccessToken(ticketNumber: string): string {
+  const secret = getCsatSecret();
+  const payload = `${ticketNumber}|access`;
+  const sig = sign(secret, payload);
+  return Buffer.from(`${payload}:${sig}`).toString("base64url");
+}
+
+/** Builds the hosted CSAT feedback URL with a preselected emoji rating. */
+export function csatFeedbackUrl(
+  appUrl: string,
+  ticketNumber: string,
+  rating: CsatRating,
+): string {
+  const token = signCsatAccessToken(ticketNumber);
+  return `${appUrl}/csat?t=${encodeURIComponent(ticketNumber)}&tk=${encodeURIComponent(token)}&r=${rating}`;
+}
+
+/** True iff the CSAT access token is valid for the given ticket number. */
+export function verifyCsatAccessToken(
+  token: string,
+  ticketNumber: string,
+): boolean {
+  let secret: string;
+  try {
+    secret = getCsatSecret();
+  } catch {
+    return false;
+  }
+  try {
+    const decoded = Buffer.from(token, "base64url").toString("utf8");
+    const lastColon = decoded.lastIndexOf(":");
+    if (lastColon < 0) return false;
+    const payload = decoded.slice(0, lastColon);
+    const providedSig = decoded.slice(lastColon + 1);
+    if (payload !== `${ticketNumber}|access`) return false;
+    const expectedSig = sign(secret, payload);
+    return safeEqual(providedSig, expectedSig);
+  } catch {
+    return false;
+  }
 }
 
 // ── Draft-upload tokens ──────────────────────────────────────────────
@@ -175,11 +228,16 @@ export function verifyDraftUploadToken(
   }
 }
 
-/** Verifies a CSAT token. Returns the response on success, null on failure. */
+/**
+ * Verifies a CSAT token. Returns the 3-point rating on success, null on
+ * failure. Legacy binary tokens minted before the emoji upgrade still verify:
+ * `satisfied` → happy, `unsatisfied` → unhappy (mapped AFTER the signature
+ * check, so tampering still fails).
+ */
 export function verifyCsatToken(
   token: string,
   ticketNumber: string,
-): CsatResponse | null {
+): CsatRating | null {
   let secret: string;
   try {
     secret = getCsatSecret();
@@ -193,13 +251,18 @@ export function verifyCsatToken(
     const payload = decoded.slice(0, lastColon);
     const providedSig = decoded.slice(lastColon + 1);
 
-    const [num, response] = payload.split("|");
+    const [num, value] = payload.split("|");
     if (num !== ticketNumber) return null;
-    if (response !== "satisfied" && response !== "unsatisfied") return null;
 
     const expectedSig = sign(secret, payload);
     if (!safeEqual(providedSig, expectedSig)) return null;
-    return response;
+
+    if (value === "happy" || value === "neutral" || value === "unhappy") {
+      return value;
+    }
+    if (value === "satisfied") return "happy";
+    if (value === "unsatisfied") return "unhappy";
+    return null;
   } catch {
     return null;
   }

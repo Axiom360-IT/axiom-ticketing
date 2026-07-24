@@ -15,9 +15,15 @@ import {
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1h
+
+// Staff roles reach the /admin console; a user whose only role is Customer
+// belongs in the /portal experience. When impersonating, we send the admin to
+// the impersonated user's OWN home so they see what that user actually sees.
+const STAFF_ROLE_NAMES = ["Super Admin", "IT Director", "Coordinator", "Technician"];
 
 /**
  * Begin impersonating `targetUserId`. Gated by `users.impersonate` with a
@@ -30,7 +36,7 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1h
  */
 export async function startImpersonation(
   targetUserId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; redirectTo: string } | { ok: false; error: string }> {
   // Before any cookie is set this returns the actual signed-in admin.
   const caller = await requireSessionUser();
   if (caller.isImpersonating) {
@@ -81,8 +87,24 @@ export async function startImpersonation(
     after: { targetName: target.name },
   });
 
+  // Send the admin to the impersonated user's OWN home: a customer's portal
+  // vs. the staff console. Otherwise impersonating a customer would drop the
+  // admin into /admin with the customer's (empty) permissions — an empty,
+  // confusing shell rather than the customer's real experience.
+  const targetRoleRows = await db
+    .select({ name: roles.name })
+    .from(userRoles)
+    .innerJoin(roles, eq(roles.id, userRoles.roleId))
+    .where(eq(userRoles.userId, target.id));
+  const roleNames = new Set(targetRoleRows.map((r) => r.name));
+  const isCustomerOnly =
+    roleNames.has("Customer") &&
+    !STAFF_ROLE_NAMES.some((r) => roleNames.has(r));
+  const redirectTo = isCustomerOnly ? "/portal" : "/admin";
+
   revalidatePath("/admin");
-  return { ok: true };
+  revalidatePath("/portal");
+  return { ok: true, redirectTo };
 }
 
 export async function endImpersonation(): Promise<{ ok: true }> {

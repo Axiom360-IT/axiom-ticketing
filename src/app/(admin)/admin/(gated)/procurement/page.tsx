@@ -1,32 +1,14 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { inArray } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { Card, CardContent } from "@/components/ui/card";
 import { ExportMenu } from "@/components/shared/export-menu";
-import { UrlDateRange } from "@/components/ui/url-date-range";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  StickyActionsCell,
-  StickyActionsHead,
-} from "@/components/ui/row-actions";
 import {
   Pagination,
   parsePage,
   parsePageSize,
-  reservedTableHeight,
 } from "@/components/ui/pagination";
-import { UrlFilterSelect } from "@/components/ui/url-filter-select";
 import { UrlSearchInput } from "@/components/ui/url-search-input";
-import { ProcurementRowActions } from "@/components/procurement/procurement-row-actions";
-import { ProcurementStatusBadge } from "@/components/procurement/status-badge";
+import { ProcurementTable } from "@/components/procurement/procurement-table";
 import { listProcurementForAdmin } from "@/app/actions/procurement";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -34,20 +16,13 @@ import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 
-const STATUSES = [
-  "awaiting_customer_payment",
-  "order_pending",
-  "order_placed",
-  "order_completed",
-] as const;
-const TYPES = ["hardware", "software", "other"] as const;
-
 type SearchParams = Promise<{
   q?: string;
   status?: string;
   type?: string;
   from?: string;
   to?: string;
+  sort?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -81,31 +56,32 @@ export default async function ProcurementListPage({
     type: sp.type,
     from: sp.from,
     to: sp.to,
+    sort: sp.sort,
     page,
     pageSize,
   });
 
-  // Resolve ticket numbers in one round-trip
+  // Resolve ticket numbers in one round-trip.
   const ticketIds = Array.from(new Set(rows.map((r) => r.ticketId)));
   const ticketRows =
     ticketIds.length > 0
       ? await db
-          .select({
-            id: tickets.id,
-            ticketNumber: tickets.ticketNumber,
-          })
+          .select({ id: tickets.id, ticketNumber: tickets.ticketNumber })
           .from(tickets)
           .where(inArray(tickets.id, ticketIds))
       : [];
   const numberByTicket = new Map(
-    ticketRows.map((t) => [t.id, t.ticketNumber]),
+    ticketRows.map((tk) => [tk.id, tk.ticketNumber]),
   );
 
   const t = await getTranslations("procurement.list");
-  const tType = await getTranslations("procurement.type");
-  const tStatus = await getTranslations("procurement.status");
-  const tCommon = await getTranslations("common");
   const formatter = await getFormatter();
+
+  const tableRows = rows.map((r) => ({
+    ...r,
+    ticketNumber: numberByTicket.get(r.ticketId) ?? null,
+    createdLabel: formatter.dateTime(r.createdAt, { dateStyle: "medium" }),
+  }));
 
   const exportParams: Record<string, string> = {};
   for (const k of ["q", "status", "type", "from", "to"] as const) {
@@ -127,123 +103,19 @@ export default async function ProcurementListPage({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[14rem]">
-          <UrlSearchInput
-            initialValue={sp.q ?? ""}
-            placeholder={t("search")}
-            className="max-w-md"
-          />
-        </div>
-        <UrlFilterSelect
-          name="status"
-          label={t("filterStatus")}
-          value={sp.status ?? ""}
-          anyLabel={t("filterAny")}
-          options={STATUSES.map((s) => ({ value: s, label: tStatus(s) }))}
-          triggerClassName="w-44"
-        />
-        <UrlFilterSelect
-          name="type"
-          label={t("filterType")}
-          value={sp.type ?? ""}
-          anyLabel={t("filterAny")}
-          options={TYPES.map((v) => ({ value: v, label: tType(v) }))}
-          triggerClassName="w-40"
-        />
-        <UrlDateRange
-          fromValue={sp.from ?? ""}
-          toValue={sp.to ?? ""}
-          fromLabel={t("filterFrom")}
-          toLabel={t("filterTo")}
-        />
-      </div>
+      {/* Type, status and date filters now live in the column headers. */}
+      <UrlSearchInput
+        initialValue={sp.q ?? ""}
+        placeholder={t("search")}
+        className="max-w-md"
+      />
 
-      <Card className="p-0">
-        <CardContent
-          className="p-0"
-          style={{ minHeight: reservedTableHeight(pageSize, totalItems) }}
-        >
-          {rows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t("empty")}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="px-4">{t("columns.item")}</TableHead>
-                  <TableHead>{t("columns.type")}</TableHead>
-                  <TableHead>{t("columns.cost")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
-                  <TableHead>{t("columns.requester")}</TableHead>
-                  <TableHead>{t("columns.ticket")}</TableHead>
-                  <TableHead>{t("columns.createdAt")}</TableHead>
-                  <StickyActionsHead>{tCommon("actions")}</StickyActionsHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="px-4">
-                      <Link
-                        href={`/admin/procurement/${r.id}`}
-                        className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
-                      >
-                        {r.itemName}
-                      </Link>
-                      <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {t("qty", { count: r.quantity })}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {tType(r.type as "hardware" | "software" | "other")}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {r.estimatedCost ?? ""}
-                    </TableCell>
-                    <TableCell>
-                      <ProcurementStatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {r.requestedByEmail}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Link
-                        href={`/admin/tickets/${r.ticketId}`}
-                        className="font-mono text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {numberByTicket.get(r.ticketId) ?? ""}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatter.dateTime(r.createdAt, {
-                        dateStyle: "medium",
-                      })}
-                    </TableCell>
-                    <StickyActionsCell>
-                      <ProcurementRowActions
-                        request={{
-                          id: r.id,
-                          itemName: r.itemName,
-                          quantity: r.quantity,
-                          type: r.type,
-                          status: r.status,
-                          estimatedCost: r.estimatedCost,
-                          requestedByEmail: r.requestedByEmail,
-                          ticketId: r.ticketId,
-                          ticketNumber: numberByTicket.get(r.ticketId) ?? null,
-                          createdAt: r.createdAt,
-                        }}
-                      />
-                    </StickyActionsCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <ProcurementTable
+        data={tableRows}
+        totalItems={totalItems}
+        pageSize={pageSize}
+        emptyMessage={t("empty")}
+      />
 
       <Pagination
         pathname="/admin/procurement"

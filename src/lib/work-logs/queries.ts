@@ -1,5 +1,18 @@
-import { and, desc, eq, gte, lte, ne, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/can";
+import { parseCsv, parseSort } from "@/lib/data-table";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
@@ -25,6 +38,8 @@ export type WorkLogFilters = {
   /** Inclusive YYYY-MM-DD bounds on the entry's createdAt (UTC). */
   from?: string;
   to?: string;
+  /** `<column>:<asc|desc>` column-header sort. */
+  sort?: string;
 };
 
 export type WorkLogRow = {
@@ -51,21 +66,29 @@ function buildConditions(user: SessionUser, filters: WorkLogFilters): SQL[] {
   const conditions: SQL[] = [];
 
   // Visibility scope: without view_all you ONLY ever see your own entries.
-  // With it, an optional technician filter narrows the full set.
+  // With it, an optional (multi-select) technician filter narrows the full set.
   if (!canViewAll) {
     conditions.push(eq(workLogs.technicianId, user.id));
-  } else if (filters.technicianId) {
-    conditions.push(eq(workLogs.technicianId, filters.technicianId));
+  } else {
+    const techs = parseCsv(filters.technicianId);
+    if (techs.length > 0) {
+      conditions.push(inArray(workLogs.technicianId, techs));
+    }
   }
 
-  if (filters.organizationId) {
-    conditions.push(eq(tickets.organizationId, filters.organizationId));
+  const orgs = parseCsv(filters.organizationId);
+  if (orgs.length > 0) conditions.push(inArray(tickets.organizationId, orgs));
+
+  const services = parseCsv(filters.serviceType).filter(
+    (s) => s === "onsite" || s === "remote",
+  );
+  if (services.length > 0) {
+    conditions.push(inArray(workLogs.serviceType, services));
   }
-  if (filters.serviceType === "onsite" || filters.serviceType === "remote") {
-    conditions.push(eq(workLogs.serviceType, filters.serviceType));
-  }
-  if (filters.billable) {
-    conditions.push(eq(tickets.billable, filters.billable));
+
+  const billables = parseCsv(filters.billable);
+  if (billables.length > 0) {
+    conditions.push(inArray(tickets.billable, billables));
   }
   if (filters.from) {
     const d = new Date(`${filters.from}T00:00:00.000Z`);
@@ -94,6 +117,38 @@ export async function listWorkLogs(
   const conditions = buildConditions(user, filters);
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  // Column-header sort (falls back to newest-first).
+  const sort = parseSort(filters.sort, [
+    "ticket",
+    "technician",
+    "description",
+    "time",
+    "service",
+    "billable",
+    "date",
+  ]);
+  const dirFn = sort?.dir === "asc" ? asc : desc;
+  const technicianNameExpr = sql`coalesce(${users.name}, ${workLogs.technicianName})`;
+  const orderTarget =
+    sort?.id === "ticket"
+      ? tickets.ticketNumber
+      : sort?.id === "technician"
+        ? technicianNameExpr
+        : sort?.id === "description"
+          ? workLogs.description
+          : sort?.id === "time"
+            ? workLogs.minutes
+            : sort?.id === "service"
+              ? workLogs.serviceType
+              : sort?.id === "billable"
+                ? tickets.billable
+                : sort?.id === "date"
+                  ? workLogs.createdAt
+                  : null;
+  const primaryOrder = orderTarget
+    ? dirFn(orderTarget)
+    : desc(workLogs.createdAt);
+
   const rows = await db
     .select({
       id: workLogs.id,
@@ -120,7 +175,7 @@ export async function listWorkLogs(
     .leftJoin(users, eq(workLogs.technicianId, users.id))
     .leftJoin(organizations, eq(tickets.organizationId, organizations.id))
     .where(where)
-    .orderBy(desc(workLogs.createdAt))
+    .orderBy(primaryOrder, desc(workLogs.createdAt))
     .limit(limit)
     .offset(offset);
 

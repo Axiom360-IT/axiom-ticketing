@@ -157,17 +157,51 @@ export function BillingBadge({
   );
 }
 
+// Ticket TYPE (work type — service request / incident / …). Admin-managed, so
+// the label is resolved from the DB and passed in; falls back to the raw value.
+export function TypeBadge({
+  type,
+  label,
+  className,
+}: {
+  type: string;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+        "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300",
+        className,
+      )}
+    >
+      {label ?? type}
+    </span>
+  );
+}
+
+// Categories are admin-managed, so the display label is resolved from the DB
+// and passed in as `label`. For the original seeded five we still fall back to
+// the i18n strings when no label is passed; anything else falls back to the raw
+// value so a new category never renders blank.
+const SEEDED_CATEGORIES = ["hardware", "software", "network", "access", "other"];
+
 export function CategoryBadge({
   category,
+  label,
   className,
 }: {
   category: string;
+  label?: string;
   className?: string;
 }) {
   const t = useTranslations("tickets.category");
-  const label = t(
-    category as "hardware" | "software" | "network" | "access" | "other",
-  );
+  const display =
+    label ??
+    (SEEDED_CATEGORIES.includes(category)
+      ? t(category as "hardware" | "software" | "network" | "access" | "other")
+      : category);
   return (
     <span
       className={cn(
@@ -176,7 +210,7 @@ export function CategoryBadge({
         className,
       )}
     >
-      {label}
+      {display}
     </span>
   );
 }

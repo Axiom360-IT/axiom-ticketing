@@ -8,11 +8,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  CsatTrendChart,
   StageBar,
   StatusPie,
   TechLoadBar,
 } from "@/components/reports/charts";
 import {
+  loadCsatStats,
   loadProcurementSpend,
   loadTicketHealth,
   parseReportRange,
@@ -41,9 +43,10 @@ export default async function ReportsPage({
   if (sp.from?.trim()) exportParams.from = sp.from.trim();
   if (sp.to?.trim()) exportParams.to = sp.to.trim();
 
-  const [tickets, procurement, canExport] = await Promise.all([
+  const [tickets, procurement, csat, canExport] = await Promise.all([
     loadTicketHealth(range),
     loadProcurementSpend(range),
+    loadCsatStats(range),
     can(user, "reports.export", { type: "global" }, productionContext),
   ]);
 
@@ -74,6 +77,14 @@ export default async function ReportsPage({
     if (rate === null) return null;
     return `${Math.round(rate * 100)}`;
   }
+
+  const csatTrend = csat.monthlyTrend.map((p) => ({
+    month: formatter.dateTime(new Date(`${p.month}-01T12:00:00Z`), {
+      month: "short",
+    }),
+    positive: p.positiveRate !== null ? Math.round(p.positiveRate * 100) : null,
+    total: p.total,
+  }));
 
   return (
     <div className="space-y-6">
@@ -268,6 +279,172 @@ export default async function ReportsPage({
         </Card>
       </section>
 
+      {/* Customer satisfaction (emoji CSAT) */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">{t("csat.title")}</h2>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard
+            title={t("csat.positiveTitle")}
+            value={
+              csat.breakdown.positiveRate !== null
+                ? t("csat.positiveRate", {
+                    rate: fmtPercent(csat.breakdown.positiveRate) ?? "0",
+                  })
+                : t("csat.empty")
+            }
+            hint={t("csat.totalResponses", { total: csat.breakdown.total })}
+          />
+          <MetricCard
+            title={t("csat.happyTitle")}
+            value={formatter.number(csat.breakdown.happy)}
+          />
+          <MetricCard
+            title={t("csat.neutralTitle")}
+            value={formatter.number(csat.breakdown.neutral)}
+          />
+          <MetricCard
+            title={t("csat.unhappyTitle")}
+            value={formatter.number(csat.breakdown.unhappy)}
+          />
+        </div>
+
+        {/* Quality signals: first-contact resolution + rework */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <MetricCard
+            title={t("csat.firstContactTitle")}
+            value={
+              csat.quality.firstContactRate !== null
+                ? t("csat.firstContactValue", {
+                    rate: fmtPercent(csat.quality.firstContactRate) ?? "0",
+                  })
+                : t("csat.empty")
+            }
+            hint={t("csat.firstContactHint")}
+          />
+          <MetricCard
+            title={t("csat.reworkTitle")}
+            value={
+              csat.quality.reworkRate !== null
+                ? t("csat.reworkValue", {
+                    rate: fmtPercent(csat.quality.reworkRate) ?? "0",
+                  })
+                : t("csat.empty")
+            }
+            hint={t("csat.reworkHint")}
+          />
+        </div>
+
+        {/* Monthly positive-rate trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">{t("csat.trendTitle")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {csatTrend.length === 0 ? (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t("csat.empty")}
+              </p>
+            ) : (
+              <CsatTrendChart
+                data={csatTrend}
+                label={t("csat.positiveTitle")}
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* By technician + by organization */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">
+                {t("csat.byTechnicianTitle")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CsatRatingTable
+                firstColLabel={t("csat.techColTechnician")}
+                positiveLabel={t("csat.techColPositive")}
+                emptyLabel={t("csat.empty")}
+                happyLabel={t("csat.happyTitle")}
+                neutralLabel={t("csat.neutralTitle")}
+                unhappyLabel={t("csat.unhappyTitle")}
+                rows={csat.byTechnician.map((r) => ({
+                  key: r.technicianId ?? "unassigned",
+                  name: r.technicianName ?? t("csat.unassigned"),
+                  happy: r.happy,
+                  neutral: r.neutral,
+                  unhappy: r.unhappy,
+                  positiveRate: r.positiveRate,
+                }))}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">
+                {t("csat.byOrganizationTitle")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CsatRatingTable
+                firstColLabel={t("csat.orgColOrganization")}
+                positiveLabel={t("csat.techColPositive")}
+                emptyLabel={t("csat.empty")}
+                happyLabel={t("csat.happyTitle")}
+                neutralLabel={t("csat.neutralTitle")}
+                unhappyLabel={t("csat.unhappyTitle")}
+                rows={csat.byOrganization.map((r) => ({
+                  key: r.organizationId ?? "none",
+                  name: r.organizationName ?? t("csat.noOrganization"),
+                  happy: r.happy,
+                  neutral: r.neutral,
+                  unhappy: r.unhappy,
+                  positiveRate: r.positiveRate,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recent comments */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              {t("csat.recentCommentsTitle")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {csat.recentComments.length === 0 ? (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t("csat.recentCommentsEmpty")}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {csat.recentComments.map((c) => (
+                  <li
+                    key={c.id}
+                    className="border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0 last:pb-0"
+                  >
+                    <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      <span aria-hidden="true">{ratingEmoji(c.rating)}</span>
+                      <span className="font-mono">{c.ticketNumber}</span>
+                      {c.technicianName ? (
+                        <span className="truncate">· {c.technicianName}</span>
+                      ) : null}
+                    </div>
+                    <p className="mt-0.5 text-sm text-zinc-800 dark:text-zinc-200 break-words">
+                      {c.comment}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
       {/* Procurement spend */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">{t("procurement.title")}</h2>
@@ -386,6 +563,100 @@ export default async function ReportsPage({
           </Card>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ratingEmoji(rating: string): string {
+  if (rating === "happy") return "😊";
+  if (rating === "neutral") return "😐";
+  if (rating === "unhappy") return "☹️";
+  return "•";
+}
+
+type CsatTableRow = {
+  key: string;
+  name: string;
+  happy: number;
+  neutral: number;
+  unhappy: number;
+  positiveRate: number | null;
+};
+
+function CsatRatingTable({
+  rows,
+  firstColLabel,
+  positiveLabel,
+  emptyLabel,
+  happyLabel,
+  neutralLabel,
+  unhappyLabel,
+}: {
+  rows: CsatTableRow[];
+  firstColLabel: string;
+  positiveLabel: string;
+  emptyLabel: string;
+  happyLabel: string;
+  neutralLabel: string;
+  unhappyLabel: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
+            <th className="py-1 pr-2 font-medium">{firstColLabel}</th>
+            <th
+              className="py-1 px-2 font-medium text-center"
+              aria-label={happyLabel}
+            >
+              {"😊"}
+            </th>
+            <th
+              className="py-1 px-2 font-medium text-center"
+              aria-label={neutralLabel}
+            >
+              {"😐"}
+            </th>
+            <th
+              className="py-1 px-2 font-medium text-center"
+              aria-label={unhappyLabel}
+            >
+              {"☹️"}
+            </th>
+            <th className="py-1 pl-2 font-medium text-right">{positiveLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.key}
+              className="border-t border-zinc-100 dark:border-zinc-800"
+            >
+              <td className="py-1.5 pr-2 truncate max-w-[12rem]">{r.name}</td>
+              <td className="py-1.5 px-2 text-center tabular-nums">
+                {r.happy}
+              </td>
+              <td className="py-1.5 px-2 text-center tabular-nums">
+                {r.neutral}
+              </td>
+              <td className="py-1.5 px-2 text-center tabular-nums">
+                {r.unhappy}
+              </td>
+              <td className="py-1.5 pl-2 text-right tabular-nums font-medium">
+                {r.positiveRate !== null
+                  ? `${Math.round(r.positiveRate * 100)}%`
+                  : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

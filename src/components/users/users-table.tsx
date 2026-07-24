@@ -1,0 +1,155 @@
+"use client";
+
+import { useMemo } from "react";
+import Link from "next/link";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useTranslations } from "next-intl";
+import { DataTable } from "@/components/ui/data-table";
+import { UserRowActions } from "@/components/users/user-row-actions";
+
+export type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  roles: { id: string; name: string }[];
+  createdAt: Date;
+  createdLabel: string;
+};
+
+export function UsersTable({
+  data,
+  totalItems,
+  pageSize,
+  emptyMessage,
+  currentUserId,
+  allRoles,
+  canEdit,
+  canDeactivate,
+  canReactivate,
+}: {
+  data: UserRow[];
+  totalItems: number;
+  pageSize: number;
+  emptyMessage: string;
+  currentUserId: string;
+  allRoles: { id: string; name: string }[];
+  canEdit: boolean;
+  canDeactivate: boolean;
+  canReactivate: boolean;
+}) {
+  const t = useTranslations("users.list");
+  const tCommon = useTranslations("common");
+
+  const columns = useMemo<ColumnDef<UserRow>[]>(
+    () => [
+      {
+        id: "name",
+        meta: {
+          title: t("columns.name"),
+          sortKey: "name",
+          headClassName: "px-4",
+          cellClassName: "px-4",
+        },
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/users/${row.original.id}`}
+              className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              {row.original.name}
+            </Link>
+            {row.original.id === currentUserId ? (
+              <span className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+                {t("selfBadge")}
+              </span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "email",
+        meta: {
+          title: t("columns.email"),
+          sortKey: "email",
+          cellClassName: "text-sm text-zinc-600 dark:text-zinc-300",
+        },
+        cell: ({ row }) => row.original.email,
+      },
+      {
+        id: "roles",
+        meta: {
+          title: t("columns.roles"),
+          sortKey: "roles",
+          filter: {
+            kind: "enum",
+            param: "roleId",
+            searchable: true,
+            options: [
+              ...allRoles.map((r) => ({ value: r.id, label: r.name })),
+            ],
+          },
+          cellClassName: "text-xs",
+        },
+        cell: ({ row }) =>
+          row.original.roles.length > 0 ? (
+            <span>{row.original.roles.map((r) => r.name).join(", ")}</span>
+          ) : (
+            <span className="text-zinc-400">{t("noRoles")}</span>
+          ),
+      },
+      {
+        id: "status",
+        meta: { title: t("columns.status"), sortKey: "status" },
+        cell: ({ row }) => (
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+              row.original.isActive
+                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
+                : "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+            }`}
+          >
+            {row.original.isActive
+              ? t("filterStatusActive")
+              : t("filterStatusInactive")}
+          </span>
+        ),
+      },
+      {
+        id: "createdAt",
+        meta: {
+          title: t("columns.createdAt"),
+          sortKey: "createdAt",
+          cellClassName: "text-xs text-zinc-500 dark:text-zinc-400",
+        },
+        cell: ({ row }) => row.original.createdLabel,
+      },
+      {
+        id: "actions",
+        meta: { title: tCommon("actions"), sticky: true },
+        cell: ({ row }) => (
+          <UserRowActions
+            user={row.original}
+            isSelf={row.original.id === currentUserId}
+            canEdit={canEdit}
+            canDeactivate={canDeactivate}
+            canReactivate={canReactivate}
+            allRoles={allRoles}
+          />
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentUserId, allRoles, canEdit, canDeactivate, canReactivate],
+  );
+
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      totalItems={totalItems}
+      pageSize={pageSize}
+      emptyMessage={emptyMessage}
+    />
+  );
+}
