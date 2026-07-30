@@ -19,7 +19,7 @@ export default async function PortalHomePage() {
   const user = await requireSessionUser();
   const tickets = await listMyTickets(user.id);
   const t = await getTranslations("portal.home");
-  const tStatus = await getTranslations("tickets.status");
+  const tStatus = await getTranslations("portal.tickets.status");
   const formatter = await getFormatter();
 
   const counts = {
@@ -199,9 +199,13 @@ function StatusPill({ status, label }: { status: string; label: string }) {
       ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
       : status === "in_progress"
         ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
-        : status === "resolved"
-          ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900"
-          : "bg-zinc-50 text-zinc-700 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-700";
+        : status === "awaiting_customer_confirmation"
+          ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900"
+          : status === "on_hold"
+            ? "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+            : status === "resolved"
+              ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900"
+              : "bg-zinc-50 text-zinc-700 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-700";
   return (
     <span
       className={cn(

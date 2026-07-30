@@ -27,6 +27,9 @@ export async function loadTicketScope(ticketId: string) {
       priority: tickets.priority,
       category: tickets.category,
       type: tickets.type,
+      responseDueAt: tickets.responseDueAt,
+      resolutionDueAt: tickets.resolutionDueAt,
+      slaPausedAt: tickets.slaPausedAt,
       deletedAt: tickets.deletedAt,
       duplicateOfId: tickets.duplicateOfId,
     })

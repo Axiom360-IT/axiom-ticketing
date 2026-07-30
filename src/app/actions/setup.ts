@@ -1,8 +1,11 @@
 "use server";
 
 import { headers } from "next/headers";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema/auth";
 
 // Backs the /admin/setup form. Hands the form-supplied token straight
 // to Better Auth's reset-password API — Better Auth verifies the token
@@ -65,6 +68,19 @@ export async function setupPassword(input: {
       error:
         "This link is no longer valid. Ask an admin to send a new setup email.",
     };
+  }
+
+  // Stamp invite-acceptance (drives the Active/Invited/Expired status badge
+  // on /admin/users) — only on the FIRST acceptance, so a later ordinary
+  // "forgot password" reset doesn't reset an already-Active user's history.
+  // Best-effort against a lookup by email — older setup links minted before
+  // this column existed may omit `email`; a handful of legacy accounts just
+  // show as permanently "Invited", which is fine.
+  if (parsed.data.email) {
+    await db
+      .update(users)
+      .set({ inviteAcceptedAt: sql`coalesce(${users.inviteAcceptedAt}, now())` })
+      .where(eq(users.email, parsed.data.email));
   }
 
   // Auto-sign-in after a successful reset. `nextCookies()` is registered

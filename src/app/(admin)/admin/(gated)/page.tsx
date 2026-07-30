@@ -162,7 +162,14 @@ async function getChartData(perms: Set<Permission>) {
     resolvedByDay.map((r) => [r.day, Number(r.value)]),
   );
 
-  const MAIN_STATUSES = ["open", "in_progress", "resolved", "closed"];
+  const MAIN_STATUSES = [
+    "open",
+    "in_progress",
+    "awaiting_customer_confirmation",
+    "on_hold",
+    "resolved",
+    "closed",
+  ];
   const otherTotal = statusRows
     .filter((r) => !MAIN_STATUSES.includes(r.status))
     .reduce((s, r) => s + Number(r.value), 0);
@@ -264,6 +271,8 @@ export default async function AdminLanding() {
   const statusLabels: Record<string, string> = {
     open: tStatus("open"),
     in_progress: tStatus("in_progress"),
+    awaiting_customer_confirmation: tStatus("awaiting_customer_confirmation"),
+    on_hold: tStatus("on_hold"),
     resolved: tStatus("resolved"),
     closed: tStatus("closed"),
     other: t("statusOther"),
@@ -284,7 +293,14 @@ export default async function AdminLanding() {
 
   const statusData = chart
     ? [
-        ...["open", "in_progress", "resolved", "closed"].map((key) => ({
+        ...[
+          "open",
+          "in_progress",
+          "awaiting_customer_confirmation",
+          "on_hold",
+          "resolved",
+          "closed",
+        ].map((key) => ({
           key,
           name: statusLabels[key],
           value: chart.statusMap.get(key) ?? 0,

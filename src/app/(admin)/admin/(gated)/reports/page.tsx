@@ -57,7 +57,14 @@ export default async function ReportsPage({
   const formatter = await getFormatter();
 
   function statusName(key: string): string {
-    if (key === "open" || key === "in_progress" || key === "resolved" || key === "closed") {
+    if (
+      key === "open" ||
+      key === "in_progress" ||
+      key === "awaiting_customer_confirmation" ||
+      key === "on_hold" ||
+      key === "resolved" ||
+      key === "closed"
+    ) {
       return tStatus(key);
     }
     return key;

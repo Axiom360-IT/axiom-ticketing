@@ -15,6 +15,24 @@ export type Events = {
     data: { attachmentId: string };
   };
 
+  // Customer bulk-import (admin uploads a name/email/phone list; each row's
+  // organization was already resolved — matched by domain, or created/
+  // assigned during the commit's domain-decision step). One event per
+  // uploaded file; the function provisions each row independently so one
+  // bad row can't sink the rest.
+  "customer-import/batch.requested": {
+    data: {
+      batchId: string;
+      importedById: string;
+      rows: {
+        name: string;
+        email: string;
+        phone: string;
+        organizationId: string;
+      }[];
+    };
+  };
+
   // ── Billing (M8 — support plans, hours, accountant alerts) ────────
   //
   // Emitted (post-commit) whenever an organization's Monthly-Plan balance may

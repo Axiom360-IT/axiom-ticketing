@@ -79,7 +79,7 @@ export async function loadMyQueue(userId: string): Promise<MyQueue> {
         // bigint from `count(... ) filter` arrives as a string over the driver;
         // `.mapWith(Number)` makes the declared number type honest at runtime.
         escalated: sql<number>`count(*) filter (where ${tickets.isEscalated})`.mapWith(Number),
-        atRisk: sql<number>`count(*) filter (where ${tickets.slaBreachedAt} is not null or ${tickets.slaWarning80At} is not null)`.mapWith(Number),
+        atRisk: sql<number>`count(*) filter (where (${tickets.slaBreachedAt} is not null or ${tickets.slaWarning80At} is not null) and ${tickets.slaPausedAt} is null)`.mapWith(Number),
         awaiting: sql<number>`count(*) filter (where (${latestVisibleAuthor}) = 'customer')`.mapWith(Number),
       })
       .from(tickets)

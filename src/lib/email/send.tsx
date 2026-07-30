@@ -40,6 +40,10 @@ import {
   type StaffSetupInviteProps,
 } from "./templates/staff-setup-invite";
 import {
+  CustomerSetupInviteEmail,
+  type CustomerSetupInviteProps,
+} from "./templates/customer-setup-invite";
+import {
   CsatUnsatisfiedStaffEmail,
   type CsatUnsatisfiedStaffProps,
 } from "./templates/csat-unsatisfied-staff";
@@ -225,6 +229,10 @@ export type EmailTemplate =
       data: Omit<StaffSetupInviteProps, "locale">;
     }
   | {
+      template: "customer_setup_invite";
+      data: Omit<CustomerSetupInviteProps, "locale">;
+    }
+  | {
       template: "accountant_negative_balance";
       data: Omit<AccountantNegativeBalanceProps, "locale">;
     }
@@ -361,6 +369,10 @@ async function renderTemplate(
       return await render(
         <StaffSetupInviteEmail {...t.data} locale={locale} />,
       );
+    case "customer_setup_invite":
+      return await render(
+        <CustomerSetupInviteEmail {...t.data} locale={locale} />,
+      );
     case "accountant_negative_balance":
       return await render(
         <AccountantNegativeBalanceEmail {...t.data} locale={locale} />,
@@ -402,6 +414,7 @@ const TEMPLATE_NAMESPACE = {
   customer_email_verification: "emails.customerEmailVerification",
   customer_welcome: "emails.customerWelcome",
   staff_setup_invite: "emails.staffSetupInvite",
+  customer_setup_invite: "emails.customerSetupInvite",
   accountant_negative_balance: "emails.accountantNegativeBalance",
   accountant_ticket_billing: "emails.accountantTicketBilling",
 } as const;

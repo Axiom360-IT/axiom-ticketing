@@ -145,6 +145,21 @@
       "resend": "Send another link",
       "back": "Back to sign in"
     },
+    "setup": {
+      "metaTitle": "Set your password — Axiom360 support",
+      "title": "Set your password",
+      "subtitle": "Pick a password to finish setting up your support portal account.",
+      "passwordLabel": "New password",
+      "passwordHint": "At least 12 characters.",
+      "confirmLabel": "Confirm password",
+      "submit": "Set password and continue",
+      "submitting": "Setting password…",
+      "errorTooShort": "Password must be at least 12 characters.",
+      "errorMismatch": "Passwords don't match.",
+      "missingTokenTitle": "Setup link missing",
+      "missingTokenBody": "This page expects a setup token in the URL. Open the link from your invite email.",
+      "goToSignIn": "Go to sign in"
+    },
     "signUpVerify": {
       "metaTitle": "Confirm your email — Axiom360 support",
       "title": "Confirm your email",
@@ -194,6 +209,14 @@
       }
     },
     "tickets": {
+      "status": {
+        "open": "Open",
+        "in_progress": "In progress",
+        "awaiting_customer_confirmation": "Awaiting information",
+        "on_hold": "On hold",
+        "resolved": "Resolved",
+        "closed": "Closed"
+      },
       "list": {
         "title": "My tickets",
         "subtitle": "Tickets you've submitted to our team.",
@@ -469,6 +492,7 @@
       "open": "Open",
       "in_progress": "In progress",
       "awaiting_customer_confirmation": "Awaiting customer",
+      "on_hold": "On hold",
       "resolved": "Resolved",
       "closed": "Closed"
     },
@@ -836,6 +860,7 @@
       "title": "Users",
       "subtitle": "Create, edit, deactivate, and reset accounts.",
       "createButton": "Create user",
+      "importButton": "Import customers",
       "search": "Search by name or email",
       "filterRole": "Role",
       "filterRoleAll": "All roles",
@@ -857,7 +882,9 @@
         "createdAt": "Created"
       },
       "noRoles": "(no roles)",
-      "selfBadge": "You"
+      "selfBadge": "You",
+      "inviteStatusInvited": "Invited",
+      "inviteStatusExpired": "Invite expired"
     },
     "rowActions": {
       "openMenuFor": "Actions for {user}",
@@ -881,6 +908,50 @@
       "submit": "Create user",
       "submitting": "Creating…",
       "welcomeEmailHint": "The user receives a welcome email with a link to set their own password — no password to share."
+    },
+    "import": {
+      "metaTitle": "Import customers",
+      "title": "Import customers",
+      "subtitle": "Paste or upload a list of name, email, and phone — each person gets an invite to set their own password.",
+      "pasteCardTitle": "Paste or upload a list",
+      "pasteHint": "One person per line: name, email, phone (phone optional). A header row is fine and gets skipped automatically.",
+      "textareaLabel": "Name, email, phone — one per line",
+      "uploadButton": "Upload .csv / .txt",
+      "uploadOrPaste": "or paste directly above",
+      "previewButton": "Preview",
+      "previewing": "Checking…",
+      "errorEmptyRows": "Paste or upload at least one row (name, email, phone).",
+      "reviewCardTitle": "Review before import",
+      "reviewSummary": "{valid, plural, =1 {1 row is} other {# rows are}} ready to import, out of {total}.",
+      "domainsHeading": "{count, plural, =1 {1 domain needs} other {# domains need}} an organization",
+      "peopleCount": "{count, plural, =1 {— 1 person} other {— # people}}",
+      "optionCreate": "Create new organization",
+      "optionAssign": "Assign to existing organization",
+      "optionSkip": "Skip these rows for now",
+      "orgNamePlaceholder": "Organization name",
+      "orgCodePlaceholder": "Code",
+      "colName": "Name",
+      "colEmail": "Email",
+      "colOrganization": "Organization",
+      "colStatus": "Status",
+      "newSuffix": "(new)",
+      "noneDash": "—",
+      "backButton": "Back",
+      "importButton": "{count, plural, =1 {Import 1 customer} other {Import # customers}}",
+      "importing": "Importing…",
+      "statusValid": "Ready",
+      "statusDuplicateInFile": "Duplicate in file",
+      "statusDuplicateCustomer": "Already a customer",
+      "statusDuplicateStaff": "Belongs to a staff account",
+      "statusInvalid": "Invalid",
+      "resultTitle": "Import queued",
+      "resultBody": "{count, plural, =1 {1 customer} other {# customers}} queued for invitation. This runs in the background.",
+      "resultCheckLink": "Check the external Users list",
+      "resultSkippedDuplicate": "{count, plural, =1 {1 skipped} other {# skipped}} — already a known account.",
+      "resultSkippedInvalid": "{count, plural, =1 {1 skipped} other {# skipped}} — invalid row.",
+      "resultSkippedNeedsOrg": "{count, plural, =1 {1 skipped} other {# skipped}} — needs an organization. Fix the domain or organization and re-import just those rows.",
+      "importAnotherButton": "Import another list",
+      "backToUsersButton": "Back to Users"
     },
     "edit": {
       "title": "Edit user",
@@ -1461,6 +1532,8 @@
       "subtitle": "Nudge, then auto-close, tickets awaiting a customer reply that goes unanswered.",
       "enabledLabel": "Follow up and auto-close on no response",
       "enabledHint": "When on, a ticket left in “Awaiting customer” is emailed a reminder after the follow-up window, then closed if the customer still doesn't reply.",
+      "dailyLabel": "Send a reminder every day",
+      "dailyHint": "When on, the customer is reminded once each day (from the follow-up window until auto-close). When off, a single reminder is sent once the follow-up window is reached.",
       "followupLabel": "Send follow-up after (days)",
       "followupHint": "Days a ticket may await the customer's reply before the reminder email is sent. Default 3.",
       "closeLabel": "Auto-close after (days)",
@@ -1997,6 +2070,12 @@
       "quarantined": {
         "title": "Attachment quarantined on {ticketNumber}",
         "body": "{fileName} matched {signature} and was removed from storage."
+      }
+    },
+    "userImport": {
+      "completed": {
+        "title": "Customer import finished",
+        "body": "{created, plural, =1 {1 customer} other {# customers}} imported{failed, plural, =0 {} other {, # failed}}."
       }
     }
   },
@@ -2545,6 +2624,20 @@
       "expiry": "This link is valid for 24 hours. After that, ask an admin to send a new one.",
       "ifNotYou": "If you weren't expecting this email, you can safely ignore it.",
       "subject": "Set your Axiom360 password"
+    },
+    "customerSetupInvite": {
+      "previewSet": "Set your password to access your Axiom360 support portal",
+      "previewReset": "Reset your Axiom360 support portal password",
+      "titleSet": "You've been added to the Axiom360 support portal",
+      "titleReset": "Reset your password",
+      "bodySet": "Hi {name}, your Axiom360 support portal account has been created. Click below to set your password and sign in.",
+      "bodySetWithOrg": "Hi {name}, your Axiom360 support portal account for {organizationName} has been created. Click below to set your password and sign in.",
+      "bodyReset": "Hi {name}, click below to set a new password for your Axiom360 support portal account.",
+      "buttonSet": "Set my password",
+      "buttonReset": "Reset my password",
+      "expiry": "{expiryHours, plural, =1 {This link is valid for 1 hour.} other {This link is valid for # hours.}} After that, ask your Axiom360 contact to send a new one.",
+      "ifNotYou": "If you weren't expecting this email, you can safely ignore it.",
+      "subject": "Set your Axiom360 support portal password"
     },
     "customerWelcome": {
       "preview": "Welcome to your Axiom360 support portal",

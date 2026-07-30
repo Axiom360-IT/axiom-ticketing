@@ -107,6 +107,12 @@ export const tickets = pgTable(
     slaWarning50At: timestamp("sla_warning_50_at", { withTimezone: true }),
     slaWarning80At: timestamp("sla_warning_80_at", { withTimezone: true }),
     slaBreachedAt: timestamp("sla_breached_at", { withTimezone: true }),
+    // When the SLA clock is currently PAUSED (ticket is awaiting the customer
+    // or on hold), else NULL. On leaving a pause status the response/resolution
+    // due dates are shifted forward by the paused span, so waiting time isn't
+    // counted against the technician. Paused tickets are excluded from the SLA
+    // monitor + boards so no warning/breach fires while the clock is stopped.
+    slaPausedAt: timestamp("sla_paused_at", { withTimezone: true }),
     // Last time the SLA monitor re-nagged admins about this ticket AFTER its
     // initial breach. NULL = not re-nagged yet. Drives the configurable
     // repeat-escalation cadence (settings: sla.breach_repeat_hours).
@@ -173,7 +179,7 @@ export const tickets = pgTable(
     ),
     check(
       "tickets_status_check",
-      sql`${t.status} IN ('draft','open','in_progress','awaiting_customer_confirmation','escalation','resolved','closed')`,
+      sql`${t.status} IN ('draft','open','in_progress','awaiting_customer_confirmation','on_hold','escalation','resolved','closed')`,
     ),
     check(
       "tickets_billable_check",

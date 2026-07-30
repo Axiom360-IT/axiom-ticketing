@@ -33,7 +33,14 @@ export const runtime = "nodejs";
 // entire ticket table into one document.
 const EXPORT_CAP = 5000;
 
-const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+const STATUSES = [
+  "open",
+  "in_progress",
+  "awaiting_customer_confirmation",
+  "on_hold",
+  "resolved",
+  "closed",
+] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const STREAMS = ["internal", "external"] as const;
 

@@ -15,6 +15,7 @@ export type UserRow = {
   roles: { id: string; name: string }[];
   createdAt: Date;
   createdLabel: string;
+  inviteStatus: "active" | "invited" | "invite_expired";
 };
 
 export function UsersTable({
@@ -102,17 +103,32 @@ export function UsersTable({
         id: "status",
         meta: { title: t("columns.status"), sortKey: "status" },
         cell: ({ row }) => (
-          <span
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
-              row.original.isActive
-                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
-                : "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
-            }`}
-          >
-            {row.original.isActive
-              ? t("filterStatusActive")
-              : t("filterStatusInactive")}
-          </span>
+          <div className="flex flex-wrap items-center gap-1">
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                row.original.isActive
+                  ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
+                  : "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+              }`}
+            >
+              {row.original.isActive
+                ? t("filterStatusActive")
+                : t("filterStatusInactive")}
+            </span>
+            {row.original.isActive && row.original.inviteStatus !== "active" ? (
+              <span
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  row.original.inviteStatus === "invited"
+                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                    : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+                }`}
+              >
+                {row.original.inviteStatus === "invited"
+                  ? t("inviteStatusInvited")
+                  : t("inviteStatusExpired")}
+              </span>
+            ) : null}
+          </div>
         ),
       },
       {

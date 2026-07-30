@@ -23,6 +23,8 @@ import {
 const STATUS_COLORS: Record<string, string> = {
   open: "#3b82f6", // blue — active
   in_progress: "#f59e0b", // amber — being worked
+  awaiting_customer_confirmation: "#a855f7", // purple — waiting on customer
+  on_hold: "#64748b", // slate — paused
   resolved: "#10b981", // green — done, awaiting close
   closed: "#71717a", // zinc — inactive/archived
   other: "#8b5cf6", // violet — draft/escalation/etc.

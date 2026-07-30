@@ -111,6 +111,15 @@ export default async function UsersListPage({
         </div>
         <div className="flex items-center gap-2">
           <ExportMenu baseHref="/api/users/export" params={exportParams} />
+          {canCreate && audience === "external" ? (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/admin/users/import" />}
+            >
+              {t("importButton")}
+            </Button>
+          ) : null}
           {canCreate ? (
             <Button
               nativeButton={false}

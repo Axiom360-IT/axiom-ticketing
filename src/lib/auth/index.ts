@@ -81,6 +81,16 @@ export const auth = betterAuth({
     // (the admin's out-of-band verification of the email is what we
     // trust), and they reach a real session via the setup-invite flow.
     requireEmailVerification: true,
+    // Was previously left unset — Better Auth's silent default is 1 hour,
+    // while the staff-setup-invite email copy has always promised "valid
+    // for 24 hours" (see templates/staff-setup-invite.tsx). Setting this
+    // explicitly makes the actual behavior match the promise, for both the
+    // staff welcome/reset flow AND any staff member's ordinary "forgot
+    // password" click. Customer bulk-import invites do NOT use this — they
+    // have their own token with an independently admin-configurable expiry
+    // (lib/tokens.ts signCustomerInviteToken), precisely because this value
+    // is global and shouldn't need to change for one audience's needs.
+    resetPasswordTokenExpiresIn: 60 * 60 * 24,
     // Better Auth invokes this whenever `auth.api.requestPasswordReset`
     // is called — used by both the admin "Reset password" action AND
     // by the staff-creation flow (the new user is sent here as their

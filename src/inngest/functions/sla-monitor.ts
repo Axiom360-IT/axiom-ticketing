@@ -74,6 +74,10 @@ export const slaMonitor = inngest.createFunction(
         and(
           ne(tickets.status, "resolved"),
           ne(tickets.status, "closed"),
+          // Skip tickets whose SLA clock is paused (Awaiting customer /
+          // On hold) — no warnings or breaches fire while paused; the
+          // shifted due dates resume the countdown on unpause.
+          isNull(tickets.slaPausedAt),
           or(
             and(isNotNull(tickets.responseDueAt), isNull(tickets.firstResponseAt)),
             isNotNull(tickets.resolutionDueAt),

@@ -324,6 +324,12 @@ export default async function SettingsPage({
                 description={tCf("enabledHint")}
                 initial={bool(v["customer_followup.enabled"], true)}
               />
+              <BooleanSettingForm
+                settingKey="customer_followup.daily"
+                label={tCf("dailyLabel")}
+                description={tCf("dailyHint")}
+                initial={bool(v["customer_followup.daily"], true)}
+              />
               <NumberSettingForm
                 settingKey="customer_followup.followup_days"
                 label={tCf("followupLabel")}

@@ -26,6 +26,8 @@ const STATUS_CHIPS = [
   { key: "all", value: "" },
   { key: "open", value: "open" },
   { key: "in_progress", value: "in_progress" },
+  { key: "awaiting_customer_confirmation", value: "awaiting_customer_confirmation" },
+  { key: "on_hold", value: "on_hold" },
   { key: "resolved", value: "resolved,closed" },
 ] as const;
 

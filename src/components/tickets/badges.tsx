@@ -6,6 +6,10 @@ import { cn } from "@/lib/utils";
 
 type StatusBadgeProps = {
   status: string;
+  /** Audience-specific label override. The customer portal passes its own
+   *  wording (e.g. "Awaiting information"); admin omits it and uses the shared
+   *  `tickets.status` labels. */
+  label?: string;
   className?: string;
 };
 
@@ -15,23 +19,38 @@ const STATUS_STYLES: Record<string, string> = {
     "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
   awaiting_customer_confirmation:
     "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900",
+  on_hold:
+    "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   resolved:
     "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
   closed:
     "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-800",
 };
 
-export function StatusBadge({ status, className }: StatusBadgeProps) {
+const KNOWN_STATUSES = [
+  "open",
+  "in_progress",
+  "awaiting_customer_confirmation",
+  "on_hold",
+  "resolved",
+  "closed",
+];
+
+export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const t = useTranslations("tickets.status");
-  // Cast: status is validated at the DB-check level.
-  const label = t(
-    status as
-      | "open"
-      | "in_progress"
-      | "awaiting_customer_confirmation"
-      | "resolved"
-      | "closed",
-  );
+  const display =
+    label ??
+    (KNOWN_STATUSES.includes(status)
+      ? t(
+          status as
+            | "open"
+            | "in_progress"
+            | "awaiting_customer_confirmation"
+            | "on_hold"
+            | "resolved"
+            | "closed",
+        )
+      : status);
   return (
     <span
       className={cn(
@@ -40,7 +59,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className,
       )}
     >
-      {label}
+      {display}
     </span>
   );
 }

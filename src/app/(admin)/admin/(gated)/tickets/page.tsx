@@ -82,7 +82,14 @@ type SearchParams = Promise<{
   reassigned?: string;
 }>;
 
-const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+const TICKET_STATUSES = [
+  "open",
+  "in_progress",
+  "awaiting_customer_confirmation",
+  "on_hold",
+  "resolved",
+  "closed",
+] as const;
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const TICKET_STREAMS = ["internal", "external"] as const;
 
@@ -175,7 +182,7 @@ export default async function TicketsPage({
   ]);
   const dirFn = sort?.dir === "asc" ? asc : desc;
   const priorityRank = sql`case ${tickets.priority} when 'low' then 0 when 'medium' then 1 when 'high' then 2 when 'critical' then 3 else 4 end`;
-  const statusRank = sql`case ${tickets.status} when 'open' then 0 when 'in_progress' then 1 when 'awaiting_customer_confirmation' then 2 when 'escalation' then 3 when 'resolved' then 4 when 'closed' then 5 else 6 end`;
+  const statusRank = sql`case ${tickets.status} when 'open' then 0 when 'in_progress' then 1 when 'awaiting_customer_confirmation' then 2 when 'on_hold' then 3 when 'escalation' then 4 when 'resolved' then 5 when 'closed' then 6 else 7 end`;
   const orderTarget =
     sort?.id === "ticket"
       ? tickets.ticketNumber

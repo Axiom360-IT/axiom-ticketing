@@ -47,6 +47,14 @@ export const users = pgTable(
     // with `users.unlock` clears it). Cleared on every successful sign-in.
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    // Invite lifecycle tracking (staff welcome-email AND customer bulk-import
+    // invites). Status is derived, not stored: inviteAcceptedAt set = Active;
+    // unset + inviteExpiresAt in the future = Invited (pending); unset +
+    // inviteExpiresAt in the past = Invite expired. All null (pre-dates this
+    // feature, or seeded directly) reads as Active.
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+    inviteAcceptedAt: timestamp("invite_accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),

@@ -2,18 +2,22 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   signCsatAccessToken,
   signCsatToken,
+  signCustomerInviteToken,
   signGuestToken,
   verifyCsatAccessToken,
   verifyCsatToken,
+  verifyCustomerInviteToken,
   verifyGuestToken,
 } from "./tokens";
 
 const TEST_GUEST = "guest-test-secret-32-chars-min-AAAA";
 const TEST_CSAT = "csat-test-secret-32-chars-min-BBBBB";
+const TEST_CUSTOMER_INVITE = "invite-test-secret-32-chars-min-CCCC";
 
 beforeAll(() => {
   process.env.GUEST_TOKEN_SECRET = TEST_GUEST;
   process.env.CSAT_TOKEN_SECRET = TEST_CSAT;
+  process.env.CUSTOMER_INVITE_TOKEN_SECRET = TEST_CUSTOMER_INVITE;
 });
 
 describe("signGuestToken / verifyGuestToken", () => {
@@ -103,5 +107,31 @@ describe("signCsatAccessToken / verifyCsatAccessToken", () => {
     expect(verifyCsatToken(access, "AX-0042")).toBeNull();
     const rated = signCsatToken("AX-0042", "happy");
     expect(verifyCsatAccessToken(rated, "AX-0042")).toBe(false);
+  });
+});
+
+describe("signCustomerInviteToken / verifyCustomerInviteToken", () => {
+  it("roundtrips to the same user id", () => {
+    const t = signCustomerInviteToken("user-123");
+    expect(verifyCustomerInviteToken(t)).toBe("user-123");
+  });
+
+  it("rejects a tampered token", () => {
+    const t = signCustomerInviteToken("user-123");
+    const buf = Buffer.from(t, "base64url");
+    buf[buf.length - 1] ^= 0xff;
+    expect(verifyCustomerInviteToken(buf.toString("base64url"))).toBeNull();
+  });
+
+  it("rejects garbage input", () => {
+    expect(verifyCustomerInviteToken("not-a-token")).toBeNull();
+  });
+
+  it("does not verify against a different secret", () => {
+    const t = signCustomerInviteToken("user-123");
+    const prev = process.env.CUSTOMER_INVITE_TOKEN_SECRET;
+    process.env.CUSTOMER_INVITE_TOKEN_SECRET = "a-completely-different-secret-value";
+    expect(verifyCustomerInviteToken(t)).toBeNull();
+    process.env.CUSTOMER_INVITE_TOKEN_SECRET = prev;
   });
 });

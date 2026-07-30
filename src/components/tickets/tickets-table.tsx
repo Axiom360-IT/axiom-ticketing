@@ -47,7 +47,14 @@ export type TicketRow = {
 };
 
 const PRIORITIES = ["low", "medium", "high", "critical"];
-const STATUSES = ["open", "in_progress", "resolved", "closed"];
+const STATUSES = [
+  "open",
+  "in_progress",
+  "awaiting_customer_confirmation",
+  "on_hold",
+  "resolved",
+  "closed",
+];
 
 export function TicketsTable({
   data,

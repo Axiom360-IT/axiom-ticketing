@@ -17,6 +17,7 @@ import { customerFollowupMonitor } from "./customer-followup-monitor";
 import { dispatchNotification } from "./dispatch-notification";
 import { monthlyPlanReset } from "./monthly-plan-reset";
 import { notifyAccountantResolved } from "./notify-accountant-resolved";
+import { processCustomerImportBatch } from "./process-customer-import-batch";
 import { processInboundEmail } from "./process-inbound-email";
 import { scanAttachment } from "./scan-attachment";
 import { sendEmailNotification } from "./send-email-notification";
@@ -28,6 +29,7 @@ import { unassignedMonitor } from "./unassigned-monitor";
 export const functions = [
   autoCloseResolvedTickets,
   processInboundEmail,
+  processCustomerImportBatch,
   scanAttachment,
   slaMonitor,
   unassignedMonitor,

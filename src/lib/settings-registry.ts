@@ -98,8 +98,14 @@ export const SETTING_SCHEMAS = {
   // send a one-time nudge email; if still no reply `close_days` after that,
   // auto-close the ticket. `enabled` is the master on/off.
   "customer_followup.enabled": z.boolean(),
+  "customer_followup.daily": z.boolean(),
   "customer_followup.followup_days": z.number().int().min(1).max(90),
   "customer_followup.close_days": z.number().int().min(1).max(90),
+
+  // Customer bulk-import invites. Controls how long a customer's "set your
+  // password" link stays valid after being (re)sent. Enforced independently
+  // of Better Auth's own reset-token TTL — see lib/customer/invite-token.ts.
+  "customer_invite.expiry_hours": z.number().int().min(1).max(720),
 
   // Billing / accountant notifications (reqs 8.6–8.9). Accountants are OUR
   // platform's accountants (not per-organization contacts) — a global list of

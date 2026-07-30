@@ -19,6 +19,7 @@ const WORKING_STATUSES = [
   "open",
   "in_progress",
   "awaiting_customer_confirmation",
+  "on_hold",
 ] as const;
 type WorkingStatus = (typeof WORKING_STATUSES)[number];
 

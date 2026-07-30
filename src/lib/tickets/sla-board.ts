@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/can";
 import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { db } from "@/lib/db/client";
@@ -52,6 +52,9 @@ export async function loadSlaBoard(user: SessionUser): Promise<SlaBoard> {
   const onRadar = and(
     ticketsVisibilityCondition(user),
     notInArray(tickets.status, ["resolved", "closed"]),
+    // Paused tickets (Awaiting customer / On hold) are off the SLA clock —
+    // keep them off the radar so waiting time isn't flagged as at-risk.
+    isNull(tickets.slaPausedAt),
     or(isNotNull(tickets.slaBreachedAt), isNotNull(tickets.slaWarning80At)),
   );
 

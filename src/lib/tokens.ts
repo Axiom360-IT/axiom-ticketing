@@ -22,6 +22,12 @@ function getCsatSecret(): string {
   return s;
 }
 
+function getCustomerInviteSecret(): string {
+  const s = process.env.CUSTOMER_INVITE_TOKEN_SECRET;
+  if (!s) throw new Error("CUSTOMER_INVITE_TOKEN_SECRET is not set");
+  return s;
+}
+
 function getUploadSecret(): string {
   // Reused secret — drafts are scoped to a single ticket id, and the
   // signed payload includes that id, so a leaked guest token is only
@@ -187,6 +193,48 @@ export function verifyCsatAccessToken(
     return safeEqual(providedSig, expectedSig);
   } catch {
     return false;
+  }
+}
+
+// ── Customer bulk-import invite tokens ────────────────────────────────
+//
+// Binds a "set your password" link to a specific user id. Deliberately does
+// NOT encode an expiry in the payload — unlike Better Auth's own reset
+// tokens (which staff invites still use), a customer invite's expiry is
+// admin-configurable (`customer_invite.expiry_hours`) and enforced by
+// comparing against the live `users.invite_expires_at` column at verify
+// time, not baked into the signed token. That's what lets an admin resend
+// (refreshing `invite_expires_at`) without needing to invalidate old tokens
+// — any old token still resolves to the same user id, but the DB-side
+// expiry check is what actually gates it.
+
+export function signCustomerInviteToken(userId: string): string {
+  const secret = getCustomerInviteSecret();
+  const sig = sign(secret, userId);
+  return Buffer.from(`${userId}:${sig}`).toString("base64url");
+}
+
+/** Returns the user id on a valid signature, null otherwise. Callers must
+ *  separately check `users.invite_expires_at` / `invite_accepted_at` — this
+ *  only proves the link wasn't tampered with. */
+export function verifyCustomerInviteToken(token: string): string | null {
+  let secret: string;
+  try {
+    secret = getCustomerInviteSecret();
+  } catch {
+    return null;
+  }
+  try {
+    const decoded = Buffer.from(token, "base64url").toString("utf8");
+    const lastColon = decoded.lastIndexOf(":");
+    if (lastColon < 0) return null;
+    const userId = decoded.slice(0, lastColon);
+    const providedSig = decoded.slice(lastColon + 1);
+    const expectedSig = sign(secret, userId);
+    if (!safeEqual(providedSig, expectedSig)) return null;
+    return userId;
+  } catch {
+    return null;
   }
 }
 

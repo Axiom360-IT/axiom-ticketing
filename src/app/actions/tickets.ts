@@ -1736,6 +1736,8 @@ export async function resolveTicket(
         status: "resolved",
         resolvedAt: new Date(),
         updatedAt: new Date(),
+        // Clear any active SLA pause — a resolved ticket is off the clock.
+        slaPausedAt: null,
       })
       .where(eq(tickets.id, ticket.id));
   });
@@ -1897,6 +1899,9 @@ export async function reopenTicket(ticketId: string): Promise<void> {
       csatResponse: null,
       csatRating: null,
       csatRespondedAt: null,
+      // Defensive: a ticket auto-closed while paused would carry a stale
+      // pause marker; clear it so the reopened ticket's SLA clock runs.
+      slaPausedAt: null,
       updatedAt: new Date(),
     })
     .where(eq(tickets.id, ticket.id));
@@ -1993,6 +1998,7 @@ const WORKING_STATUSES = [
   "open",
   "in_progress",
   "awaiting_customer_confirmation",
+  "on_hold",
 ] as const;
 type WorkingStatus = (typeof WORKING_STATUSES)[number];
 
@@ -2028,9 +2034,49 @@ export async function setTicketStatus(
   }
   if (ticket.status === status) return { ok: true };
 
+  // ── SLA pause ──────────────────────────────────────────────────────
+  // Time spent Awaiting-customer or On-hold shouldn't count against the
+  // technician's SLA. We freeze the clock by stamping `slaPausedAt` on
+  // entry and, on exit, shifting the due dates forward by the paused span
+  // (so the remaining time is preserved). No accumulator needed — the
+  // pause is baked into the shifted due dates.
+  const now = new Date();
+  const PAUSE_STATUSES = ["awaiting_customer_confirmation", "on_hold"] as const;
+  const wasPaused = PAUSE_STATUSES.includes(
+    ticket.status as (typeof PAUSE_STATUSES)[number],
+  );
+  const willPause = PAUSE_STATUSES.includes(
+    status as (typeof PAUSE_STATUSES)[number],
+  );
+  const slaUpdate: Partial<typeof tickets.$inferInsert> = {};
+  if (!wasPaused && willPause) {
+    // Entering a pause status — freeze the clock.
+    slaUpdate.slaPausedAt = now;
+  } else if (wasPaused && !willPause) {
+    // Leaving a pause status — resume by shifting due dates forward by the
+    // paused span, then clear the marker.
+    const pausedSince = ticket.slaPausedAt;
+    if (pausedSince) {
+      const delta = now.getTime() - pausedSince.getTime();
+      if (delta > 0) {
+        if (ticket.responseDueAt) {
+          slaUpdate.responseDueAt = new Date(
+            ticket.responseDueAt.getTime() + delta,
+          );
+        }
+        if (ticket.resolutionDueAt) {
+          slaUpdate.resolutionDueAt = new Date(
+            ticket.resolutionDueAt.getTime() + delta,
+          );
+        }
+      }
+    }
+    slaUpdate.slaPausedAt = null;
+  }
+
   await db
     .update(tickets)
-    .set({ status, updatedAt: new Date() })
+    .set({ status, updatedAt: now, ...slaUpdate })
     .where(eq(tickets.id, ticket.id));
 
   await audit({

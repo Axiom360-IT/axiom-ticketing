@@ -44,18 +44,22 @@ export const customerFollowupMonitor = inngest.createFunction(
     const cfg = await step.run("load-config", async () => {
       const s = await getSettings<{
         "customer_followup.enabled"?: unknown;
+        "customer_followup.daily"?: unknown;
         "customer_followup.followup_days"?: unknown;
         "customer_followup.close_days"?: unknown;
       }>([
         "customer_followup.enabled",
+        "customer_followup.daily",
         "customer_followup.followup_days",
         "customer_followup.close_days",
       ]);
       const enabled = s["customer_followup.enabled"];
+      const daily = s["customer_followup.daily"];
       const fd = s["customer_followup.followup_days"];
       const cd = s["customer_followup.close_days"];
       return {
         enabled: typeof enabled === "boolean" ? enabled : true,
+        daily: typeof daily === "boolean" ? daily : true,
         followupDays:
           typeof fd === "number" && fd > 0 ? fd : FALLBACK_FOLLOWUP_DAYS,
         closeDays:
@@ -68,8 +72,16 @@ export const customerFollowupMonitor = inngest.createFunction(
     }
 
     const now = new Date();
+    // A ticket becomes eligible for a reminder once the agent's last message is
+    // older than `followupDays`, and for auto-close once it's older than
+    // `followupDays + closeDays` (both measured from the agent's message, so the
+    // timing is stable whether we send one reminder or a daily series).
     const followupCutoff = now.getTime() - cfg.followupDays * DAY_MS;
-    const closeCutoff = now.getTime() - cfg.closeDays * DAY_MS;
+    const closeCutoff =
+      now.getTime() - (cfg.followupDays + cfg.closeDays) * DAY_MS;
+    // Daily re-nudge threshold. 20h (not 24h) so the 6-hourly cron reliably
+    // lands one reminder per calendar day without skipping.
+    const RENUDGE_MS = 20 * 60 * 60 * 1000;
 
     // Latest customer-VISIBLE message (excludes internal notes + held inbound):
     // its author tells us whose turn it is, its time is the follow-up clock.
@@ -109,9 +121,10 @@ export const customerFollowupMonitor = inngest.createFunction(
       if (t.lastAuthor !== "agent" || !t.lastAtRaw) continue;
       const lastAtMs = new Date(t.lastAtRaw as string | Date).getTime();
       const sentMs = t.followupSentAt ? t.followupSentAt.getTime() : null;
-      // The stamp is "current" only if it post-dates the agent's last message;
-      // a newer agent reply makes it stale and re-opens the nudge window.
-      const nudgeCurrent = sentMs !== null && sentMs >= lastAtMs;
+      // A reminder has been sent for the CURRENT agent message if the stamp
+      // post-dates it; a newer agent reply makes the stamp stale and re-opens
+      // the whole cycle.
+      const nudgedSinceLastAgent = sentMs !== null && sentMs >= lastAtMs;
       // Re-assert atomically at write time that the customer STILL hasn't
       // replied since the agent's last message. A reply (approved OR held for
       // moderation) that lands between the candidate read and this write must
@@ -119,48 +132,10 @@ export const customerFollowupMonitor = inngest.createFunction(
       // a customer replies, so the status guard isn't enough on its own.
       const noNewCustomerReply = sql`not exists (select 1 from ${messages} m where m.ticket_id = ${t.id} and m.author_type = 'customer' and m.is_internal_note = false and m.created_at > ${new Date(lastAtMs)})`;
 
-      // ── 1. Nudge ────────────────────────────────────────────────
-      if (!nudgeCurrent && lastAtMs <= followupCutoff) {
-        const claimed = await step.run(`followup-claim-${t.id}`, async () => {
-          // Stamp only if STILL awaiting and the stamp is STILL stale, so
-          // overlapping runs can't double-nudge.
-          const rows = await db
-            .update(tickets)
-            .set({ customerFollowupSentAt: now, updatedAt: sql`now()` })
-            .where(
-              and(
-                eq(tickets.id, t.id),
-                eq(tickets.status, "awaiting_customer_confirmation"),
-                or(
-                  isNull(tickets.customerFollowupSentAt),
-                  lt(tickets.customerFollowupSentAt, new Date(lastAtMs)),
-                ),
-                noNewCustomerReply,
-              ),
-            )
-            .returning({ id: tickets.id });
-          if (rows.length === 0) return false;
-          await audit({
-            actorId: null,
-            action: "ticket.customer_followup",
-            targetType: "ticket",
-            targetId: t.ticketNumber,
-            after: { followupSentAt: now.toISOString() },
-          });
-          return true;
-        });
-        if (claimed) {
-          // Email in its own step so a send failure retries just the email.
-          await step.run(`followup-email-${t.id}`, async () => {
-            await sendFollowupEmail(t, now, cfg.closeDays);
-          });
-          nudged++;
-        }
-        continue;
-      }
-
-      // ── 2. Auto-close ───────────────────────────────────────────
-      if (nudgeCurrent && sentMs !== null && sentMs <= closeCutoff) {
+      // ── 1. Auto-close ───────────────────────────────────────────
+      // Once at least one reminder has gone out and the full grace+close window
+      // has elapsed since the agent's message, close it.
+      if (nudgedSinceLastAgent && lastAtMs <= closeCutoff) {
         const didClose = await step.run(`followup-close-${t.id}`, async () => {
           const rows = await db
             .update(tickets)
@@ -194,6 +169,63 @@ export const customerFollowupMonitor = inngest.createFunction(
           });
           closed++;
         }
+        continue;
+      }
+
+      // ── 2. Nudge (first reminder, or a daily re-nudge) ──────────
+      // Fire once the grace window has passed. In DAILY mode, re-fire when the
+      // last reminder is > ~20h old; in single mode, only until the first one.
+      const dueForNudge =
+        lastAtMs <= followupCutoff &&
+        (!nudgedSinceLastAgent ||
+          (cfg.daily && sentMs !== null && sentMs <= now.getTime() - RENUDGE_MS));
+      if (!dueForNudge) continue;
+
+      // Guards that let the atomic claim succeed: no stamp yet, a stale stamp
+      // (older than the agent's message), or — in daily mode — a stamp older
+      // than the re-nudge window. Overlapping runs still can't double-send.
+      const claimGuards = [
+        isNull(tickets.customerFollowupSentAt),
+        lt(tickets.customerFollowupSentAt, new Date(lastAtMs)),
+      ];
+      if (cfg.daily) {
+        claimGuards.push(
+          lt(
+            tickets.customerFollowupSentAt,
+            new Date(now.getTime() - RENUDGE_MS),
+          ),
+        );
+      }
+
+      const claimed = await step.run(`followup-claim-${t.id}`, async () => {
+        const rows = await db
+          .update(tickets)
+          .set({ customerFollowupSentAt: now, updatedAt: sql`now()` })
+          .where(
+            and(
+              eq(tickets.id, t.id),
+              eq(tickets.status, "awaiting_customer_confirmation"),
+              or(...claimGuards),
+              noNewCustomerReply,
+            ),
+          )
+          .returning({ id: tickets.id });
+        if (rows.length === 0) return false;
+        await audit({
+          actorId: null,
+          action: "ticket.customer_followup",
+          targetType: "ticket",
+          targetId: t.ticketNumber,
+          after: { followupSentAt: now.toISOString() },
+        });
+        return true;
+      });
+      if (claimed) {
+        // Email in its own step so a send failure retries just the email.
+        await step.run(`followup-email-${t.id}`, async () => {
+          await sendFollowupEmail(t, now, cfg.closeDays);
+        });
+        nudged++;
       }
     }
 

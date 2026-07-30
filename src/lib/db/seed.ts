@@ -197,6 +197,14 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "Days after the follow-up nudge with still no reply before the ticket auto-closes",
     },
 
+    // Customer bulk-import invites
+    {
+      key: "customer_invite.expiry_hours",
+      value: 72,
+      description:
+        "Hours a customer's bulk-import 'set your password' invite link stays valid",
+    },
+
     // Billing / accountant notifications (reqs 8.6–8.9)
     {
       key: "billing.accountant_emails",

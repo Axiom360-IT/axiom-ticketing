@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -11,7 +10,7 @@ import { productionContext } from "@/lib/auth/can-context";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
-import { accounts, users } from "@/lib/db/schema/auth";
+import { users } from "@/lib/db/schema/auth";
 import {
   rolePermissions,
   roles as rolesTable,
@@ -22,6 +21,12 @@ import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getAppUrl } from "@/lib/request";
+import {
+  provisionUser,
+  STAFF_INVITE_DEFAULT_EXPIRY_MS,
+} from "@/lib/users/provision";
+import { computeInviteStatus } from "@/lib/users/invite-status";
+import { sendCustomerSetupInvite } from "@/lib/customer/invite";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -171,82 +176,26 @@ export async function createUser(
     return reauthRequiredResult();
   }
 
-  // Ensure email is unique up front so we can return a friendly error
-  // before Better Auth's API throws.
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, data.email))
-    .limit(1);
-  if (existing) {
-    return { ok: false, error: "A user with that email already exists." };
+  // Direct user + credential-account insert, plus role assignment and (for
+  // a Customer-role grant) claiming prior guest tickets — all owned by the
+  // shared provisioning core so this path can't drift from bulk-import's.
+  // See provisionUser()'s doc comment for why this bypasses
+  // `auth.api.signUpEmail`.
+  const invitedAt = new Date();
+  const result = await provisionUser({
+    name: data.name,
+    email: data.email,
+    organizationId: data.organizationId,
+    phone: data.phone,
+    roleIds: data.roleIds,
+    createdById: caller.id,
+    invitedAt,
+    inviteExpiresAt: new Date(invitedAt.getTime() + STAFF_INVITE_DEFAULT_EXPIRY_MS),
+  });
+  if (!result.ok) {
+    return result;
   }
-
-  // Direct user + credential-account insert. We deliberately do NOT route
-  // through `auth.api.signUpEmail` because that endpoint always issues a
-  // session for the freshly-created user and the `nextCookies()` plugin
-  // stamps that session token into the response cookie jar — which would
-  // silently sign the calling admin OUT of their own session and IN as
-  // the new user. The previous workaround (capture + restore the admin's
-  // cookie value) was fragile: Better Auth promotes the cookie name to
-  // `__Secure-better-auth.session_token` over HTTPS, so a hardcoded name
-  // misses the actual cookie in production. Bypassing signUpEmail entirely
-  // removes the whole class of session-handoff bugs — no session is ever
-  // issued, so there's nothing to undo.
-  //
-  // The accounts row is created with `password = null`. Better Auth's
-  // `auth.api.resetPassword` (invoked from /admin/setup) updates this
-  // column with a real hash when the user clicks the setup-invite link.
-  // Until then the user has no way to sign in via credential — exactly
-  // the intended welcome-email flow.
-  const createdId = randomUUID();
-  try {
-    await transactional(async (tx) => {
-      // Empty-string phone → null (no SMS for this user). Anything
-      // non-empty has already been validated as E.164 by zod.
-      const phoneValue =
-        data.phone && data.phone.length > 0 ? data.phone : null;
-      await tx.insert(users).values({
-        id: createdId,
-        email: data.email,
-        // Admin trust: the admin creating this user vouches for the
-        // email (out-of-band verification). Combined with the
-        // setup-invite flow — which itself requires clicking a link
-        // sent to that email — this is functionally equivalent to a
-        // verification round-trip without making the admin go through
-        // it twice. Required because `requireEmailVerification: true`
-        // is now on globally and would otherwise block staff sign-in.
-        emailVerified: true,
-        name: data.name,
-        phone: phoneValue,
-        organizationId: data.organizationId ?? null,
-        createdById: caller.id,
-        isActive: true,
-      });
-      // Better Auth's credential provider expects:
-      //   providerId = "credential", accountId = <user id>, password = hash.
-      await tx.insert(accounts).values({
-        userId: createdId,
-        accountId: createdId,
-        providerId: "credential",
-        password: null,
-      });
-      if (data.roleIds.length > 0) {
-        await tx.insert(userRoles).values(
-          data.roleIds.map((roleId) => ({
-            userId: createdId,
-            roleId,
-            assignedById: caller.id,
-          })),
-        );
-      }
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Could not create user",
-    };
-  }
+  const createdId = result.userId;
 
   await audit({
     actorId: caller.id,
@@ -256,23 +205,38 @@ export async function createUser(
     after: { email: data.email, roleIds: data.roleIds },
   });
 
-  // Send the welcome / set-your-password email. Better Auth issues a
-  // signed reset token and invokes the `sendResetPassword` callback in
-  // `lib/auth/index.ts` which routes through our staff_setup_invite
-  // template. Best-effort — admin still sees a successful create even
-  // if email send fails (logged to dev console for diagnosis; ops can
-  // resend via the existing "Reset password" admin action).
-  try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    await auth.api.requestPasswordReset({
-      body: {
-        email: data.email,
-        redirectTo: `${appUrl}/admin/login?reset=ok`,
-      },
+  // Send the welcome / set-your-password email. Best-effort in both
+  // branches — admin still sees a successful create even if the send
+  // fails (logged to dev console for diagnosis; ops can resend via the
+  // existing "Reset password" admin action either way).
+  if (result.isCustomer) {
+    // Customer-role grants get their own invite token + template (see
+    // lib/customer/invite.ts) instead of Better Auth's reset-password
+    // flow — its expiry is admin-configurable and independent of the
+    // staff/general "forgot password" TTL.
+    const sendResult = await sendCustomerSetupInvite({
+      userId: createdId,
+      name: data.name,
+      email: data.email,
+      organizationId: data.organizationId ?? null,
+      flow: "set",
     });
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[createUser] welcome email send failed:", err);
+    if (!sendResult.ok && process.env.NODE_ENV !== "production") {
+      console.error("[createUser] customer invite email send failed:", sendResult.error);
+    }
+  } else {
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      await auth.api.requestPasswordReset({
+        body: {
+          email: data.email,
+          redirectTo: `${appUrl}/admin/login?reset=ok`,
+        },
+      });
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[createUser] welcome email send failed:", err);
+      }
     }
   }
 
@@ -628,25 +592,59 @@ export async function resetUserPassword(
   }
 
   const [u] = await db
-    .select({ email: users.email })
+    .select({
+      email: users.email,
+      name: users.name,
+      organizationId: users.organizationId,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!u) throw new NotFoundError();
 
-  const appUrl = getAppUrl();
-  try {
-    await auth.api.requestPasswordReset({
-      body: {
-        email: u.email,
-        redirectTo: `${appUrl}/admin/login`,
-      },
+  const isCustomer = await productionContext.userHasRole(userId, "Customer");
+
+  if (isCustomer) {
+    // Customer-role accounts resend via the dedicated invite token —
+    // same mechanism as their original invite, so the resend picks up
+    // the current customer_invite.expiry_hours setting.
+    const sendResult = await sendCustomerSetupInvite({
+      userId,
+      name: u.name,
+      email: u.email,
+      organizationId: u.organizationId,
+      flow: "reset",
     });
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Could not request reset",
-    };
+    if (!sendResult.ok) {
+      return { ok: false, error: sendResult.error };
+    }
+  } else {
+    const appUrl = getAppUrl();
+    try {
+      await auth.api.requestPasswordReset({
+        body: {
+          email: u.email,
+          redirectTo: `${appUrl}/admin/login`,
+        },
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Could not request reset",
+      };
+    }
+
+    const invitedAt = new Date();
+    await db
+      .update(users)
+      .set({
+        invitedAt,
+        inviteExpiresAt: new Date(
+          invitedAt.getTime() + STAFF_INVITE_DEFAULT_EXPIRY_MS,
+        ),
+        updatedAt: invitedAt,
+      })
+      .where(eq(users.id, userId));
   }
 
   await audit({
@@ -698,6 +696,8 @@ export async function listUsersForAdmin(opts: {
       isActive: users.isActive,
       createdById: users.createdById,
       createdAt: users.createdAt,
+      inviteExpiresAt: users.inviteExpiresAt,
+      inviteAcceptedAt: users.inviteAcceptedAt,
     })
     .from(users)
     .where(where);
@@ -724,6 +724,7 @@ export async function listUsersForAdmin(opts: {
   let rows = baseRows.map((u) => ({
     ...u,
     roles: rolesByUser.get(u.id) ?? [],
+    inviteStatus: computeInviteStatus(u),
   }));
 
   if (opts.query) {
