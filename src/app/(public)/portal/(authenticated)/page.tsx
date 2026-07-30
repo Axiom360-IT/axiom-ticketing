@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { CheckCircle2, Clock, FileText, Plus } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  FileText,
+  MessageSquareReply,
+  PauseCircle,
+  Plus,
+} from "lucide-react";
 import { requireSessionUser } from "@/lib/auth/session";
 import { listMyTickets } from "@/lib/customer/queries";
 import { cn } from "@/lib/utils";
@@ -25,6 +32,12 @@ export default async function PortalHomePage() {
   const counts = {
     open: tickets.filter((row) => row.status === "open").length,
     inProgress: tickets.filter((row) => row.status === "in_progress").length,
+    // "Awaiting customer" in staff terms = waiting on THIS customer, so the
+    // card is framed as an action they need to take ("Awaiting your reply").
+    awaiting: tickets.filter(
+      (row) => row.status === "awaiting_customer_confirmation",
+    ).length,
+    onHold: tickets.filter((row) => row.status === "on_hold").length,
     resolved: tickets.filter(
       (row) => row.status === "resolved" || row.status === "closed",
     ).length,
@@ -55,7 +68,7 @@ export default async function PortalHomePage() {
       {/* Stat grid */}
       <div
         aria-label={t("statsLabel")}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
       >
         <StatCard
           label={t("statOpen")}
@@ -70,6 +83,20 @@ export default async function PortalHomePage() {
           icon={Clock}
           accent="amber"
           href="/portal/tickets?status=in_progress"
+        />
+        <StatCard
+          label={t("statAwaiting")}
+          value={counts.awaiting}
+          icon={MessageSquareReply}
+          accent="purple"
+          href="/portal/tickets?status=awaiting_customer_confirmation"
+        />
+        <StatCard
+          label={t("statOnHold")}
+          value={counts.onHold}
+          icon={PauseCircle}
+          accent="slate"
+          href="/portal/tickets?status=on_hold"
         />
         <StatCard
           label={t("statResolved")}
@@ -157,13 +184,16 @@ function StatCard({
   label: string;
   value: number;
   icon: typeof FileText;
-  accent: "blue" | "amber" | "green";
+  accent: "blue" | "amber" | "green" | "purple" | "slate";
   href: string;
 }) {
   const accentClasses = {
     blue: "text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/40",
     amber: "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40",
     green: "text-green-700 bg-green-50 dark:text-green-300 dark:bg-green-950/40",
+    purple:
+      "text-purple-700 bg-purple-50 dark:text-purple-300 dark:bg-purple-950/40",
+    slate: "text-slate-700 bg-slate-100 dark:text-slate-300 dark:bg-slate-800",
   } as const;
   return (
     <Link

@@ -20,7 +20,9 @@ import {
   Gauge,
   CircleCheck,
   CircleDot,
+  Hourglass,
   Inbox,
+  PauseCircle,
   Ticket as TicketIcon,
   UserPlus,
 } from "lucide-react";
@@ -74,40 +76,64 @@ async function getStats(perms: Set<Permission>) {
   const one = (rows: { value: number }[] | null) =>
     rows ? Number(rows[0]?.value ?? 0) : null;
 
-  const [total, open, unassigned, resolved] = await Promise.all([
-    canTickets
-      ? db.select({ value: count() }).from(tickets).where(notDeleted)
-      : Promise.resolve(null),
-    canTickets
-      ? db
-          .select({ value: count() })
-          .from(tickets)
-          .where(and(inArray(tickets.status, ["open", "in_progress"]), notDeleted))
-      : Promise.resolve(null),
-    perms.has("tickets.assign")
-      ? db
-          .select({ value: count() })
-          .from(tickets)
-          .where(
-            and(
-              eq(tickets.status, "open"),
-              isNull(tickets.assignedToId),
-              notDeleted,
-            ),
-          )
-      : Promise.resolve(null),
-    canTickets
-      ? db
-          .select({ value: count() })
-          .from(tickets)
-          .where(and(eq(tickets.status, "resolved"), notDeleted))
-      : Promise.resolve(null),
-  ]);
+  const [total, open, unassigned, awaiting, onHold, resolved] =
+    await Promise.all([
+      canTickets
+        ? db.select({ value: count() }).from(tickets).where(notDeleted)
+        : Promise.resolve(null),
+      canTickets
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(
+              and(inArray(tickets.status, ["open", "in_progress"]), notDeleted),
+            )
+        : Promise.resolve(null),
+      perms.has("tickets.assign")
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(
+              and(
+                eq(tickets.status, "open"),
+                isNull(tickets.assignedToId),
+                notDeleted,
+              ),
+            )
+        : Promise.resolve(null),
+      // Paused-clock statuses surfaced as their own metrics (SLA is frozen
+      // while a ticket sits here, so they're worth watching separately).
+      canTickets
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(
+              and(
+                eq(tickets.status, "awaiting_customer_confirmation"),
+                notDeleted,
+              ),
+            )
+        : Promise.resolve(null),
+      canTickets
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(and(eq(tickets.status, "on_hold"), notDeleted))
+        : Promise.resolve(null),
+      canTickets
+        ? db
+            .select({ value: count() })
+            .from(tickets)
+            .where(and(eq(tickets.status, "resolved"), notDeleted))
+        : Promise.resolve(null),
+    ]);
 
   return {
     total: one(total),
     openTickets: one(open),
     unassigned: one(unassigned),
+    awaiting: one(awaiting),
+    onHold: one(onHold),
     resolved: one(resolved),
   };
 }
@@ -373,7 +399,7 @@ export default async function AdminLanding() {
       {!strictTech && stats ? (
         <section
           aria-label={t("quickStatsLabel")}
-          className="grid grid-cols-2 gap-3 md:grid-cols-4"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
         >
           <StatCard
             label={t("statTotal")}
@@ -400,6 +426,20 @@ export default async function AdminLanding() {
                 ? "warning"
                 : undefined
             }
+          />
+          <StatCard
+            label={t("statAwaiting")}
+            value={stats.awaiting}
+            href="/admin/tickets?status=awaiting_customer_confirmation"
+            icon={Hourglass}
+            tone="purple"
+          />
+          <StatCard
+            label={t("statOnHold")}
+            value={stats.onHold}
+            href="/admin/tickets?status=on_hold"
+            icon={PauseCircle}
+            tone="slate"
           />
           <StatCard
             label={t("statResolved")}
@@ -1156,6 +1196,9 @@ const STAT_TONES = {
   blue: "text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/40",
   amber: "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40",
   rose: "text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40",
+  purple:
+    "text-purple-700 bg-purple-50 dark:text-purple-300 dark:bg-purple-950/40",
+  slate: "text-slate-700 bg-slate-100 dark:text-slate-300 dark:bg-slate-800",
   emerald:
     "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/40",
 } as const;

@@ -90,6 +90,8 @@
       "statsLabel": "Ticket counts",
       "statOpen": "Open",
       "statInProgress": "In progress",
+      "statAwaiting": "Awaiting your reply",
+      "statOnHold": "On hold",
       "statResolved": "Resolved",
       "recentTitle": "Recent tickets",
       "viewAll": "View all →",
@@ -212,7 +214,7 @@
       "status": {
         "open": "Open",
         "in_progress": "In progress",
-        "awaiting_customer_confirmation": "Awaiting information",
+        "awaiting_customer_confirmation": "Awaiting your reply",
         "on_hold": "On hold",
         "resolved": "Resolved",
         "closed": "Closed"
@@ -2285,6 +2287,8 @@
       "statTotal": "Total tickets",
       "statOpenTickets": "Open tickets",
       "statUnassigned": "Unassigned",
+      "statAwaiting": "Awaiting customer",
+      "statOnHold": "On hold",
       "statResolved": "Resolved",
       "statClosed": "Closed",
       "statPendingProcurement": "Pending approval",

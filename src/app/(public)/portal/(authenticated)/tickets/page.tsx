@@ -26,8 +26,6 @@ const STATUS_CHIPS = [
   { key: "all", value: "" },
   { key: "open", value: "open" },
   { key: "in_progress", value: "in_progress" },
-  { key: "awaiting_customer_confirmation", value: "awaiting_customer_confirmation" },
-  { key: "on_hold", value: "on_hold" },
   { key: "resolved", value: "resolved,closed" },
 ] as const;
 
@@ -40,7 +38,7 @@ export default async function PortalTicketsPage({
   const sp = await searchParams;
   const items = await listMyTickets(user.id);
   const t = await getTranslations("portal.tickets.list");
-  const tStatus = await getTranslations("tickets.status");
+  const tStatus = await getTranslations("portal.tickets.status");
 
   // Apply status + search filters in memory. The full list is bounded
   // by how many tickets a single customer files — far below the
