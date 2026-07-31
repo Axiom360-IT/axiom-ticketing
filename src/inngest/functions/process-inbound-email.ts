@@ -27,6 +27,11 @@ import {
   listActiveParticipants,
   upsertParticipant,
 } from "@/lib/tickets/participants";
+import {
+  recordInboundMessageId,
+  resolveTicketByMessageRefs,
+  resolveTicketBySubjectSender,
+} from "@/lib/tickets/inbound-threading";
 import { senderAuthVerdict } from "@/lib/email/auth-results";
 import { matchesMagicBytes } from "@/lib/storage/magic-bytes";
 import {
@@ -167,11 +172,32 @@ export const processInboundEmail = inngest.createFunction(
     const appUrl = getAppUrl();
     const newTicketUrl = `${appUrl}/portal/submit`;
 
-    // Thread by the stable ticket token FIRST (req 5.1/5.2 — never thread by
-    // the sender's identity). Knowing whether this is a reply lets the filter
-    // keep quote-only replies that would otherwise be over-stripped to empty
-    // and silently dropped before the processor's raw-text fallback (req 5.1).
-    const ticketNumber = extractTicketNumber(payload);
+    // Resolve which ticket this email belongs to, cheapest signal first:
+    //   1. Ticket-number token in To (`ticket+NUM@`), subject, or refs — the
+    //      canonical handle, present when replying to one of our emails.
+    //   2. RFC Message-ID thread chain — the reply's In-Reply-To/References vs.
+    //      ids we recorded for a ticket. Catches a customer replying inside
+    //      their ORIGINAL mail thread, or to a staff Outlook reply, where no
+    //      number token exists (otherwise → duplicate ticket).
+    //   3. Same sender + same subject on a still-open ticket — a last-resort
+    //      fallback for threads that predate id capture.
+    // We never thread by sender identity alone (req 5.1/5.2). Knowing this is a
+    // reply also lets the filter keep quote-only replies that would otherwise
+    // be over-stripped to empty and dropped before the raw-text fallback.
+    let ticketNumber = extractTicketNumber(payload);
+    if (!ticketNumber) {
+      ticketNumber = await step.run("resolve-by-message-refs", async () =>
+        resolveTicketByMessageRefs(payload.headers),
+      );
+    }
+    if (!ticketNumber) {
+      ticketNumber = await step.run("resolve-by-subject-sender", async () =>
+        resolveTicketBySubjectSender(payload.fromEmail, payload.subject),
+      );
+    }
+    // The reply's own Message-ID — recorded against whichever ticket we resolve
+    // (or create) below so the NEXT reply in this thread also resolves.
+    const inboundMessageId = payload.headers["message-id"];
 
     // 1. Filter (auto-reply/bounce/list defenses always apply; the empty-body
     //    rule is lenient for a reply to a known ticket).
@@ -196,6 +222,12 @@ export const processInboundEmail = inngest.createFunction(
         createTicketFromInbound(payload, appUrl),
       );
       if (result.status === "created") {
+        // Index this email's Message-ID so a reply to it (or to the
+        // confirmation we send) threads back to THIS ticket rather than
+        // opening a duplicate.
+        await step.run("record-new-ticket-message-id", async () =>
+          recordInboundMessageId(result.ticketId, inboundMessageId),
+        );
         // Attach any files that rode in on the email (forwarded or direct).
         // Separate step from ticket creation so a retry here can't re-create
         // the ticket. Best-effort inside the helper.
@@ -263,6 +295,12 @@ export const processInboundEmail = inngest.createFunction(
       });
       return { status: "ticket-not-found", ticketNumber };
     }
+
+    // Index this reply's Message-ID against the ticket so the NEXT reply in the
+    // thread resolves by header too (chains grow as the conversation does).
+    await step.run("record-reply-message-id", async () =>
+      recordInboundMessageId(ticket.id, inboundMessageId),
+    );
 
     // 4. Closed
     if (ticket.status === "closed") {
@@ -867,6 +905,10 @@ async function createTicketFromInbound(
         status: "open",
         stream,
         origin: "email",
+        // Distinguish a staff-forwarded email from a direct one (the effective
+        // customer differs from the envelope sender only on a parsed forward).
+        createdVia:
+          customerEmail !== fromEmail ? "forwarded_email" : "direct_email",
         organizationId: resolvedOrg.organizationId,
         orgMatchStatus: resolvedOrg.matchStatus,
         customerEmail,

@@ -44,6 +44,7 @@ import { loadAllTicketTypes } from "@/lib/tickets/types";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
 import { parseCsv, parseSort } from "@/lib/data-table";
+import { CSAT_RATINGS } from "@/lib/tickets/csat-display";
 import { cn } from "@/lib/utils";
 
 // Filter query string contract:
@@ -74,6 +75,8 @@ type SearchParams = Promise<{
   org?: string;
   /** Customer email — single-select (from the auto-populated customer list). */
   customer?: string;
+  /** CSV multi-select of CSAT ratings (happy,neutral,unhappy). */
+  csat?: string;
   /** `<column>:<asc|desc>` — column-header sort. */
   sort?: string;
   page?: string;
@@ -121,6 +124,7 @@ export default async function TicketsPage({
   const t = await getTranslations("tickets.queue");
   const tFilters = await getTranslations("tickets.filters");
   const tStream = await getTranslations("tickets.stream");
+  const tStatus = await getTranslations("tickets.status");
   const formatter = await getFormatter();
 
   const sp = await searchParams;
@@ -159,6 +163,7 @@ export default async function TicketsPage({
   const filterBilling = parseEnumCsv(sp.billing, BILLING_FILTER_VALUES);
   const filterOrg = parseCsv(sp.org);
   const filterCustomer = parseCsv(sp.customer);
+  const filterCsat = parseEnumCsv(sp.csat, CSAT_RATINGS);
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
@@ -297,6 +302,7 @@ export default async function TicketsPage({
   if (filterCustomer.length > 0) {
     conditions.push(inArray(tickets.customerEmail, filterCustomer));
   }
+  if (filterCsat) conditions.push(inArray(tickets.csatRating, filterCsat));
 
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
@@ -311,7 +317,8 @@ export default async function TicketsPage({
     (filterFrom || filterTo ? 1 : 0) +
     (filterBilling ? 1 : 0) +
     (filterOrg.length ? 1 : 0) +
-    (filterCustomer.length ? 1 : 0);
+    (filterCustomer.length ? 1 : 0) +
+    (filterCsat ? 1 : 0);
 
   // Page slice + total count in parallel. The count powers the numbered pager
   // and "N of T" range; the WHERE only references `tickets` columns (plus
@@ -337,6 +344,7 @@ export default async function TicketsPage({
         customerCompany: tickets.customerCompany,
         assignedToId: tickets.assignedToId,
         assignedToName: users.name,
+        csatRating: tickets.csatRating,
         createdAt: tickets.createdAt,
         updatedAt: tickets.updatedAt,
       })
@@ -425,6 +433,27 @@ export default async function TicketsPage({
     { key: "all" as const, label: t("viewAll") },
   ];
 
+  // Quick-status chips (parity with the customer portal's status chips):
+  // single-click sets `status` to exactly this value, toggling off on a
+  // second click. Combines with whichever view tab (Active/Closed/All) is
+  // already selected — unlike the tabs, these don't reset it.
+  const isSingleStatus = (status: string) =>
+    filterStatus?.length === 1 && filterStatus[0] === status;
+  const statusChipHref = (status: string) => {
+    const p = new URLSearchParams(
+      Object.entries(sp).filter(
+        ([k, v]) => typeof v === "string" && v.length > 0 && k !== "status" && k !== "page",
+      ) as [string, string][],
+    );
+    if (!isSingleStatus(status)) p.set("status", status);
+    const qs = p.toString();
+    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
+  };
+  const statusChips = [
+    { status: "awaiting_customer_confirmation", label: tStatus("awaiting_customer_confirmation") },
+    { status: "on_hold", label: tStatus("on_hold") },
+  ];
+
   // Carry the active list filters onto the export so it matches what's shown.
   const exportParams: Record<string, string> = {};
   for (const k of [
@@ -442,6 +471,7 @@ export default async function TicketsPage({
     "billing",
     "org",
     "customer",
+    "csat",
   ] as const) {
     const v = sp[k];
     if (typeof v === "string" && v.length > 0) exportParams[k] = v;
@@ -532,6 +562,24 @@ export default async function TicketsPage({
           options={[{ value: "1", label: tFilters("escalatedOnly") }]}
           triggerClassName="h-9! w-40"
         />
+        {statusChips.map((chip) => {
+          const active = isSingleStatus(chip.status);
+          return (
+            <Link
+              key={chip.status}
+              href={statusChipHref(chip.status)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
+                active
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+              )}
+            >
+              {chip.label}
+            </Link>
+          );
+        })}
       </div>
 
       <TicketsTable

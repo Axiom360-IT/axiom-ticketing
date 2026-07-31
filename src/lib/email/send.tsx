@@ -1,6 +1,7 @@
 import { render } from "@react-email/render";
 import { getTranslations } from "next-intl/server";
 import { resend } from "./client";
+import { buildOutboundMessageId } from "./message-id";
 import { getSetting } from "../settings";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import {
@@ -491,6 +492,15 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       ? `ticket+${ticketNumber}@${inboundDomain}`
       : undefined;
 
+  // Stamp a ticket-encoding Message-ID on ticket emails. When the customer
+  // replies, this id lands in their `References`/`In-Reply-To` headers, so the
+  // ticket number can be recovered from the thread even if they strip the
+  // `[NUM]` subject tag — a second, header-level threading signal alongside the
+  // reply-to token (see lib/email/message-id.ts + process-inbound-email.ts).
+  const messageId = ticketNumber
+    ? buildOutboundMessageId(ticketNumber, inboundDomain)
+    : undefined;
+
   await resend.emails.send({
     from: `${displayName} <${fromEmail}>`,
     to,
@@ -504,6 +514,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       // manual reply is unaffected (it carries no Auto-Submitted header).
       "Auto-Submitted": "auto-generated",
       ...(ticketNumber ? { "X-Ticket-Number": ticketNumber } : {}),
+      ...(messageId ? { "Message-ID": messageId } : {}),
     },
   });
 }

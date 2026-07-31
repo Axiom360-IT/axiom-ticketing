@@ -31,6 +31,13 @@ export const tickets = pgTable(
     status: text("status").notNull().default("open"),
     stream: text("stream").notNull(),
     origin: text("origin").notNull(),
+    // Finer-grained creation source than `origin` (which is only
+    // web_form/email/portal). Distinguishes a direct inbound email from a
+    // staff-forwarded one, and a staff-created ("manual") ticket from a
+    // customer portal submission. Nullable — pre-dates this column reads as
+    // null and the UI falls back to `origin`.
+    //   'direct_email' | 'forwarded_email' | 'manual' | 'portal' | 'web_form'
+    createdVia: text("created_via"),
     // Organization that raised the ticket (Meeting-2, CR-02). Nullable so
     // guest/legacy submissions that don't match a registered org still work;
     // the org abbreviation drives the ticket-number prefix when present.

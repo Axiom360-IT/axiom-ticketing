@@ -214,6 +214,7 @@ export async function prepareGuestTicketDraft(
       status: "draft",
       stream,
       origin: "web_form",
+      createdVia: "web_form",
       customerEmail: data.customerEmail,
       customerName: data.customerName,
       createdAt,
@@ -393,6 +394,7 @@ export async function createTicket(
           status: "open",
           stream,
           origin: "web_form",
+          createdVia: "web_form",
           customerEmail: data.customerEmail,
           customerName: data.customerName,
           createdAt,
@@ -561,6 +563,8 @@ export async function createTicketOnBehalf(
         // Origin "portal" because the agent is using the dashboard portal,
         // not the public web form. (web_form/email/portal — see schema check.)
         origin: "portal",
+        // But the finer source is a STAFF member manually creating it.
+        createdVia: "manual",
         customerEmail: data.customerEmail,
         customerName: data.customerName,
         createdAt,

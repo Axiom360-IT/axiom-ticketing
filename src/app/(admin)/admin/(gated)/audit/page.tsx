@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowRight,
   Receipt,
+  Search,
   Settings as SettingsIcon,
   ShieldAlert,
   Ticket,
@@ -25,10 +26,15 @@ import {
   takePage,
 } from "@/components/ui/pagination";
 import { AuditDetailsButton } from "@/components/audit/details-modal";
+import { AuditPresetsBar } from "@/components/audit/presets-bar";
+import { listAuditFilterPresets } from "@/app/actions/audit-presets";
 import {
+  countRecentDeniedEntries,
   listAuditActions,
   listAuditActors,
   listAuditEntriesOffset,
+  listAuditTargetTypes,
+  resolveTicketLinkIds,
   type AuditFilters,
 } from "@/app/actions/audit";
 import {
@@ -50,12 +56,14 @@ import { getSessionUser } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 
 type SearchParams = Promise<{
+  q?: string;
   from?: string;
   to?: string;
   actorId?: string;
   action?: string;
   targetType?: string;
   targetId?: string;
+  outcome?: string;
   page?: string;
   pageSize?: string;
 }>;
@@ -148,27 +156,73 @@ export default async function AuditPage({
   }
 
   const sp = await searchParams;
+  const OUTCOME_VALUES = ["success", "failure", "denied", "error"] as const;
+  const outcomeFilter = OUTCOME_VALUES.includes(sp.outcome as (typeof OUTCOME_VALUES)[number])
+    ? (sp.outcome as (typeof OUTCOME_VALUES)[number])
+    : undefined;
   const filters: AuditFilters = {
+    q: sp.q?.trim() || undefined,
     from: toIso(sp.from),
     to: toIso(sp.to, true),
     actorId: sp.actorId || undefined,
     action: sp.action || undefined,
     targetType: sp.targetType || undefined,
     targetId: sp.targetId || undefined,
+    outcome: outcomeFilter,
   };
 
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const { limit, offset } = pageWindow(page, pageSize);
 
-  const [pageData, actions, actors, canExport] = await Promise.all([
-    listAuditEntriesOffset({ filters, limit, offset }),
-    listAuditActions(),
-    listAuditActors(),
-    can(user, "audit.export", { type: "global" }, productionContext),
-  ]);
+  const [pageData, actions, actors, targetTypes, deniedCount24h, presets, canExport] =
+    await Promise.all([
+      listAuditEntriesOffset({ filters, limit, offset }),
+      listAuditActions(),
+      listAuditActors(),
+      listAuditTargetTypes(),
+      countRecentDeniedEntries(),
+      listAuditFilterPresets(),
+      can(user, "audit.export", { type: "global" }, productionContext),
+    ]);
   const { items: rows } = takePage(pageData.rows, pageSize);
   const totalItems = pageData.total;
+
+  // Batch-resolve ticket NUMBERS (target_id, for ticket.* rows) to their
+  // uuid so the Target column can link to /admin/tickets/[id] — one query
+  // for the whole page rather than one per row.
+  const ticketNumbers = [
+    ...new Set(
+      rows
+        .filter((r) => r.targetType === "ticket" && r.targetId)
+        .map((r) => r.targetId as string),
+    ),
+  ];
+  const ticketIdByNumber =
+    ticketNumbers.length > 0 ? await resolveTicketLinkIds(ticketNumbers) : {};
+
+  function targetHref(row: {
+    targetType: string | null;
+    targetId: string | null;
+  }): string | null {
+    if (!row.targetType || !row.targetId) return null;
+    switch (row.targetType) {
+      case "ticket":
+        return ticketIdByNumber[row.targetId]
+          ? `/admin/tickets/${ticketIdByNumber[row.targetId]}`
+          : null;
+      case "organization":
+        return `/admin/organizations/${row.targetId}`;
+      case "user":
+        return `/admin/users/${row.targetId}`;
+      case "role":
+        return `/admin/roles/${row.targetId}`;
+      case "procurement":
+        return `/admin/procurement/${row.targetId}`;
+      default:
+        return null;
+    }
+  }
 
   const t = await getTranslations("audit");
   const formatter = await getFormatter();
@@ -191,6 +245,35 @@ export default async function AuditPage({
     carried.filter(([k]) => k !== "pageSize"),
   );
 
+  // Quick date-range chips — instant nav (no Apply click needed), same
+  // pattern as the status chips elsewhere in the admin UI. Typing exact
+  // dates is the slowest part of narrowing a search, and "today" / "last
+  // week" / "last month" cover most real investigations.
+  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
+  const today = new Date();
+  const todayStr = toDateStr(today);
+  const daysAgoStr = (n: number) => {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - n);
+    return toDateStr(d);
+  };
+  const dateChips = [
+    { key: "today", from: todayStr, to: todayStr, label: t("filters.rangeToday") },
+    { key: "7d", from: daysAgoStr(6), to: todayStr, label: t("filters.range7d") },
+    { key: "30d", from: daysAgoStr(29), to: todayStr, label: t("filters.range30d") },
+  ];
+  const dateChipHref = (chip: { from: string; to: string }) => {
+    const p = new URLSearchParams(
+      Object.entries(sp).filter(
+        ([k, v]) =>
+          typeof v === "string" && v.length > 0 && k !== "from" && k !== "to" && k !== "page",
+      ) as [string, string][],
+    );
+    p.set("from", chip.from);
+    p.set("to", chip.to);
+    return `/admin/audit?${p.toString()}`;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -205,66 +288,153 @@ export default async function AuditPage({
         ) : null}
       </div>
 
-      <form
-        action="/admin/audit"
-        method="get"
-        className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end"
-      >
+      {deniedCount24h > 0 ? (
+        <Link
+          href="/admin/audit?outcome=denied"
+          className="flex items-center gap-2.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 transition-colors hover:bg-red-100 dark:border-red-900 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900/60"
+        >
+          <ShieldAlert className="size-4 shrink-0" aria-hidden="true" />
+          <span className="font-medium">
+            {t("deniedBanner", { count: deniedCount24h })}
+          </span>
+        </Link>
+      ) : null}
+
+      <AuditPresetsBar presets={presets} />
+
+      <form action="/admin/audit" method="get" className="space-y-3">
         <div className="space-y-1">
-          <Label htmlFor="audit-from">{t("filters.from")}</Label>
-          <Input id="audit-from" name="from" type="date" defaultValue={sp.from ?? ""} />
+          <Label htmlFor="audit-q">{t("filters.search")}</Label>
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-400"
+              aria-hidden="true"
+            />
+            <Input
+              id="audit-q"
+              name="q"
+              defaultValue={sp.q ?? ""}
+              placeholder={t("filters.searchPlaceholder")}
+              className="pl-8"
+            />
+          </div>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="audit-to">{t("filters.to")}</Label>
-          <Input id="audit-to" name="to" type="date" defaultValue={sp.to ?? ""} />
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 mr-0.5">
+            {t("filters.quickRange")}
+          </span>
+          {dateChips.map((chip) => {
+            const active = sp.from === chip.from && sp.to === chip.to;
+            return (
+              <Link
+                key={chip.key}
+                href={dateChipHref(chip)}
+                aria-pressed={active}
+                className={cn(
+                  "inline-flex h-7 items-center px-2.5 rounded-full text-xs font-medium border transition-colors",
+                  active
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+                )}
+              >
+                {chip.label}
+              </Link>
+            );
+          })}
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="audit-actor">{t("filters.actor")}</Label>
-          <select
-            id="audit-actor"
-            name="actorId"
-            defaultValue={sp.actorId ?? ""}
-            className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
-          >
-            <option value="">{t("filters.actorAll")}</option>
-            {actors.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
+          <div className="space-y-1">
+            <Label htmlFor="audit-from">{t("filters.from")}</Label>
+            <Input id="audit-from" name="from" type="date" defaultValue={sp.from ?? ""} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-to">{t("filters.to")}</Label>
+            <Input id="audit-to" name="to" type="date" defaultValue={sp.to ?? ""} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-actor">{t("filters.actor")}</Label>
+            <select
+              id="audit-actor"
+              name="actorId"
+              defaultValue={sp.actorId ?? ""}
+              className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
+            >
+              <option value="">{t("filters.actorAll")}</option>
+              {actors.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-action">{t("filters.action")}</Label>
+            <select
+              id="audit-action"
+              name="action"
+              defaultValue={sp.action ?? ""}
+              className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
+            >
+              <option value="">{t("filters.actionAll")}</option>
+              {AUDIT_CATEGORY_ORDER.filter((c) => actionsByCategory.has(c)).map(
+                (c) => (
+                  <optgroup key={c} label={AUDIT_CATEGORY_LABEL[c]}>
+                    {(actionsByCategory.get(c) ?? []).map((a) => (
+                      <option key={a} value={a}>
+                        {auditActionLabel(a)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ),
+              )}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-outcome">{t("filters.outcome")}</Label>
+            <select
+              id="audit-outcome"
+              name="outcome"
+              defaultValue={outcomeFilter ?? ""}
+              className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
+            >
+              <option value="">{t("filters.outcomeAll")}</option>
+              {OUTCOME_VALUES.map((o) => (
+                <option key={o} value={o}>
+                  {auditOutcomeLabel(o)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-targetType">{t("filters.targetType")}</Label>
+            <select
+              id="audit-targetType"
+              name="targetType"
+              defaultValue={sp.targetType ?? ""}
+              className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
+            >
+              <option value="">{t("filters.targetTypeAll")}</option>
+              {targetTypes.map((tt) => (
+                <option key={tt} value={tt}>
+                  {humanizeFieldKey(tt)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="audit-targetId">{t("filters.targetId")}</Label>
+            <Input
+              id="audit-targetId"
+              name="targetId"
+              defaultValue={sp.targetId ?? ""}
+              placeholder={t("filters.targetIdPlaceholder")}
+            />
+          </div>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="audit-action">{t("filters.action")}</Label>
-          <select
-            id="audit-action"
-            name="action"
-            defaultValue={sp.action ?? ""}
-            className="h-8 w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 text-sm"
-          >
-            <option value="">{t("filters.actionAll")}</option>
-            {AUDIT_CATEGORY_ORDER.filter((c) => actionsByCategory.has(c)).map(
-              (c) => (
-                <optgroup key={c} label={AUDIT_CATEGORY_LABEL[c]}>
-                  {(actionsByCategory.get(c) ?? []).map((a) => (
-                    <option key={a} value={a}>
-                      {auditActionLabel(a)}
-                    </option>
-                  ))}
-                </optgroup>
-              ),
-            )}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="audit-targetType">{t("filters.targetType")}</Label>
-          <Input id="audit-targetType" name="targetType" defaultValue={sp.targetType ?? ""} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="audit-targetId">{t("filters.targetId")}</Label>
-          <Input id="audit-targetId" name="targetId" defaultValue={sp.targetId ?? ""} />
-        </div>
-        <div className="md:col-span-3 lg:col-span-6 flex gap-2">
+
+        <div className="flex gap-2">
           <Button type="submit">{t("filters.apply")}</Button>
           <Button nativeButton={false} render={<Link href="/admin/audit" />} variant="outline">
             {t("filters.reset")}
@@ -382,19 +552,34 @@ export default async function AuditPage({
                           </span>
                         </td>
                         <td className="py-2.5 pr-4">
-                          <span
-                            className={cn(
-                              "text-xs",
-                              target === "—"
-                                ? "text-zinc-400"
-                                : "text-zinc-600 dark:text-zinc-300",
-                            )}
-                            title={target}
-                          >
-                            {target.length > 28
-                              ? `${target.slice(0, 25)}…`
-                              : target}
-                          </span>
+                          {(() => {
+                            const label =
+                              target.length > 28
+                                ? `${target.slice(0, 25)}…`
+                                : target;
+                            const href = targetHref(row);
+                            return href ? (
+                              <Link
+                                href={href}
+                                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                                title={target}
+                              >
+                                {label}
+                              </Link>
+                            ) : (
+                              <span
+                                className={cn(
+                                  "text-xs",
+                                  target === "—"
+                                    ? "text-zinc-400"
+                                    : "text-zinc-600 dark:text-zinc-300",
+                                )}
+                                title={target}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2.5 pr-4">
                           {row.outcome === "success" ? (

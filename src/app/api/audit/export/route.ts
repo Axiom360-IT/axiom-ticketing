@@ -93,6 +93,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     action: sp.get("action") || undefined,
     targetType: sp.get("targetType") || undefined,
     targetId: sp.get("targetId") || undefined,
+    q: sp.get("q") || undefined,
+    outcome: (sp.get("outcome") as AuditFilters["outcome"]) || undefined,
   };
 
   // Audit the audit: exporting the log is itself a privileged, security-

@@ -17,6 +17,12 @@ import {
 import { TicketRowActions } from "@/components/tickets/ticket-row-actions";
 import type { AssignableTechnician } from "@/lib/tickets/load";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
+import {
+  CSAT_EMOJI,
+  CSAT_LABEL_KEY,
+  CSAT_RATINGS,
+  type CsatRating,
+} from "@/lib/tickets/csat-display";
 
 // Row view-model: raw values for the badges/row-actions, plus server-formatted
 // date strings (so no `Date.now()` runs during client render — avoids a
@@ -40,6 +46,7 @@ export type TicketRow = {
   customerCompany: string | null;
   assignedToId: string | null;
   assignedToName: string | null;
+  csatRating: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdLabel: string;
@@ -87,6 +94,7 @@ export function TicketsTable({
   const tPriority = useTranslations("tickets.priority");
   const tBillingOpt = useTranslations("tickets.filters.billingOptions");
   const tFilters = useTranslations("tickets.filters");
+  const tCsat = useTranslations("tickets.csat");
 
   const columns = useMemo<ColumnDef<TicketRow>[]>(() => {
     const categoryOpts: FilterOption[] = categories.map((c) => ({
@@ -122,6 +130,10 @@ export function TicketsTable({
       { value: "unassigned", label: tFilters("unassigned") },
       ...technicians.map((tech) => ({ value: tech.id, label: tech.name })),
     ];
+    const csatOpts: FilterOption[] = CSAT_RATINGS.map((r) => ({
+      value: r,
+      label: `${CSAT_EMOJI[r]} ${tCsat(CSAT_LABEL_KEY[r])}`,
+    }));
 
     return [
       {
@@ -297,6 +309,32 @@ export function TicketsTable({
           cellClassName: "text-xs text-zinc-500 dark:text-zinc-400",
         },
         cell: ({ row }) => row.original.updatedLabel,
+      },
+      {
+        id: "feedback",
+        meta: {
+          title: t("columns.feedback"),
+          filter: { kind: "enum", param: "csat", options: csatOpts },
+        },
+        cell: ({ row }) => {
+          const raw = row.original.csatRating;
+          if (!raw || !(raw in CSAT_EMOJI)) {
+            return <span className="text-zinc-400">—</span>;
+          }
+          const rating = raw as CsatRating;
+          const label = tCsat(CSAT_LABEL_KEY[rating]);
+          return (
+            <span
+              className="inline-flex items-center gap-1 whitespace-nowrap"
+              title={label}
+            >
+              <span aria-hidden="true">{CSAT_EMOJI[rating]}</span>
+              <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                {label}
+              </span>
+            </span>
+          );
+        },
       },
       {
         id: "actions",

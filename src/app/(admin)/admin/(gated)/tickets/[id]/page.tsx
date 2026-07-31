@@ -66,6 +66,27 @@ const ORIGIN_KEYS: Record<string, "originWebForm" | "originEmail" | "originPorta
   portal: "originPortal",
 };
 
+// Finer creation source than `origin`. `created_via` is null on tickets that
+// pre-date the column, so we fall back to a sensible value derived from origin.
+type CreatedViaKey =
+  | "createdViaDirectEmail"
+  | "createdViaForwardedEmail"
+  | "createdViaManual"
+  | "createdViaPortal"
+  | "createdViaWebForm";
+const CREATED_VIA_KEYS: Record<string, CreatedViaKey> = {
+  direct_email: "createdViaDirectEmail",
+  forwarded_email: "createdViaForwardedEmail",
+  manual: "createdViaManual",
+  portal: "createdViaPortal",
+  web_form: "createdViaWebForm",
+};
+const ORIGIN_TO_VIA: Record<string, string> = {
+  email: "direct_email",
+  portal: "portal",
+  web_form: "web_form",
+};
+
 /** Human-readable completion time from open → close (Meeting-2, CR-15). */
 function formatCompletionTime(fromMs: number, toMs: number): string {
   const totalMinutes = Math.max(0, Math.round((toMs - fromMs) / 60000));
@@ -337,6 +358,12 @@ export default async function TicketDetailPage({
 
   const originLabel = t("originLabel", {
     origin: t(ORIGIN_KEYS[ticket.origin] ?? "originWebForm"),
+  });
+
+  const createdViaValue =
+    ticket.createdVia ?? ORIGIN_TO_VIA[ticket.origin] ?? "web_form";
+  const createdViaLabel = t("createdViaLabel", {
+    via: t(CREATED_VIA_KEYS[createdViaValue] ?? "createdViaWebForm"),
   });
 
   const streamLabel =
@@ -858,6 +885,9 @@ export default async function TicketDetailPage({
               <Separator className="my-2" />
               <div className="text-xs text-zinc-500 dark:text-zinc-400">
                 {originLabel}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {createdViaLabel}
               </div>
             </CardContent>
           </Card>

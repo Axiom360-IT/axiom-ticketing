@@ -25,6 +25,7 @@ import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 import { loadAllTicketCategories } from "@/lib/tickets/categories";
 import { loadAllTicketTypes } from "@/lib/tickets/types";
 import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
+import { CSAT_RATINGS } from "@/lib/tickets/csat-display";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,6 +53,14 @@ const BILLABLE_LABEL: Record<string, string> = {
   monthly_plan: "Monthly plan",
   project: "Project",
   rework: "Rework",
+};
+
+// CSAT rating → plain label for the exported file (no emoji, which mangles in
+// CSV/PDF). Mirrors the on-screen wording.
+const CSAT_LABEL: Record<string, string> = {
+  happy: "Happy",
+  neutral: "Okay",
+  unhappy: "Unhappy",
 };
 
 function enumCsv<T extends string>(
@@ -113,6 +122,7 @@ export async function GET(request: Request): Promise<Response> {
   const fBilling = enumCsv(sp.get("billing"), BILLING_FILTER_VALUES);
   const fOrg = sp.get("org")?.trim() || undefined;
   const fCustomer = sp.get("customer")?.trim() || undefined;
+  const fCsat = enumCsv(sp.get("csat"), CSAT_RATINGS);
 
   const conditions: SQL[] = [ticketsVisibilityCondition(user)];
   if (search) {
@@ -156,6 +166,7 @@ export async function GET(request: Request): Promise<Response> {
   }
   if (fOrg) conditions.push(eq(tickets.organizationId, fOrg));
   if (fCustomer) conditions.push(eq(tickets.customerEmail, fCustomer));
+  if (fCsat) conditions.push(inArray(tickets.csatRating, fCsat));
 
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
@@ -176,6 +187,7 @@ export async function GET(request: Request): Promise<Response> {
       customerName: tickets.customerName,
       customerEmail: tickets.customerEmail,
       assignedToName: users.name,
+      csatRating: tickets.csatRating,
       createdAt: tickets.createdAt,
       updatedAt: tickets.updatedAt,
     })
@@ -218,6 +230,7 @@ export async function GET(request: Request): Promise<Response> {
           "Customer",
           "Email",
           "Assignee",
+          "Feedback",
           "Created",
           "Updated",
         ],
@@ -235,6 +248,7 @@ export async function GET(request: Request): Promise<Response> {
           r.customerName,
           r.customerEmail,
           r.assignedToName ?? "Unassigned",
+          r.csatRating ? (CSAT_LABEL[r.csatRating] ?? r.csatRating) : "",
           fmt(r.createdAt),
           fmt(r.updatedAt),
         ]),

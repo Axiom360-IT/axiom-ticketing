@@ -436,7 +436,7 @@
       "viewAll": "All",
       "empty": "No tickets yet. They'll appear here as customers submit them.",
       "emptyMatching": "No tickets match your search.",
-      "createOnBehalf": "Create on behalf",
+      "createOnBehalf": "Create New Ticket",
       "columns": {
         "ticket": "Ticket",
         "subject": "Subject",
@@ -449,7 +449,8 @@
         "organization": "Organization",
         "assignee": "Assignee",
         "created": "Created",
-        "updated": "Updated"
+        "updated": "Updated",
+        "feedback": "Feedback"
       },
       "orgUnverified": "Unverified",
       "unassigned": "Unassigned",
@@ -488,7 +489,13 @@
       "streamExternal": "External",
       "originWebForm": "web form",
       "originEmail": "email",
-      "originPortal": "portal"
+      "originPortal": "portal",
+      "createdViaLabel": "Created via: {via}",
+      "createdViaDirectEmail": "email (direct)",
+      "createdViaForwardedEmail": "forwarded email",
+      "createdViaManual": "created manually by staff",
+      "createdViaPortal": "customer portal",
+      "createdViaWebForm": "web form"
     },
     "status": {
       "open": "Open",
@@ -613,7 +620,7 @@
       "submitAnother": "Submit another ticket"
     },
     "createOnBehalf": {
-      "title": "Create ticket on behalf",
+      "title": "Create New Ticket",
       "subtitle": "Use this when a customer reports an issue by phone or in person. The customer will receive the standard confirmation email.",
       "cardTitle": "Ticket details"
     },
@@ -1617,8 +1624,18 @@
       "actorAll": "Any actor",
       "action": "Action",
       "actionAll": "Any action",
+      "outcome": "Outcome",
+      "outcomeAll": "Any outcome",
       "targetType": "Target type",
+      "targetTypeAll": "Any type",
       "targetId": "Target ID",
+      "targetIdPlaceholder": "e.g. AX-0042, or a user/organization ID",
+      "search": "Search",
+      "searchPlaceholder": "Ticket subject, ticket number, action, or ID…",
+      "quickRange": "Quick range:",
+      "rangeToday": "Today",
+      "range7d": "Last 7 days",
+      "range30d": "Last 30 days",
       "apply": "Apply",
       "reset": "Reset"
     },
@@ -1634,6 +1651,18 @@
       "ipAddress": "IP"
     },
     "systemActor": "System",
+    "deniedBanner": "{count, plural, =1 {1 denied attempt} other {# denied attempts}} in the last 24 hours — review",
+    "presets": {
+      "label": "Saved view:",
+      "none": "None",
+      "saveButton": "Save current filters",
+      "saveTitle": "Save this filter view",
+      "saveDescription": "Team-shared — anyone who can view the audit log will see it in the list.",
+      "nameLabel": "Name",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "delete": "Delete this saved view"
+    },
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "empty": "No entries match the filters.",
@@ -2283,6 +2312,7 @@
       "csatFirstContact": "First-contact happy: {rate}%",
       "csatRework": "Rework: {rate}%",
       "csatUnassigned": "Unassigned",
+      "csatViewTickets": "View these tickets",
       "chartsLabel": "Ticket analytics",
       "statTotal": "Total tickets",
       "statOpenTickets": "Open tickets",

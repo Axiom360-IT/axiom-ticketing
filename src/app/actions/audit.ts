@@ -2,6 +2,7 @@
 
 import {
   and,
+  count,
   eq,
   gte,
   inArray,
@@ -18,6 +19,8 @@ import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { auditLog } from "@/lib/db/schema/audit";
+import { tickets } from "@/lib/db/schema/tickets";
+import { type AuditOutcome } from "@/lib/audit/action-label";
 import { ForbiddenError } from "@/lib/errors";
 
 const PAGE_SIZE = 50;
@@ -30,6 +33,11 @@ export type AuditFilters = {
   action?: string;
   targetType?: string;
   targetId?: string;
+  /** Free-text search across target id/label, action, and — for ticket-
+   *  targeted entries — the ticket's current subject (joined by ticket
+   *  number, since that's what's stored in target_id for ticket actions). */
+  q?: string;
+  outcome?: AuditOutcome;
 };
 
 export type AuditCursor = {
@@ -96,6 +104,8 @@ const filterSchema = z.object({
   action: z.string().min(1).max(120).optional(),
   targetType: z.string().min(1).max(60).optional(),
   targetId: z.string().min(1).max(120).optional(),
+  q: z.string().trim().min(1).max(200).optional(),
+  outcome: z.enum(["success", "failure", "denied", "error"]).optional(),
 });
 
 const cursorSchema = z.object({
@@ -130,6 +140,30 @@ function buildWhere(
   }
   if (filters.targetId) {
     clauses.push(eq(auditLog.targetId, filters.targetId));
+  }
+  if (filters.outcome) {
+    clauses.push(eq(auditLog.outcome, filters.outcome));
+  }
+  if (filters.q) {
+    const q = `%${filters.q.trim()}%`;
+    // target_id covers ticket numbers (that's what's stored for ticket
+    // actions) and other entities' ids; target_label covers whatever
+    // callers snapshot a human-readable name into (e.g. a user's email at
+    // sign-in). Ticket SUBJECT isn't stored on audit_log at all, so it's
+    // matched via a live join against `tickets` by ticket number — works
+    // retroactively for every past entry, not just ones written after this
+    // search existed.
+    clauses.push(sql`(
+      ${auditLog.targetId} ILIKE ${q}
+      OR ${auditLog.targetLabel} ILIKE ${q}
+      OR ${auditLog.action} ILIKE ${q}
+      OR EXISTS (
+        SELECT 1 FROM ${tickets}
+        WHERE ${tickets.ticketNumber} = ${auditLog.targetId}
+          AND ${auditLog.targetType} = 'ticket'
+          AND ${tickets.subject} ILIKE ${q}
+      )
+    )`);
   }
 
   if (cursor) {
@@ -485,7 +519,84 @@ export async function getAuditEntry(
   };
 }
 
+/**
+ * Resolves ticket NUMBERS (what's stored in `target_id` for ticket.* audit
+ * rows) to their uuid, so the Target column can link straight to
+ * /admin/tickets/[id] — that route takes the uuid, not the number. Batched
+ * per page of audit rows rather than one query per row. A number with no
+ * match (ticket hard-deleted, or a bad value) is simply absent from the
+ * result — the caller renders that row as plain text instead of a link.
+ */
+export async function resolveTicketLinkIds(
+  ticketNumbers: string[],
+): Promise<Record<string, string>> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "audit.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (ticketNumbers.length === 0) return {};
+  const rows = await db
+    .select({ id: tickets.id, ticketNumber: tickets.ticketNumber })
+    .from(tickets)
+    .where(inArray(tickets.ticketNumber, ticketNumbers));
+  return Object.fromEntries(rows.map((r) => [r.ticketNumber, r.id]));
+}
+
+/** Count of `denied` entries in the last 24h — powers the page-top banner.
+ *  Scoped to the caller's own entries for a strict technician, same as
+ *  every other audit read (req 7.1). */
+export async function countRecentDeniedEntries(): Promise<number> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "audit.view", { type: "global" }, productionContext))
+  ) {
+    return 0;
+  }
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const ownOnly = isStrictTechnician(caller) ? caller.id : null;
+  const [row] = await db
+    .select({ value: count() })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.outcome, "denied"),
+        gte(auditLog.timestamp, since),
+        ownOnly ? eq(auditLog.actorId, ownOnly) : undefined,
+      ),
+    );
+  return row?.value ?? 0;
+}
+
 // ── Filter helpers ──────────────────────────────────────────────────
+
+/** Distinct target_type strings present in the log, for the Target type
+ *  dropdown (replaces free-text entry — a typo'd type silently matched
+ *  nothing and gave no feedback why). */
+export async function listAuditTargetTypes(): Promise<string[]> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "audit.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  // Req 7.1 — same own-entries scope as listAuditActions/listAuditActors.
+  const ownOnly = isStrictTechnician(caller) ? caller.id : null;
+  const rows = await db
+    .selectDistinct({ targetType: auditLog.targetType })
+    .from(auditLog)
+    .where(
+      ownOnly
+        ? and(eq(auditLog.actorId, ownOnly), isNotNull(auditLog.targetType))
+        : isNotNull(auditLog.targetType),
+    )
+    .orderBy(auditLog.targetType)
+    .limit(100);
+  return rows
+    .map((r) => r.targetType)
+    .filter((t): t is string => t !== null);
+}
 
 /** Distinct action strings present in the log, capped at 200 for the dropdown. */
 export async function listAuditActions(): Promise<string[]> {

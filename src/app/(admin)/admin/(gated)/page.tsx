@@ -61,8 +61,21 @@ import {
   type PlanWatch as PlanWatchData,
 } from "@/lib/billing/plan-watch";
 import { loadDashboardCsat } from "@/lib/reports/queries";
+import { CSAT_EMOJI, type CsatRating } from "@/lib/tickets/csat-display";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/lib/auth/permissions";
+
+// Deep-link from a dashboard CSAT tile to the tickets list, pre-filtered to
+// that rating (and technician, when clicking a per-tech row). `view=all` so
+// rated tickets that have since closed/reopened still show.
+function csatTicketsHref(
+  rating: CsatRating,
+  technicianId?: string | null,
+): string {
+  const p = new URLSearchParams({ view: "all", csat: rating });
+  if (technicianId) p.set("assignee", technicianId);
+  return `/admin/tickets?${p.toString()}`;
+}
 
 // Quick-stat queries used to populate the landing dashboard. Each one
 // is gated by the caller's permissions — we only run the query when
@@ -471,16 +484,23 @@ export default async function AdminLanding() {
                     {t("csatPositive")}
                   </span>
                 </div>
-                <div className="ml-auto flex items-center gap-4 text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
-                  {[
-                    { emoji: "😊", count: csat.breakdown.happy },
-                    { emoji: "😐", count: csat.breakdown.neutral },
-                    { emoji: "☹️", count: csat.breakdown.unhappy },
-                  ].map((r) => (
-                    <span key={r.emoji} className="inline-flex items-center gap-1">
-                      <span aria-hidden="true">{r.emoji}</span>
+                <div className="ml-auto flex items-center gap-2 text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
+                  {(
+                    [
+                      { rating: "happy", count: csat.breakdown.happy },
+                      { rating: "neutral", count: csat.breakdown.neutral },
+                      { rating: "unhappy", count: csat.breakdown.unhappy },
+                    ] as const
+                  ).map((r) => (
+                    <Link
+                      key={r.rating}
+                      href={csatTicketsHref(r.rating)}
+                      title={t("csatViewTickets")}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      <span aria-hidden="true">{CSAT_EMOJI[r.rating]}</span>
                       <span>{r.count}</span>
-                    </span>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -517,18 +537,22 @@ export default async function AdminLanding() {
                         {tech.technicianName ?? t("csatUnassigned")}
                       </span>
                       <span className="shrink-0 tabular-nums text-xs text-zinc-500 dark:text-zinc-400">
-                        {[
-                          { emoji: "😊", count: tech.happy },
-                          { emoji: "😐", count: tech.neutral },
-                          { emoji: "☹️", count: tech.unhappy },
-                        ].map((r) => (
-                          <span
-                            key={r.emoji}
-                            className="inline-flex items-center gap-1 ml-2 first:ml-0"
+                        {(
+                          [
+                            { rating: "happy", count: tech.happy },
+                            { rating: "neutral", count: tech.neutral },
+                            { rating: "unhappy", count: tech.unhappy },
+                          ] as const
+                        ).map((r) => (
+                          <Link
+                            key={r.rating}
+                            href={csatTicketsHref(r.rating, tech.technicianId)}
+                            title={t("csatViewTickets")}
+                            className="ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors first:ml-0 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                           >
-                            <span aria-hidden="true">{r.emoji}</span>
+                            <span aria-hidden="true">{CSAT_EMOJI[r.rating]}</span>
                             <span>{r.count}</span>
-                          </span>
+                          </Link>
                         ))}
                       </span>
                       <span className="shrink-0 w-10 text-right tabular-nums font-medium">
