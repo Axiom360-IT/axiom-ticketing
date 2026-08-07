@@ -127,6 +127,7 @@ export async function can(
     case "tickets.resolve":
     case "tickets.escalate":
     case "tickets.reopen":
+    case "tickets.close":
     // Meeting-2 CR-10: the owning technician can reassign their own ticket to
     // a colleague (no handshake). Scoped so a strict tech can only assign a
     // ticket currently assigned to them; elevated roles assign anything.

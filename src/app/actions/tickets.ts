@@ -49,6 +49,7 @@ import {
 } from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
+import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
 import {
   computeDueTimesForNewTicket,
   recomputeSlaForTicket,
@@ -1860,6 +1861,130 @@ export async function resolveTicket(
     }
   } catch (err) {
     console.error("[resolveTicket] resolution notification failed:", err);
+  }
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+}
+
+// ── Manual close ─────────────────────────────────────────────────────
+//
+// Lets Coordinator / IT Director / Super Admin close a resolved ticket
+// directly, instead of waiting on the customer's CSAT response or the 24h
+// auto-close cron. Gated on the standalone `tickets.close` permission (not
+// `tickets.resolve`) so a role can be granted one without the other.
+
+export async function closeTicket(ticketId: string): Promise<void> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+
+  if (
+    !(await can(
+      user,
+      "tickets.close",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (ticket.status !== "resolved") {
+    throw new Error("Only a resolved ticket can be closed");
+  }
+
+  const now = new Date();
+  await db
+    .update(tickets)
+    .set({ status: "closed", closedAt: now, updatedAt: now })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.close",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { status: "resolved" },
+    after: { status: "closed" },
+  });
+
+  const appUrl = getAppUrl();
+
+  // Customer notification — mirrors the auto-close cron's fan-out so an
+  // authenticated customer's email + SMS + bell prefs are honored; a guest
+  // ticket (no account) falls back to a direct email.
+  try {
+    if (ticket.customerId) {
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "ticket.closed",
+          recipientUserIds: [ticket.customerId],
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          email: {
+            template: {
+              template: "ticket_closed",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                subject: ticket.subject,
+                reason: "staff",
+                newTicketUrl: `${appUrl}/portal/submit`,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+          },
+          sms: {
+            template: {
+              template: "ticket_closed",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                ticketUrl: `${appUrl}/portal/tickets/${ticket.ticketNumber}`,
+              },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { reason: "Closed by the support team." },
+            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+          },
+        },
+      });
+    } else {
+      await sendEmail({
+        to: ticket.customerEmail,
+        template: {
+          template: "ticket_closed",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            reason: "staff",
+            newTicketUrl: `${appUrl}/portal/submit`,
+          },
+        },
+        ticketNumber: ticket.ticketNumber,
+      });
+    }
+  } catch (err) {
+    console.error("[closeTicket] customer notification failed:", err);
+  }
+
+  // Staff oversight — lets the other elevated roles see the close even
+  // though one of their own triggered it (matches the existing
+  // no-self-exclusion convention used by every other role-broadcast).
+  try {
+    await dispatchTicketClosedStaff({
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      subject: ticket.subject,
+      reason: "staff",
+      appUrl,
+    });
+  } catch (err) {
+    console.error("[closeTicket] staff notification failed:", err);
   }
 
   revalidatePath("/admin/tickets");

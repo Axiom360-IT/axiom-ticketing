@@ -537,6 +537,9 @@
       "reopen": "Reopen ticket",
       "reopenPending": "Reopening…",
       "reopenError": "Failed to reopen.",
+      "close": "Close ticket",
+      "closePending": "Closing…",
+      "closeError": "Failed to close.",
       "createTicket": "Create ticket",
       "createPending": "Creating…",
       "merge": "Merge into another ticket",
@@ -1266,7 +1269,8 @@
         "users": "Users",
         "roles": "Roles",
         "settings": "Settings",
-        "audit": "Audit log"
+        "audit": "Audit log",
+        "mcp": "Claude connector"
       },
       "moduleDescription": {
         "tickets": "Submit, assign, and resolve customer support requests.",
@@ -1275,7 +1279,8 @@
         "users": "Staff and customer accounts.",
         "roles": "Custom roles and per-action permission grants.",
         "settings": "SLA targets, business hours, email, and security knobs.",
-        "audit": "Append-only record of every privileged action."
+        "audit": "Append-only record of every privileged action.",
+        "mcp": "Connecting Claude (or another MCP client) to this app."
       },
       "selectAll": "Grant all in this module",
       "selectedCount": "{selected} of {total} selected",
@@ -1326,7 +1331,8 @@
         "settings__view": "View settings",
         "settings__update": "Update settings",
         "audit__view": "View audit log",
-        "audit__export": "Export audit log"
+        "audit__export": "Export audit log",
+        "mcp__connect": "Connect Claude"
       },
       "description": {
         "tickets__view": "Read the ticket queue and ticket detail pages.",
@@ -1370,7 +1376,8 @@
         "settings__view": "Read system-wide configuration values.",
         "settings__update": "Change system-wide configuration values.",
         "audit__view": "Read the append-only audit log.",
-        "audit__export": "Export audit-log entries to CSV."
+        "audit__export": "Export audit-log entries to CSV.",
+        "mcp__connect": "Generate a personal access token to connect Claude to this app from the profile page."
       }
     }
   },
@@ -1995,6 +2002,26 @@
         "attachment__quarantined": "Attachment quarantined by virus scanner"
       },
       "errorGeneric": "Couldn't update preference."
+    },
+    "mcp": {
+      "title": "Claude access",
+      "subtitle": "Connect Claude to this app so it can answer questions and post ticket notes on your behalf — it only ever sees and does what your own account already can.",
+      "serverUrlLabel": "Server address (paste into Claude's connector settings):",
+      "generateButton": "Generate access token",
+      "generateTitle": "Generate a new access token",
+      "generateDescription": "Give it a name so you can tell it apart later.",
+      "labelField": "Name",
+      "labelPlaceholder": "e.g. My laptop",
+      "cancel": "Cancel",
+      "generating": "Generating…",
+      "revealTitle": "Your new token",
+      "revealDescription": "Copy this now — you won't be able to see it again. If you lose it, generate a new one.",
+      "doneButton": "Done",
+      "empty": "No access tokens yet.",
+      "created": "Created {when}",
+      "lastUsed": "last used {when}",
+      "neverUsed": "never used yet",
+      "revokeButton": "Revoke"
     }
   },
   "notifications": {
@@ -2435,7 +2462,7 @@
       "title": "Ticket closed",
       "body": "Ticket {ticketNumber} has been closed.",
       "metaSubject": "Subject: {subject}",
-      "reason": "{reason, select, csat {Closed after the customer confirmed the resolution.} auto {Auto-closed after 24 hours with no customer response.} other {Closed.}}",
+      "reason": "{reason, select, csat {Closed after the customer confirmed the resolution.} auto {Auto-closed after 24 hours with no customer response.} staff {Closed manually by a staff member.} other {Closed.}}",
       "view": "Open ticket",
       "trailerLine": "View the closed ticket in the admin console.",
       "subject": "[{ticketNumber}] Ticket closed: {subject}"
@@ -2487,6 +2514,7 @@
       "greeting": "Hi {customerName},",
       "bodyCsat": "Thanks for confirming — ticket {ticketNumber} “{subject}” is now closed.",
       "bodyAuto": "We hadn't heard back on ticket {ticketNumber} “{subject}”, so we've closed it for you. If the issue comes back, just open a new ticket and we'll pick it up.",
+      "bodyStaff": "Ticket {ticketNumber} “{subject}” has been closed by our support team. If the issue comes back, just open a new ticket and we'll pick it up.",
       "newTicketPrompt": "Need help with something else? Open a fresh ticket any time.",
       "newTicket": "Submit a new ticket",
       "subject": "[{ticketNumber}] Ticket closed: {subject}"

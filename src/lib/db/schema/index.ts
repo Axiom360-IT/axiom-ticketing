@@ -18,6 +18,7 @@ export * from "./attachments";
 export * from "./procurement";
 export * from "./audit";
 export * from "./audit-filter-presets";
+export * from "./mcp-tokens";
 export * from "./notifications";
 export * from "./settings";
 export * from "./webhooks";

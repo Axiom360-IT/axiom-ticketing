@@ -9,8 +9,9 @@ import { EmailLayout, textStyles } from "./_layout";
 export type TicketClosedStaffProps = {
   ticketNumber: string;
   subject: string;
-  /** "csat" = customer confirmed; "auto" = auto-closed after no response. */
-  reason: "csat" | "auto";
+  /** "csat" = customer confirmed; "auto" = auto-closed after no response;
+   *  "staff" = a Coordinator/IT Director/Super Admin closed it directly. */
+  reason: "csat" | "auto" | "staff";
   adminUrl: string;
   locale: string;
 };

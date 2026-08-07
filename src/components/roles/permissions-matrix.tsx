@@ -16,6 +16,7 @@ const MODULE_ORDER = [
   "roles",
   "settings",
   "audit",
+  "mcp",
 ] as const;
 type Module = (typeof MODULE_ORDER)[number];
 

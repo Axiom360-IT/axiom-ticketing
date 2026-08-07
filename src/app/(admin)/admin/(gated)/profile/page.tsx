@@ -13,15 +13,20 @@ import { AvatarUpload } from "@/components/customer/avatar-upload";
 import { PasswordForm } from "@/components/profile/password-form";
 import { PreferencesGrid } from "@/components/profile/preferences-grid";
 import { SessionsList } from "@/components/profile/sessions-list";
+import { McpTokensList } from "@/components/profile/mcp-tokens-list";
 import {
   listMyNotificationPreferences,
   listMySessions,
 } from "@/app/actions/profile";
+import { listMyMcpTokens } from "@/app/actions/mcp-tokens";
 import { staffEventsForRoles } from "@/lib/notifications/audience";
+import { can } from "@/lib/auth/can";
+import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
+import { getAppUrl } from "@/lib/request";
 
 export default async function ProfilePage() {
   const user = await getSessionUser();
@@ -44,10 +49,13 @@ export default async function ProfilePage() {
   // receive — a Technician shouldn't see Coordinator/Director-only toggles
   // (req 6.4). Customers are already scoped to CUSTOMER_EVENT_TYPES on the
   // portal profile.
-  const [sessions, prefs] = await Promise.all([
+  const canConnectMcp = await can(user, "mcp.connect", { type: "global" }, productionContext);
+  const [sessions, prefs, mcpTokens] = await Promise.all([
     listMySessions(),
     listMyNotificationPreferences(staffEventsForRoles(user.roleNames)),
+    canConnectMcp ? listMyMcpTokens() : Promise.resolve([]),
   ]);
+  const mcpUrl = `${getAppUrl()}/api/mcp`;
 
   // image stores the R2 storage key; sign with 1h TTL for browser caching.
   const avatarUrl = me.image ? await getAvatarSignedUrl(me.image) : null;
@@ -107,6 +115,18 @@ export default async function ProfilePage() {
           <PreferencesGrid initial={prefs} />
         </CardContent>
       </Card>
+
+      {canConnectMcp ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("mcp.title")}</CardTitle>
+            <CardDescription>{t("mcp.subtitle")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <McpTokensList initial={mcpTokens} mcpUrl={mcpUrl} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

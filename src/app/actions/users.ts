@@ -7,7 +7,8 @@ import { audit } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
-import { ALL_PERMISSIONS, type Permission } from "@/lib/auth/permissions";
+import type { Permission } from "@/lib/auth/permissions";
+import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -30,7 +31,7 @@ import { sendCustomerSetupInvite } from "@/lib/customer/invite";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-async function loadUserScope(userId: string) {
+export async function loadUserScope(userId: string) {
   const [u] = await db
     .select({ id: users.id, createdById: users.createdById })
     .from(users)
@@ -39,7 +40,7 @@ async function loadUserScope(userId: string) {
   return u;
 }
 
-async function rolesIncludeSuperAdmin(roleIds: string[]): Promise<boolean> {
+export async function rolesIncludeSuperAdmin(roleIds: string[]): Promise<boolean> {
   if (roleIds.length === 0) return false;
   const rows = await db
     .select({ id: rolesTable.id })
@@ -49,34 +50,13 @@ async function rolesIncludeSuperAdmin(roleIds: string[]): Promise<boolean> {
   return rows.length > 0;
 }
 
-async function permissionsForRoles(roleIds: string[]): Promise<Set<Permission>> {
+export async function permissionsForRoles(roleIds: string[]): Promise<Set<Permission>> {
   if (roleIds.length === 0) return new Set();
   const rows = await db
     .select({ permission: rolePermissions.permission })
     .from(rolePermissions)
     .where(inArray(rolePermissions.roleId, roleIds));
   return new Set(rows.map((r) => r.permission as Permission));
-}
-
-/**
- * "Can't grant what you don't have." Returns the set of permissions in
- * `requested` that the caller (`callerPermissions`) does NOT hold.
- * If the caller doesn't have ALL_PERMISSIONS in the wider sense (i.e.
- * isn't a Super Admin), they can't assign a role whose permissions
- * exceed their own.
- */
-function permissionsBeyondCaller(
-  requested: Set<Permission>,
-  callerPermissions: Set<Permission>,
-): Permission[] {
-  // Super Admin shortcut: holds every permission.
-  const callerIsAll = ALL_PERMISSIONS.every((p) => callerPermissions.has(p));
-  if (callerIsAll) return [];
-  const out: Permission[] = [];
-  for (const p of requested) {
-    if (!callerPermissions.has(p)) out.push(p);
-  }
-  return out;
 }
 
 /**

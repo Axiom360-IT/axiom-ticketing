@@ -10,6 +10,19 @@ import {
   verifyImpersonationToken,
 } from "./impersonation";
 
+/**
+ * Builds a full SessionUser from a raw user id — no cookie/request context
+ * needed. Used by the MCP connector (bearer-token auth, not a browser
+ * session) so tool calls run through the exact same can() permission logic
+ * as everything else, instead of a parallel authorization path.
+ */
+export async function loadSessionUserById(
+  userId: string,
+): Promise<SessionUser> {
+  const { permissions, roleNames } = await loadEffectivePerms(userId);
+  return { id: userId, permissions, roleNames, isImpersonating: false };
+}
+
 async function loadEffectivePerms(
   userId: string,
 ): Promise<{ permissions: Set<Permission>; roleNames: Set<string> }> {

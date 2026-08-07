@@ -16,7 +16,7 @@ export async function dispatchTicketClosedStaff(args: {
   ticketId: string;
   ticketNumber: string;
   subject: string;
-  reason: "csat" | "auto";
+  reason: "csat" | "auto" | "staff";
   appUrl: string;
 }): Promise<void> {
   const { ticketId, ticketNumber, subject, reason, appUrl } = args;

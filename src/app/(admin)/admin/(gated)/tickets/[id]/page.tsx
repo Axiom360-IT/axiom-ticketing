@@ -25,6 +25,7 @@ import {
   MessageThread,
   type ThreadMessage,
 } from "@/components/tickets/message-thread";
+import { CloseTicketButton } from "@/components/tickets/close-ticket-button";
 import { MergeModal } from "@/components/tickets/merge-modal";
 import { ReopenButton } from "@/components/tickets/reopen-button";
 import { ReplyComposer } from "@/components/tickets/reply-composer";
@@ -181,6 +182,7 @@ export default async function TicketDetailPage({
     canEscalate,
     canDeescalate,
     canReopen,
+    canClose,
     canDelete,
     canUpdate,
     canProcurementView,
@@ -196,6 +198,7 @@ export default async function TicketDetailPage({
     can(user, "tickets.escalate", ticketScope, productionContext),
     can(user, "tickets.deescalate", ticketScope, productionContext),
     can(user, "tickets.reopen", ticketScope, productionContext),
+    can(user, "tickets.close", ticketScope, productionContext),
     can(user, "tickets.delete", ticketScope, productionContext),
     can(user, "tickets.update", ticketScope, productionContext),
     can(user, "procurement.view", { type: "global" }, productionContext),
@@ -580,13 +583,21 @@ export default async function TicketDetailPage({
             </Card>
           ) : null}
 
-          {canReopen && isClosedOrResolved ? (
+          {(canReopen && isClosedOrResolved) ||
+          (canClose && ticket.status === "resolved") ? (
             <Card>
               <CardHeader>
                 <CardTitle>{t("actionsTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ReopenButton ticketId={ticket.id} />
+                <div className="flex flex-wrap gap-2">
+                  {canReopen && isClosedOrResolved ? (
+                    <ReopenButton ticketId={ticket.id} />
+                  ) : null}
+                  {canClose && ticket.status === "resolved" ? (
+                    <CloseTicketButton ticketId={ticket.id} />
+                  ) : null}
+                </div>
                 {latestReview ? (
                   <div className="mt-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">

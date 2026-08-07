@@ -6,8 +6,9 @@ export type TicketClosedProps = {
   ticketNumber: string;
   customerName: string;
   subject: string;
-  // "csat" — customer marked satisfied; "auto" — 24h auto-close after no CSAT.
-  reason: "csat" | "auto";
+  // "csat" — customer marked satisfied; "auto" — 24h auto-close after no
+  // CSAT; "staff" — a Coordinator/IT Director/Super Admin closed it directly.
+  reason: "csat" | "auto" | "staff";
   newTicketUrl: string;
   locale: string;
 };
@@ -35,7 +36,9 @@ export async function TicketClosedEmail({
       <Text style={textStyles.body}>
         {reason === "csat"
           ? t("bodyCsat", { ticketNumber, subject })
-          : t("bodyAuto", { ticketNumber, subject })}
+          : reason === "staff"
+            ? t("bodyStaff", { ticketNumber, subject })
+            : t("bodyAuto", { ticketNumber, subject })}
       </Text>
       <Text style={textStyles.body}>{t("newTicketPrompt")}</Text>
       <Link href={newTicketUrl} style={textStyles.button}>

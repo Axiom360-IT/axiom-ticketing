@@ -5,6 +5,18 @@ entries go at the top; date them.
 
 ---
 
+## 2026-08-06 · Staff-initiated ticket close (`tickets.close`)
+
+Previously a ticket could only reach `closed` via the customer's CSAT rating, the 24h auto-close cron, or as a merge side-effect — no staff member had a manual close button. Coordinator, IT Director, and Super Admin needed one; Technician and Customer explicitly should not get it.
+
+- **New standalone permission, not folded into `tickets.resolve`.** `tickets.close` is its own permission so a role can be granted one without the other — IT Director gets `tickets.close` despite never having held `tickets.resolve` (it doesn't resolve tickets itself, but the client wanted it able to close them). Granted by default to Coordinator, IT Director, and Super Admin only.
+- **Source-status guard: only from `resolved`.** `closeTicket` rejects any other current status, mirroring exactly what the CSAT/auto-close paths already require — one consistent lifecycle rule (`resolved → closed`) everywhere, rather than letting staff skip straight from `open`/`in_progress` to `closed`.
+- **Scope:** slotted into the same `can()` case block as `resolve`/`reopen`/`escalate` — a strict Technician can't have it anyway (permission isn't granted), and elevated roles already see every ticket, so this is defensive consistency more than new logic.
+- **Notifications reuse the existing close plumbing verbatim.** Customer gets the same `ticket_closed` dispatch (authenticated → `notification/dispatch`; guest → direct email) that CSAT/auto-close use, with a new `reason: "staff"` branch. Staff oversight reuses `dispatchTicketClosedStaff` (also extended with `reason: "staff"`) to Coordinator/IT Director/Super Admin — including the actor's own role, matching the project's existing no-self-exclusion convention for role-broadcast notifications (e.g. `ticket.reassigned`).
+- **UI:** a "Close ticket" button sits next to Reopen in the same actions card once a ticket is `resolved` — no separate note/reason modal, matching Reopen's plain-button pattern rather than Resolve's note-modal pattern (closing needs no input).
+
+---
+
 ## 2026-06-02 · Meeting-2 revisions — Organizations, work logs, billing, procurement rework, role/numbering/branding changes
 
 Implementation of the client's Meeting-2 (2026-05-22) change requests. Source + a sequenced change list live in `docs/meeting-2-revisions-2026-05-22/`. Migrations `0008`–`0010`. Highlights and the non-obvious calls:

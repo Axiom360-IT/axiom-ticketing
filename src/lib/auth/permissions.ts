@@ -17,6 +17,11 @@ export const PERMISSIONS = [
   // customer cancelled). The audit log captures the reason.
   "tickets.resolve_skip_note",
   "tickets.reopen",
+  // Manually close a resolved ticket without waiting for customer CSAT
+  // confirmation or the 24h auto-close cron. Deliberately separate from
+  // tickets.resolve so it can be granted to roles (e.g. IT Director) that
+  // don't resolve tickets themselves.
+  "tickets.close",
   "tickets.escalate",
   "tickets.deescalate",
   "tickets.delete",
@@ -71,6 +76,13 @@ export const PERMISSIONS = [
   // Audit Log
   "audit.view",
   "audit.export",
+
+  // MCP / Claude connector — self-service: gates whether a user can
+  // generate their OWN access token on their profile page at all. A token
+  // never grants more than its owner's account already can (every tool
+  // call re-runs the normal can() checks), so this is purely "who's
+  // allowed to connect an assistant," not a scope-widening permission.
+  "mcp.connect",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -87,9 +99,11 @@ export const IT_DIRECTOR_PERMISSIONS: Permission[] = [
   "tickets.reply",
   "tickets.internal_note",
   "tickets.deescalate",
+  "tickets.close",
   "organizations.view",
   "reports.view",
   "audit.view",
+  "mcp.connect",
 ];
 
 export const COORDINATOR_PERMISSIONS: Permission[] = [
@@ -103,6 +117,7 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   "tickets.resolve_skip_note",
   "tickets.reopen",
   "tickets.deescalate",
+  "tickets.close",
   "organizations.view",
   "organizations.create",
   "organizations.update",
@@ -113,6 +128,7 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   // Req 7.2 — audit logs are visible to everyone by default. An admin can
   // revoke this from a role to hide the logs view from it.
   "audit.view",
+  "mcp.connect",
 ];
 
 export const TECHNICIAN_PERMISSIONS: Permission[] = [

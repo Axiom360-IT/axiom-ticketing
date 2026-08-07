@@ -377,6 +377,27 @@ describe("can() — ticket scope", () => {
     ).toBe(true);
   });
 
+  it("Coordinator, IT Director, and Super Admin can close any ticket", async () => {
+    expect(
+      await can(coordinator(), "tickets.close", ticketTarget("tech-99")),
+    ).toBe(true);
+    expect(
+      await can(itDirector(), "tickets.close", ticketTarget(null)),
+    ).toBe(true);
+    expect(
+      await can(superAdmin(), "tickets.close", ticketTarget("tech-99")),
+    ).toBe(true);
+  });
+
+  it("Technician and Customer CANNOT close a ticket (permission not granted)", async () => {
+    expect(
+      await can(technician(), "tickets.close", ticketTarget("user-tech")),
+    ).toBe(false);
+    expect(
+      await can(customer(), "tickets.close", ticketTarget(null, "user-cust")),
+    ).toBe(false);
+  });
+
   it("rejects ticket actions when target is wrong type", async () => {
     expect(
       await can(coordinator(), "tickets.update", { type: "global" }),
