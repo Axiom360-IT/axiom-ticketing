@@ -45,6 +45,12 @@ export const SETTING_SCHEMAS = {
   "sla.breach_notify_roles": z.array(z.string().trim().min(1).max(60)).max(20),
   "sla.breach_repeat_hours": z.number().int().min(0).max(24 * 14),
 
+  // SLA-warning (50%/80%, i.e. not-yet-breached) notification recipients.
+  // Same shape as `sla.breach_notify_roles` — the ticket's own assignee is
+  // always notified on top and isn't configurable here (there's nothing to
+  // pick: whoever owns the ticket gets it).
+  "sla.warning_notify_roles": z.array(z.string().trim().min(1).max(60)).max(20),
+
   // Email + stream tagging
   internal_email_domains: z.array(
     z

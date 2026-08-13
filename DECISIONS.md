@@ -5,6 +5,19 @@ entries go at the top; date them.
 
 ---
 
+## 2026-08-08 · MCP write-tool surface + `mcp.connect` permission
+
+The MCP connector (§23 of the README) launched with 8 read tools and one internal-note write tool. In the same feature arc it grew to ~53 tools total: 43 more write tools across tickets, users, roles, organizations, procurement, settings, and taxonomies (mirroring almost every mutating Server Action in the admin panel), plus one more read tool (`summarize_audit_log`). That's a big enough surface-area jump to need principles written down, not just discovered by reading eight new files.
+
+- **New gating permission, not a scope widener.** `mcp.connect` controls who can mint a Bearer token for themselves at all (self-service from `/admin/profile`) — it does NOT change what a token can do once minted, since every tool call still re-runs `can()`. Seeded by default to Super Admin, IT Director, Coordinator; Technician and Customer don't get it. Backfilled onto already-seeded databases via migration `0031` / `pnpm db:add-mcp-connect-permission`, since `pnpm db:seed` no-ops once roles exist (same pattern as `audit.view`'s default-grant backfill in migration `0015`).
+- **`resolveMcpToken` re-checks `mcp.connect` on every request**, not just at mint time — demote someone out of an eligible role and their existing token stops working on the very next call, no separate revocation step needed.
+- **Every write tool is a mirror, not a new code path.** Each `lib/mcp/*-write.ts` `*ViaMcp` function is ported from the Server Action it's named after (verbatim `can()` checks, business-rule guards, audit rows, and notification side effects), adapted only to (a) take an explicit `SessionUser` since there's no cookie/`headers()` context over a Bearer token, and (b) resolve things by email/name/ticket-number instead of uuid, since that's what a chat conversation naturally supplies. Shared pieces (`permissionsBeyondCaller` in `lib/auth/permission-diff.ts`, the organization-validation helpers in `lib/organizations/validation.ts`) were extracted out of their `"use server"` action files specifically so the mirror can't drift from the original.
+- **MCP can do LESS than the UI, never more — enforced by refusal, not omission.** The browser-only reauth-sensitive actions that are deliberately refused over MCP are granting/keeping Super Admin and any `settings.update` write. Rather than silently skip those tools, `create_user`/`update_user` refuse a Super-Admin grant with a message pointing at the admin panel, and `update_setting` exists as a tool that always explains why it can't do anything and where to go instead — so an agent asking "can you turn off X setting" gets a clear no, not a missing tool it might not think to ask about. `deactivate_user` and `reset_user_password` stay available to MCP as ordinary permissioned actions because the current server-action implementation does not add a separate browser-only reauth gate there.
+- **Confirm-before-send is a prompt convention, not a protocol.** Since there's no second-step UI dialog the way the admin panel has, every mutating tool's description ends with an explicit instruction to show the user the exact change and get their go-ahead in chat before calling it — strongest on `reply_to_ticket` (customer-visible) and `resolve_ticket`.
+- **Known gap:** `tickets.close`/`closeTicket` (added two days earlier, see the entry below) has no MCP tool yet — `tickets-write.ts` predates it.
+
+---
+
 ## 2026-08-06 · Staff-initiated ticket close (`tickets.close`)
 
 Previously a ticket could only reach `closed` via the customer's CSAT rating, the 24h auto-close cron, or as a merge side-effect — no staff member had a manual close button. Coordinator, IT Director, and Super Admin needed one; Technician and Customer explicitly should not get it.

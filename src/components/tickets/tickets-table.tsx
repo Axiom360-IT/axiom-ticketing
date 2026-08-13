@@ -12,7 +12,6 @@ import {
   EscalatedBadge,
   PriorityBadge,
   StatusBadge,
-  TypeBadge,
 } from "@/components/tickets/badges";
 import { TicketRowActions } from "@/components/tickets/ticket-row-actions";
 import type { AssignableTechnician } from "@/lib/tickets/load";
@@ -31,8 +30,6 @@ export type TicketRow = {
   id: string;
   ticketNumber: string;
   subject: string;
-  type: string;
-  typeLabel: string;
   category: string;
   categoryLabel: string;
   status: string;
@@ -72,7 +69,6 @@ export function TicketsTable({
   organizations,
   customers,
   categories,
-  types,
   canAssign,
   canDelete,
 }: {
@@ -84,7 +80,6 @@ export function TicketsTable({
   organizations: { id: string; name: string }[];
   customers: { email: string; name: string }[];
   categories: { value: string; label: string }[];
-  types: { value: string; label: string }[];
   canAssign: boolean;
   canDelete: boolean;
 }) {
@@ -100,10 +95,6 @@ export function TicketsTable({
     const categoryOpts: FilterOption[] = categories.map((c) => ({
       value: c.value,
       label: c.label,
-    }));
-    const typeOpts: FilterOption[] = types.map((tp) => ({
-      value: tp.value,
-      label: tp.label,
     }));
     const priorityOpts: FilterOption[] = PRIORITIES.map((v) => ({
       value: v,
@@ -165,17 +156,6 @@ export function TicketsTable({
             {row.original.isEscalated ? <EscalatedBadge /> : null}
             <span>{row.original.subject}</span>
           </div>
-        ),
-      },
-      {
-        id: "type",
-        meta: {
-          title: t("columns.type"),
-          sortKey: "type",
-          filter: { kind: "enum", param: "type", options: typeOpts },
-        },
-        cell: ({ row }) => (
-          <TypeBadge type={row.original.type} label={row.original.typeLabel} />
         ),
       },
       {
@@ -357,7 +337,6 @@ export function TicketsTable({
     organizations,
     customers,
     categories,
-    types,
     canAssign,
     canDelete,
   ]);

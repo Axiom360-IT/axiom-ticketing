@@ -434,13 +434,14 @@
       "viewActive": "Active",
       "viewClosed": "Closed",
       "viewAll": "All",
+      "typeTabsLabel": "Ticket type",
+      "allTypes": "All types",
       "empty": "No tickets yet. They'll appear here as customers submit them.",
       "emptyMatching": "No tickets match your search.",
       "createOnBehalf": "Create New Ticket",
       "columns": {
         "ticket": "Ticket",
         "subject": "Subject",
-        "type": "Type",
         "category": "Category",
         "status": "Status",
         "priority": "Priority",
@@ -1499,6 +1500,13 @@
         "resolve": "Resolve (min)",
         "respect": "Respect business hours"
       }
+    },
+    "slaWarningNotify": {
+      "title": "SLA warning notifications",
+      "subtitle": "Who gets alerted when a ticket is approaching its SLA (50% and 80% elapsed), before it actually breaches.",
+      "rolesLabel": "Notify these roles",
+      "rolesHint": "These roles receive the 50%/80% warning alerts (in-app, plus SMS at 80%). The ticket's assigned technician is always notified too.",
+      "rolesEmpty": "No staff roles found."
     },
     "slaBreachNotify": {
       "title": "SLA breach notifications",

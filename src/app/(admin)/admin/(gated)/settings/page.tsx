@@ -122,6 +122,7 @@ export default async function SettingsPage({
   const t = await getTranslations("settings.page");
   const tBh = await getTranslations("settings.businessHours");
   const tSla = await getTranslations("settings.sla");
+  const tSwn = await getTranslations("settings.slaWarningNotify");
   const tSbn = await getTranslations("settings.slaBreachNotify");
   const tHol = await getTranslations("settings.holidays");
   const tDom = await getTranslations("settings.domains");
@@ -218,6 +219,29 @@ export default async function SettingsPage({
                     ),
                   },
                 }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tSwn("title")}</CardTitle>
+              <CardDescription>{tSwn("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-1.5 text-sm font-medium">{tSwn("rolesLabel")}</p>
+              <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                {tSwn("rolesHint")}
+              </p>
+              <RoleChecklistForm
+                settingKey="sla.warning_notify_roles"
+                allRoles={staffRoles}
+                initial={
+                  strArr(v["sla.warning_notify_roles"]).length > 0
+                    ? strArr(v["sla.warning_notify_roles"])
+                    : ["Super Admin", "IT Director", "Coordinator"]
+                }
+                emptyHint={tSwn("rolesEmpty")}
               />
             </CardContent>
           </Card>

@@ -17,6 +17,19 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
+import {
+  Bookmark,
+  Boxes,
+  CircleDot,
+  Flag,
+  LayoutGrid,
+  Layers,
+  Puzzle,
+  Shapes,
+  Sparkles,
+  Tag,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ExportMenu } from "@/components/shared/export-menu";
 import {
@@ -96,6 +109,23 @@ const TICKET_STATUSES = [
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const TICKET_STREAMS = ["internal", "external"] as const;
 
+// Ticket types are an open-ended, admin-managed taxonomy (§5.1) — there's no
+// fixed set to hand-pick a meaningful icon per value, so every type tab gets
+// a generic icon from this rotation (by sort position), just for visual
+// distinction between tabs. Whatever type an admin adds next automatically
+// gets a tab + the next icon in the rotation — nothing here needs updating.
+const TYPE_TAB_ICONS: LucideIcon[] = [
+  Tag,
+  Layers,
+  Boxes,
+  Flag,
+  Sparkles,
+  Puzzle,
+  Shapes,
+  Bookmark,
+  CircleDot,
+];
+
 /** Split a CSV query-string value, drop empties, and intersect with the
  * allowed set so a junk URL parameter can't poison a `WHERE col IN (...)`
  * clause. Returns undefined when no valid values remain (so the caller
@@ -146,7 +176,9 @@ export default async function TicketsPage({
     .filter((c) => c.isActive)
     .map((c) => ({ value: c.value, label: c.label }));
   const typeValues = allTypes.map((t) => t.value);
-  const typeLabelMap = new Map(allTypes.map((t) => [t.value, t.label]));
+  // Active types, in taxonomy sort order — this list drives the type
+  // sub-tabs below (there's no more Type column; the tab you're on IS the
+  // type filter).
   const typeOptions = allTypes
     .filter((t) => t.isActive)
     .map((t) => ({ value: t.value, label: t.label }));
@@ -174,7 +206,6 @@ export default async function TicketsPage({
   const sort = parseSort(sp.sort, [
     "ticket",
     "subject",
-    "type",
     "category",
     "priority",
     "status",
@@ -193,10 +224,8 @@ export default async function TicketsPage({
       ? tickets.ticketNumber
       : sort?.id === "subject"
         ? tickets.subject
-        : sort?.id === "type"
-          ? tickets.type
-          : sort?.id === "category"
-            ? tickets.category
+        : sort?.id === "category"
+          ? tickets.category
           : sort?.id === "priority"
             ? priorityRank
             : sort?.id === "status"
@@ -330,7 +359,6 @@ export default async function TicketsPage({
         ticketNumber: tickets.ticketNumber,
         subject: tickets.subject,
         category: tickets.category,
-        type: tickets.type,
         status: tickets.status,
         priority: tickets.priority,
         isEscalated: tickets.isEscalated,
@@ -367,7 +395,6 @@ export default async function TicketsPage({
   const tableRows = rows.map((r) => ({
     ...r,
     categoryLabel: categoryLabelMap.get(r.category) ?? r.category,
-    typeLabel: typeLabelMap.get(r.type) ?? r.type,
     createdLabel: formatter.dateTime(r.createdAt, {
       dateStyle: "medium",
       timeStyle: "short",
@@ -454,6 +481,24 @@ export default async function TicketsPage({
     { status: "on_hold", label: tStatus("on_hold") },
   ];
 
+  // Type sub-tabs: one per active ticket_types row (§5.1), rebuilt from the
+  // admin-managed taxonomy on every request — add a type in Settings and it
+  // shows up here automatically, no code change needed. Single-select, radio
+  // style (unlike the status chips): picking a tab sets `type` to exactly
+  // that value; "All types" clears it. Resets paging like the view tabs, but
+  // — like the status chips — doesn't disturb the active view/status scope.
+  const activeTypeValue = filterType?.length === 1 ? filterType[0] : null;
+  const typeTabHref = (value: string | null) => {
+    const p = new URLSearchParams(
+      Object.entries(sp).filter(
+        ([k, v]) => typeof v === "string" && v.length > 0 && k !== "type" && k !== "page",
+      ) as [string, string][],
+    );
+    if (value) p.set("type", value);
+    const qs = p.toString();
+    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
+  };
+
   // Carry the active list filters onto the export so it matches what's shown.
   const exportParams: Record<string, string> = {};
   for (const k of [
@@ -505,27 +550,96 @@ export default async function TicketsPage({
         </div>
       </div>
 
+      {/* Type sub-tabs — one per active ticket type (§5.1), plus "All types".
+          Own row, above the view tabs: type is the primary "what kind of
+          ticket" split, view/status narrow within whichever type is picked. */}
       <div
         role="tablist"
-        aria-label={t("viewTabsLabel")}
-        className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
+        aria-label={t("typeTabsLabel")}
+        className="flex flex-wrap items-center gap-1.5"
       >
-        {viewTabs.map((tab) => {
-          const active = view === tab.key;
+        <Link
+          href={typeTabHref(null)}
+          role="tab"
+          aria-selected={!activeTypeValue}
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
+            !activeTypeValue
+              ? "bg-blue-600 text-white border-blue-600"
+              : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+          )}
+        >
+          <LayoutGrid className="size-3.5" aria-hidden="true" />
+          {t("allTypes")}
+        </Link>
+        {typeOptions.map((option, i) => {
+          const active = activeTypeValue === option.value;
+          const Icon = TYPE_TAB_ICONS[i % TYPE_TAB_ICONS.length];
           return (
             <Link
-              key={tab.key}
-              href={viewHref(tab.key)}
+              key={option.value}
+              href={typeTabHref(option.value)}
               role="tab"
               aria-selected={active}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm transition-colors",
+                "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
                 active
-                  ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
-                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
               )}
             >
-              {tab.label}
+              <Icon className="size-3.5" aria-hidden="true" />
+              {option.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* View tabs (Active/Closed/All) + the two extra-status quick chips
+          (Awaiting Customer, On Hold) live together in one row — they're all
+          "which tickets by status" controls, so they read as one group
+          rather than splitting the chips off into the filter toolbar below. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div
+          role="tablist"
+          aria-label={t("viewTabsLabel")}
+          className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          {viewTabs.map((tab) => {
+            const active = view === tab.key;
+            return (
+              <Link
+                key={tab.key}
+                href={viewHref(tab.key)}
+                role="tab"
+                aria-selected={active}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm transition-colors",
+                  active
+                    ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
+                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
+                )}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </div>
+        {statusChips.map((chip) => {
+          const active = isSingleStatus(chip.status);
+          return (
+            <Link
+              key={chip.status}
+              href={statusChipHref(chip.status)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
+                active
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+              )}
+            >
+              {chip.label}
             </Link>
           );
         })}
@@ -533,7 +647,7 @@ export default async function TicketsPage({
 
       {/* Slim toolbar: global search + the two cross-cutting filters that don't
           map to a single column (everything else lives in the column headers).
-          Labels hidden + matched heights so all three sit on one aligned row. */}
+          Labels hidden + matched heights so both sit on one aligned row. */}
       <div className="flex flex-wrap items-center gap-2">
         <UrlSearchInput
           initialValue={search}
@@ -562,24 +676,6 @@ export default async function TicketsPage({
           options={[{ value: "1", label: tFilters("escalatedOnly") }]}
           triggerClassName="h-9! w-40"
         />
-        {statusChips.map((chip) => {
-          const active = isSingleStatus(chip.status);
-          return (
-            <Link
-              key={chip.status}
-              href={statusChipHref(chip.status)}
-              aria-pressed={active}
-              className={cn(
-                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
-                active
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-              )}
-            >
-              {chip.label}
-            </Link>
-          );
-        })}
       </div>
 
       <TicketsTable
@@ -591,7 +687,6 @@ export default async function TicketsPage({
         organizations={orgOptions}
         customers={customerOptions}
         categories={categoryOptions}
-        types={typeOptions}
         canAssign={canAssignGlobal}
         canDelete={canDeleteGlobal}
       />
