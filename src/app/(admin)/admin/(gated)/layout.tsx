@@ -13,6 +13,7 @@ import { SkipLink } from "@/components/shared/skip-link";
 import { Topbar } from "@/components/shared/topbar";
 import { loadBranding } from "@/lib/branding/load";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
+import { loadActiveTicketTypes } from "@/lib/tickets/types";
 
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
@@ -77,12 +78,21 @@ export default async function AdminGatedLayout({
     ? await getAvatarSignedUrl(displayImageKey)
     : null;
   const branding = await loadBranding();
+  // Sidebar sub-nav under "Tickets" (one link per active ticket type, §6.1)
+  // — only worth the query for a user who can actually see the Tickets link.
+  const ticketTypes = user.permissions.has("tickets.view")
+    ? (await loadActiveTicketTypes()).map((t) => ({ value: t.value, label: t.label }))
+    : [];
 
   return (
     <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <SkipLink />
       <SidebarProvider>
-        <Sidebar branding={branding} permissions={[...user.permissions]} />
+        <Sidebar
+          branding={branding}
+          permissions={[...user.permissions]}
+          ticketTypes={ticketTypes}
+        />
         <div className="flex-1 flex flex-col min-w-0">
           {bannerName ? <ImpersonationBanner targetName={bannerName} /> : null}
           <Topbar
@@ -95,6 +105,7 @@ export default async function AdminGatedLayout({
             }}
             branding={branding}
             permissions={[...user.permissions]}
+            ticketTypes={ticketTypes}
           />
           <main
             id="main-content"

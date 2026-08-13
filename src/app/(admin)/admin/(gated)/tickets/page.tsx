@@ -17,19 +17,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getFormatter, getTranslations } from "next-intl/server";
-import {
-  Bookmark,
-  Boxes,
-  CircleDot,
-  Flag,
-  LayoutGrid,
-  Layers,
-  Puzzle,
-  Shapes,
-  Sparkles,
-  Tag,
-  type LucideIcon,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ExportMenu } from "@/components/shared/export-menu";
 import {
@@ -109,23 +96,6 @@ const TICKET_STATUSES = [
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const TICKET_STREAMS = ["internal", "external"] as const;
 
-// Ticket types are an open-ended, admin-managed taxonomy (§5.1) — there's no
-// fixed set to hand-pick a meaningful icon per value, so every type tab gets
-// a generic icon from this rotation (by sort position), just for visual
-// distinction between tabs. Whatever type an admin adds next automatically
-// gets a tab + the next icon in the rotation — nothing here needs updating.
-const TYPE_TAB_ICONS: LucideIcon[] = [
-  Tag,
-  Layers,
-  Boxes,
-  Flag,
-  Sparkles,
-  Puzzle,
-  Shapes,
-  Bookmark,
-  CircleDot,
-];
-
 /** Split a CSV query-string value, drop empties, and intersect with the
  * allowed set so a junk URL parameter can't poison a `WHERE col IN (...)`
  * clause. Returns undefined when no valid values remain (so the caller
@@ -175,13 +145,10 @@ export default async function TicketsPage({
   const categoryOptions = allCategories
     .filter((c) => c.isActive)
     .map((c) => ({ value: c.value, label: c.label }));
+  // Only the value set is needed here — type navigation now lives in the
+  // sidebar (one link per active ticket type, §6.1), not on this page; `type`
+  // still arrives as a query param from those links and is validated here.
   const typeValues = allTypes.map((t) => t.value);
-  // Active types, in taxonomy sort order — this list drives the type
-  // sub-tabs below (there's no more Type column; the tab you're on IS the
-  // type filter).
-  const typeOptions = allTypes
-    .filter((t) => t.isActive)
-    .map((t) => ({ value: t.value, label: t.label }));
 
   const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
   const filterPriority = parseEnumCsv(sp.priority, TICKET_PRIORITIES);
@@ -481,24 +448,6 @@ export default async function TicketsPage({
     { status: "on_hold", label: tStatus("on_hold") },
   ];
 
-  // Type sub-tabs: one per active ticket_types row (§5.1), rebuilt from the
-  // admin-managed taxonomy on every request — add a type in Settings and it
-  // shows up here automatically, no code change needed. Single-select, radio
-  // style (unlike the status chips): picking a tab sets `type` to exactly
-  // that value; "All types" clears it. Resets paging like the view tabs, but
-  // — like the status chips — doesn't disturb the active view/status scope.
-  const activeTypeValue = filterType?.length === 1 ? filterType[0] : null;
-  const typeTabHref = (value: string | null) => {
-    const p = new URLSearchParams(
-      Object.entries(sp).filter(
-        ([k, v]) => typeof v === "string" && v.length > 0 && k !== "type" && k !== "page",
-      ) as [string, string][],
-    );
-    if (value) p.set("type", value);
-    const qs = p.toString();
-    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
-  };
-
   // Carry the active list filters onto the export so it matches what's shown.
   const exportParams: Record<string, string> = {};
   for (const k of [
@@ -550,88 +499,42 @@ export default async function TicketsPage({
         </div>
       </div>
 
-      {/* Type sub-tabs — one per active ticket type (§5.1), plus "All types".
-          Own row, above the view tabs: type is the primary "what kind of
-          ticket" split, view/status narrow within whichever type is picked. */}
+      {/* View tabs (Active/Closed/All) + the two extra-status quick chips
+          (Awaiting Customer, On Hold) — one unified row, one pill style, so
+          they read as a single tab strip rather than a boxed segmented
+          control sitting next to separate standalone chips. */}
       <div
         role="tablist"
-        aria-label={t("typeTabsLabel")}
+        aria-label={t("viewTabsLabel")}
         className="flex flex-wrap items-center gap-1.5"
       >
-        <Link
-          href={typeTabHref(null)}
-          role="tab"
-          aria-selected={!activeTypeValue}
-          className={cn(
-            "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
-            !activeTypeValue
-              ? "bg-blue-600 text-white border-blue-600"
-              : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-          )}
-        >
-          <LayoutGrid className="size-3.5" aria-hidden="true" />
-          {t("allTypes")}
-        </Link>
-        {typeOptions.map((option, i) => {
-          const active = activeTypeValue === option.value;
-          const Icon = TYPE_TAB_ICONS[i % TYPE_TAB_ICONS.length];
+        {viewTabs.map((tab) => {
+          const active = view === tab.key;
           return (
             <Link
-              key={option.value}
-              href={typeTabHref(option.value)}
+              key={tab.key}
+              href={viewHref(tab.key)}
               role="tab"
               aria-selected={active}
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
+                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
                 active
                   ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
               )}
             >
-              <Icon className="size-3.5" aria-hidden="true" />
-              {option.label}
+              {tab.label}
             </Link>
           );
         })}
-      </div>
-
-      {/* View tabs (Active/Closed/All) + the two extra-status quick chips
-          (Awaiting Customer, On Hold) live together in one row — they're all
-          "which tickets by status" controls, so they read as one group
-          rather than splitting the chips off into the filter toolbar below. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          role="tablist"
-          aria-label={t("viewTabsLabel")}
-          className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
-        >
-          {viewTabs.map((tab) => {
-            const active = view === tab.key;
-            return (
-              <Link
-                key={tab.key}
-                href={viewHref(tab.key)}
-                role="tab"
-                aria-selected={active}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm transition-colors",
-                  active
-                    ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
-                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
-                )}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </div>
         {statusChips.map((chip) => {
           const active = isSingleStatus(chip.status);
           return (
             <Link
               key={chip.status}
               href={statusChipHref(chip.status)}
-              aria-pressed={active}
+              role="tab"
+              aria-selected={active}
               className={cn(
                 "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
                 active

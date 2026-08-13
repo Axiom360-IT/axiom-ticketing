@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import type { BrandingConfig } from "@/lib/branding/presets";
 import type { Permission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
@@ -19,9 +20,11 @@ import { useSidebar } from "./sidebar-context";
 export function Sidebar({
   branding,
   permissions,
+  ticketTypes,
 }: {
   branding: BrandingConfig;
   permissions: Permission[];
+  ticketTypes: { value: string; label: string }[];
 }) {
   const { mini } = useSidebar();
 
@@ -32,11 +35,20 @@ export function Sidebar({
         mini ? "w-16" : "w-60",
       )}
     >
-      <SidebarContent
-        branding={branding}
-        permissions={permissions}
-        mini={mini}
-      />
+      {/* SidebarContent reads useSearchParams() (to highlight the active
+          ticket-type sub-link) — Next's recommended pattern wraps that in
+          Suspense. Every /admin/* route is already forced dynamic (session
+          lookups via cookies() in the gated layout), so this never actually
+          suspends in practice; it's here so a static-rendering build check
+          never trips on it. */}
+      <Suspense fallback={null}>
+        <SidebarContent
+          branding={branding}
+          permissions={permissions}
+          ticketTypes={ticketTypes}
+          mini={mini}
+        />
+      </Suspense>
     </aside>
   );
 }

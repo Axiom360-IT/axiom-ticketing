@@ -19,9 +19,11 @@ type TopbarProps = {
   /** For the mobile nav drawer (the desktop sidebar is hidden below `md`). */
   branding: BrandingConfig;
   permissions: Permission[];
+  /** Sub-nav under "Tickets" in the drawer — one link per active ticket type. */
+  ticketTypes: { value: string; label: string }[];
 };
 
-export async function Topbar({ user, branding, permissions }: TopbarProps) {
+export async function Topbar({ user, branding, permissions, ticketTypes }: TopbarProps) {
   const initialNotifications = await getRecentNotifications();
   return (
     <header className="h-14 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 sticky top-0 z-10">
@@ -30,7 +32,7 @@ export async function Topbar({ user, branding, permissions }: TopbarProps) {
       <SidebarToggle />
 
       {/* Hamburger — only rendered below `md`, opens the nav drawer. */}
-      <MobileNav branding={branding} permissions={permissions} />
+      <MobileNav branding={branding} permissions={permissions} ticketTypes={ticketTypes} />
 
       <GlobalSearch />
 

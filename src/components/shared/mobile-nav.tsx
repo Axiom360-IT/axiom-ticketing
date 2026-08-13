@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -19,9 +19,11 @@ import { SidebarContent } from "./sidebar-content";
 export function MobileNav({
   branding,
   permissions,
+  ticketTypes,
 }: {
   branding: BrandingConfig;
   permissions: Permission[];
+  ticketTypes: { value: string; label: string }[];
 }) {
   const t = useTranslations("admin.shell");
   const [open, setOpen] = useState(false);
@@ -67,11 +69,16 @@ export function MobileNav({
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </Dialog.Close>
-          <SidebarContent
-            branding={branding}
-            permissions={permissions}
-            onNavigate={() => setOpen(false)}
-          />
+          {/* See sidebar.tsx for why this needs a Suspense boundary
+              (useSearchParams() inside SidebarContent). */}
+          <Suspense fallback={null}>
+            <SidebarContent
+              branding={branding}
+              permissions={permissions}
+              ticketTypes={ticketTypes}
+              onNavigate={() => setOpen(false)}
+            />
+          </Suspense>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>

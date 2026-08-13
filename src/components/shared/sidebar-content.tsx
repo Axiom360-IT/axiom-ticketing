@@ -1,28 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  Bookmark,
+  Boxes,
   Building2,
   ChartColumnBig,
   ChevronDown,
+  CircleDot,
   ClipboardList,
   Clock,
+  Flag,
   GitBranch,
   History,
   Layers,
   LayoutDashboard,
   LifeBuoy,
   MailWarning,
+  Puzzle,
   Settings,
+  Shapes,
   Shield,
+  Sparkles,
+  Tag,
   Tags,
   ShoppingCart,
   SlidersHorizontal,
   Ticket,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { Wordmark } from "@/components/branding/wordmark";
 import { ACCENT_CLASSES, type BrandingConfig } from "@/lib/branding/presets";
@@ -130,6 +139,22 @@ export const NAV_ITEMS: NavItem[] = [
   ...NAV_GROUPS.flatMap((g) => g.items),
 ];
 
+// Ticket types are an open-ended, admin-managed taxonomy — there's no fixed
+// set to hand-pick a meaningful icon per value, so every type sub-link gets a
+// generic icon from this rotation (by taxonomy sort position), just so the
+// sub-items read as distinct from one another. Add a type in Settings and it
+// gets a sub-link + the next icon in the rotation automatically.
+const TICKET_TYPE_ICONS: LucideIcon[] = [
+  Tag,
+  Boxes,
+  Flag,
+  Sparkles,
+  Puzzle,
+  Shapes,
+  Bookmark,
+  CircleDot,
+];
+
 const COLLAPSE_STORAGE_KEY = "axiom.sidebar.collapsedGroups";
 
 function persistCollapsed(state: Record<string, boolean>) {
@@ -155,16 +180,21 @@ function persistCollapsed(state: Record<string, boolean>) {
 export function SidebarContent({
   branding,
   permissions,
+  ticketTypes,
   onNavigate,
   mini = false,
 }: {
   branding: BrandingConfig;
   permissions: Permission[];
+  /** One sub-link per active ticket type, shown nested under "Tickets". */
+  ticketTypes: { value: string; label: string }[];
   onNavigate?: () => void;
   mini?: boolean;
 }) {
   const permSet = new Set(permissions);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTicketType = pathname === "/admin/tickets" ? searchParams.get("type") : null;
   const t = useTranslations("admin.shell");
   const badge = ACCENT_CLASSES[branding.accentColor].darkBadge;
   const initial = (branding.brandName || branding.brandAccent || "")
@@ -328,14 +358,49 @@ export function SidebarContent({
               {open ? (
                 <ul className={cn("space-y-0.5", mini ? "mt-1" : "mt-0.5")}>
                   {group.items.map((item) => (
-                    <NavLink
-                      key={item.href}
-                      item={item}
-                      active={isActive(item.href)}
-                      label={t(item.labelKey)}
-                      onNavigate={onNavigate}
-                      mini={mini}
-                    />
+                    <Fragment key={item.href}>
+                      <NavLink
+                        item={item}
+                        active={isActive(item.href)}
+                        label={t(item.labelKey)}
+                        onNavigate={onNavigate}
+                        mini={mini}
+                      />
+                      {/* Ticket-type sub-nav — only under "Tickets", only
+                          expanded (a 3rd nesting level with no room for a
+                          label doesn't work in the icon rail, so it's
+                          skipped there; the type filter is still reachable
+                          by opening Tickets itself). Rebuilt from the
+                          admin-managed taxonomy on every request — add a
+                          type in Settings and it gets a link here with no
+                          code change. */}
+                      {item.href === "/admin/tickets" &&
+                      !mini &&
+                      ticketTypes.length > 0 ? (
+                        <li>
+                          <ul className="mt-0.5 ml-[18px] space-y-0.5 border-l border-slate-800 pl-3">
+                            {ticketTypes.map((type, i) => {
+                              const Icon =
+                                TICKET_TYPE_ICONS[i % TICKET_TYPE_ICONS.length];
+                              return (
+                                <NavLink
+                                  key={type.value}
+                                  item={{
+                                    href: `/admin/tickets?type=${encodeURIComponent(type.value)}`,
+                                    icon: Icon,
+                                    color: "text-slate-400",
+                                  }}
+                                  active={activeTicketType === type.value}
+                                  label={type.label}
+                                  onNavigate={onNavigate}
+                                  mini={false}
+                                />
+                              );
+                            })}
+                          </ul>
+                        </li>
+                      ) : null}
+                    </Fragment>
                   ))}
                 </ul>
               ) : null}
@@ -363,7 +428,11 @@ function NavLink({
   mini = false,
   prominent = false,
 }: {
-  item: NavItem;
+  /** Only `href`/`icon`/`color` are actually read here — `labelKey` isn't,
+   *  since the caller already resolves `label` itself (a `NavItem` from the
+   *  static nav tree, or a synthetic one for a dynamic sub-link like a
+   *  ticket-type entry, which has no i18n key at all). */
+  item: Pick<NavItem, "href" | "icon" | "color">;
   active: boolean;
   label: string;
   onNavigate?: () => void;

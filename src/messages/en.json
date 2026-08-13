@@ -434,8 +434,6 @@
       "viewActive": "Active",
       "viewClosed": "Closed",
       "viewAll": "All",
-      "typeTabsLabel": "Ticket type",
-      "allTypes": "All types",
       "empty": "No tickets yet. They'll appear here as customers submit them.",
       "emptyMatching": "No tickets match your search.",
       "createOnBehalf": "Create New Ticket",
