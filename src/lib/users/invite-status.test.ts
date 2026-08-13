@@ -34,4 +34,24 @@ describe("computeInviteStatus", () => {
       }),
     ).toBe("invite_expired");
   });
+
+  it("is invite_failed when the last send attempt failed, even if not yet expired", () => {
+    expect(
+      computeInviteStatus({
+        inviteAcceptedAt: null,
+        inviteExpiresAt: new Date(Date.now() + 60_000),
+        inviteSendFailedAt: new Date(),
+      }),
+    ).toBe("invite_failed");
+  });
+
+  it("is active once accepted even if a send previously failed", () => {
+    expect(
+      computeInviteStatus({
+        inviteAcceptedAt: new Date(),
+        inviteExpiresAt: new Date(Date.now() + 60_000),
+        inviteSendFailedAt: new Date(),
+      }),
+    ).toBe("active");
+  });
 });

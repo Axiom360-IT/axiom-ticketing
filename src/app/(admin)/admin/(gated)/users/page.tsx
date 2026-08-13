@@ -16,15 +16,18 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { parseSort, sortRows } from "@/lib/data-table";
+import type { InviteStatus } from "@/lib/users/invite-status";
 import { cn } from "@/lib/utils";
 
 type Audience = "internal" | "external";
+type InviteStatusFilter = InviteStatus | "all";
 
 type SearchParams = Promise<{
   q?: string;
   roleId?: string;
   status?: "active" | "inactive" | "all";
   tab?: Audience;
+  inviteStatus?: InviteStatusFilter;
   sort?: string;
   page?: string;
   pageSize?: string;
@@ -46,7 +49,7 @@ export default async function UsersListPage({
   const formatter = await getFormatter();
 
   const sp = await searchParams;
-  const { q, roleId, status = "active", tab = "internal" } = sp;
+  const { q, roleId, status = "active", tab = "internal", inviteStatus = "all" } = sp;
   const audience: Audience = tab === "external" ? "external" : "internal";
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
@@ -63,9 +66,10 @@ export default async function UsersListPage({
   const canEdit = user.permissions.has("users.update");
   const canDeactivate = user.permissions.has("users.deactivate");
   const canReactivate = user.permissions.has("users.reactivate");
+  const canResetPassword = user.permissions.has("users.reset_password");
 
   const [allRows, roles, canCreate] = await Promise.all([
-    listUsersForAdmin({ query: q, roleId, status, audience }),
+    listUsersForAdmin({ query: q, roleId, status, audience, inviteStatus }),
     listAllRoles(),
     can(user, "users.create", { type: "global" }, productionContext),
   ]);
@@ -91,6 +95,7 @@ export default async function UsersListPage({
     if (q) params.set("q", q);
     if (roleId) params.set("roleId", roleId);
     if (status !== "active") params.set("status", status);
+    if (inviteStatus !== "all") params.set("inviteStatus", inviteStatus);
     return `/admin/users?${params.toString()}`;
   }
 
@@ -99,6 +104,7 @@ export default async function UsersListPage({
   if (q) exportParams.q = q;
   if (roleId) exportParams.roleId = roleId;
   if (status !== "active") exportParams.status = status;
+  if (inviteStatus !== "all") exportParams.inviteStatus = inviteStatus;
 
   return (
     <div className="space-y-4">
@@ -171,6 +177,19 @@ export default async function UsersListPage({
           ]}
           triggerClassName="w-32"
         />
+        <UrlFilterSelect
+          name="inviteStatus"
+          label={t("filterInviteStatus")}
+          value={inviteStatus}
+          showAny={false}
+          options={[
+            { value: "all", label: t("filterInviteStatusAll") },
+            { value: "invite_failed", label: t("filterInviteStatusFailed") },
+            { value: "invited", label: t("filterInviteStatusInvited") },
+            { value: "invite_expired", label: t("filterInviteStatusExpired") },
+          ]}
+          triggerClassName="w-40"
+        />
       </div>
 
       <UsersTable
@@ -183,6 +202,7 @@ export default async function UsersListPage({
         canEdit={canEdit}
         canDeactivate={canDeactivate}
         canReactivate={canReactivate}
+        enableBulkActions={audience === "external" && canResetPassword}
       />
 
       <Pagination

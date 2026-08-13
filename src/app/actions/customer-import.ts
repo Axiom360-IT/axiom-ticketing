@@ -19,23 +19,24 @@ import {
   guessOrgNameFromDomain,
   isFreeMailDomain,
 } from "@/lib/customer-import/domain-guess";
+import { normalizeImportPhone } from "@/lib/customer-import/phone-normalize";
 import { createOrganization, suggestOrgCode } from "@/app/actions/organizations";
 import { ForbiddenError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { inngest } from "@/inngest/client";
 
 const MAX_ROWS = 500;
+const DEFAULT_PHONE_COUNTRY = "US";
 
+// Phone format is intentionally NOT validated here — a raw pasted value
+// (any format, with or without a country code) is normalized separately via
+// normalizeImportPhone(), using the caller-selected default country to
+// resolve an ambiguous local-format number. An unparseable phone drops
+// silently (phone stays optional) rather than invalidating the row.
 const rowSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().toLowerCase().email().max(255),
-  phone: z
-    .string()
-    .trim()
-    .max(20)
-    .regex(/^(\+?[1-9]\d{1,14})?$/, "Phone must be in E.164 format")
-    .optional()
-    .default(""),
+  phone: z.string().trim().max(40).optional().default(""),
 });
 
 export type CustomerImportRowInput = { name: string; email: string; phone?: string };
@@ -52,6 +53,10 @@ export type PreviewRow = {
   name: string;
   email: string;
   phone: string;
+  /** Set when a non-empty pasted phone couldn't be parsed against the
+   *  selected default country — the row still imports, just without a
+   *  phone number. */
+  phoneWarning?: string;
   status: PreviewRowStatus;
   error?: string;
   domain: string | null;
@@ -85,6 +90,7 @@ export type PreviewResult =
  */
 export async function previewCustomerImport(
   input: CustomerImportRowInput[],
+  defaultCountry: string = DEFAULT_PHONE_COUNTRY,
 ): Promise<PreviewResult> {
   const caller = await requireSessionUser();
   if (!(await can(caller, "users.create", { type: "global" }, productionContext))) {
@@ -137,11 +143,22 @@ export async function previewCustomerImport(
       return;
     }
     seenInFile.add(email);
+    let phone = "";
+    let phoneWarning: string | undefined;
+    if (parsed.data.phone) {
+      const normalized = normalizeImportPhone(parsed.data.phone, defaultCountry);
+      if (normalized.ok) {
+        phone = normalized.e164;
+      } else {
+        phoneWarning = "Phone number couldn't be recognized — imported without it.";
+      }
+    }
     parsedRows.push({
       index,
       name: parsed.data.name,
       email,
-      phone: parsed.data.phone,
+      phone,
+      phoneWarning,
       status: "valid",
       rawEmail: email,
     });
@@ -217,6 +234,7 @@ export async function previewCustomerImport(
       name: r.name,
       email: r.email,
       phone: r.phone,
+      phoneWarning: r.phoneWarning,
       status,
       error,
       domain: domain ?? null,
@@ -235,22 +253,27 @@ export async function previewCustomerImport(
     unmatchedByDomain.set(row.domain, list);
   }
 
-  const unmatchedDomains: DomainGroup[] = [];
-  for (const [domain, rowIndexes] of unmatchedByDomain) {
-    const suggestedName = guessOrgNameFromDomain(domain);
-    let suggestedAbbreviation: string | null = null;
-    if (canCreateOrg) {
-      const suggestion = await suggestOrgCode(suggestedName);
-      suggestedAbbreviation = suggestion.ok ? suggestion.code : null;
-    }
-    unmatchedDomains.push({
-      domain,
-      rowIndexes,
-      isFreeMail: false,
-      suggestedName,
-      suggestedAbbreviation,
-    });
-  }
+  // One suggestOrgCode round-trip per distinct unmatched domain — run them
+  // concurrently rather than one-at-a-time (each is an independent DB read,
+  // no shared state between iterations) so a file spanning many
+  // previously-unseen companies doesn't pay for each lookup in sequence.
+  const unmatchedDomains: DomainGroup[] = await Promise.all(
+    [...unmatchedByDomain].map(async ([domain, rowIndexes]) => {
+      const suggestedName = guessOrgNameFromDomain(domain);
+      let suggestedAbbreviation: string | null = null;
+      if (canCreateOrg) {
+        const suggestion = await suggestOrgCode(suggestedName);
+        suggestedAbbreviation = suggestion.ok ? suggestion.code : null;
+      }
+      return {
+        domain,
+        rowIndexes,
+        isFreeMail: false,
+        suggestedName,
+        suggestedAbbreviation,
+      };
+    }),
+  );
 
   return {
     ok: true,
@@ -298,6 +321,7 @@ export type CommitCustomerImportResult =
 export async function commitCustomerImport(
   input: CustomerImportRowInput[],
   domainDecisions: Record<string, DomainDecision>,
+  defaultCountry: string = DEFAULT_PHONE_COUNTRY,
 ): Promise<CommitCustomerImportResult> {
   const caller = await requireSessionUser();
   if (!(await can(caller, "users.create", { type: "global" }, productionContext))) {
@@ -312,7 +336,7 @@ export async function commitCustomerImport(
     return { ok: false, error: "Invalid organization decision." };
   }
 
-  const preview = await previewCustomerImport(input);
+  const preview = await previewCustomerImport(input, defaultCountry);
   if (!preview.ok) return preview;
 
   // Resolve each unmatched domain's decision. "create" makes the org NOW

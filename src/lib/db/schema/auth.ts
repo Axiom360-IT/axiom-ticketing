@@ -55,6 +55,12 @@ export const users = pgTable(
     invitedAt: timestamp("invited_at", { withTimezone: true }),
     inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
     inviteAcceptedAt: timestamp("invite_accepted_at", { withTimezone: true }),
+    // Set when the most recent invite/setup email (sendCustomerSetupInvite —
+    // itself already retried once) still failed to send; cleared on the next
+    // successful send. Nullable, no default — most users never have this
+    // set. Lets the admin Users list filter to exactly the people who need a
+    // manual resend, individually or in bulk (§ customer bulk-import).
+    inviteSendFailedAt: timestamp("invite_send_failed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),

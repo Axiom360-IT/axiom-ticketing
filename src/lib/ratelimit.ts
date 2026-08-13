@@ -68,6 +68,9 @@ export const ratelimits = {
    *  reviewed bulk action, not per-row velocity abuse (that's what
    *  authCreateUser already covers for the single-create path). */
   bulkImportUsers: makeLimiter(5, "1 h"),
+  /** Bulk invite/reset resend from the Users list: 10 batches per admin per
+   *  hour. Gates the BATCH itself, not the individual sends within it. */
+  bulkResendInvites: makeLimiter(10, "1 h"),
   authUpdateSetting: makeLimiter(100, "1 d"),
   /** Confirmation SMS on profile phone-change: 5 per user per hour. Caps
    * abuse of the profile phone field as a way to SMS-bomb an arbitrary

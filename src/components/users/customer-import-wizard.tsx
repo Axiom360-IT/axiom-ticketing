@@ -3,12 +3,15 @@
 import { type ChangeEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { getCountries, getCountryCallingCode } from "react-phone-number-input";
+import countryLabels from "react-phone-number-input/locale/en.json";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useDefaultCountry } from "@/components/ui/phone-field";
 import {
   Table,
   TableBody,
@@ -24,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { parseImportRows } from "@/lib/customer-import/parse-rows";
 import {
   commitCustomerImport,
   previewCustomerImport,
@@ -54,33 +58,23 @@ const STATUS_VARIANT: Record<PreviewRowStatus, "secondary" | "outline" | "destru
   invalid: "destructive",
 };
 
-/**
- * Minimal CSV/TSV line parser — no quoted-field-with-embedded-delimiter
- * support. Adequate for a name/email/phone list; a genuinely delimiter-
- * heavy export should be cleaned up before pasting.
- */
-function parseRows(text: string): CustomerImportRowInput[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
+// Default country to interpret an ambiguous local-format phone number
+// against (one without a country code) — pasted numbers that already
+// include one (e.g. "+92...") are auto-detected regardless of this choice.
+// "(name) (+code)" labels, sorted alphabetically; computed once at module
+// scope since the country list is static.
+const COUNTRY_ITEMS: Record<string, string> = Object.fromEntries(
+  getCountries()
+    .map(
+      (c) =>
+        [
+          c,
+          `${(countryLabels as Record<string, string>)[c] ?? c} (+${getCountryCallingCode(c)})`,
+        ] as const,
+    )
+    .sort((a, b) => a[1].localeCompare(b[1])),
+);
 
-  const splitLine = (line: string) =>
-    (line.includes("\t") ? line.split("\t") : line.split(","))
-      .map((c) => c.trim().replace(/^"(.*)"$/, "$1"));
-
-  let start = 0;
-  const first = splitLine(lines[0]).map((c) => c.toLowerCase());
-  if (first[0] === "name" && (first[1] ?? "").includes("email")) start = 1;
-
-  const rows: CustomerImportRowInput[] = [];
-  for (let i = start; i < lines.length; i++) {
-    const cols = splitLine(lines[i]);
-    rows.push({ name: cols[0] ?? "", email: cols[1] ?? "", phone: cols[2] ?? "" });
-  }
-  return rows;
-}
 
 export function CustomerImportWizard({ organizations }: { organizations: OrgOption[] }) {
   const t = useTranslations("users.import");
@@ -93,6 +87,7 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
   const [rows, setRows] = useState<CustomerImportRowInput[]>([]);
   const [decisions, setDecisions] = useState<Record<string, DomainDecision>>({});
   const [result, setResult] = useState<CommitOk | null>(null);
+  const [country, setCountry] = useState(useDefaultCountry());
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -103,13 +98,13 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
 
   async function handlePreview() {
     setError(null);
-    const parsedRows = parseRows(text);
+    const parsedRows = parseImportRows(text);
     if (parsedRows.length === 0) {
       setError(t("errorEmptyRows"));
       return;
     }
     setLoading(true);
-    const res = await previewCustomerImport(parsedRows);
+    const res = await previewCustomerImport(parsedRows, country);
     setLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -134,7 +129,7 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
   async function handleCommit() {
     setError(null);
     setLoading(true);
-    const res = await commitCustomerImport(rows, decisions);
+    const res = await commitCustomerImport(rows, decisions, country);
     setLoading(false);
     if (!res.ok) {
       setError(res.error);
@@ -355,6 +350,11 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
                             {row.error}
                           </span>
                         ) : null}
+                        {row.phoneWarning ? (
+                          <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">
+                            {row.phoneWarning}
+                          </span>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -421,6 +421,25 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
             {t("uploadOrPaste")}
           </span>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="import-country">{t("phoneCountryLabel")}</Label>
+          <Select items={COUNTRY_ITEMS} value={country} onValueChange={(v) => v && setCountry(v)}>
+            <SelectTrigger id="import-country" className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(COUNTRY_ITEMS).map(([code, label]) => (
+                <SelectItem key={code} value={code}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {t("phoneCountryHint")}
+          </p>
         </div>
 
         {error ? (

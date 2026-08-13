@@ -53,25 +53,42 @@ export async function sendCustomerSetupInvite(params: {
   const token = signCustomerInviteToken(params.userId);
   const setupUrl = `${getAppUrl()}/portal/setup?token=${encodeURIComponent(token)}`;
 
-  try {
-    await sendEmail({
-      to: params.email,
-      template: {
-        template: "customer_setup_invite",
-        data: {
-          recipientName: params.name,
-          organizationName,
-          setupUrl,
-          expiryHours,
-          flow: params.flow,
+  // One immediate retry before giving up — most send failures at this layer
+  // are a transient provider hiccup, not a permanent problem with the
+  // address, so a second attempt right away clears the bulk of them without
+  // making an admin do anything.
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await sendEmail({
+        to: params.email,
+        template: {
+          template: "customer_setup_invite",
+          data: {
+            recipientName: params.name,
+            organizationName,
+            setupUrl,
+            expiryHours,
+            flow: params.flow,
+          },
         },
-      },
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Could not send invite email",
-    };
+      });
+      // Clear any earlier failure flag now that a send has gone through —
+      // a previously-flagged user drops off the "failed to send" filter as
+      // soon as a resend (retried or manual) actually succeeds.
+      await db
+        .update(users)
+        .set({ inviteSendFailedAt: null })
+        .where(eq(users.id, params.userId));
+      return { ok: true };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Could not send invite email";
+    }
   }
-  return { ok: true };
+
+  await db
+    .update(users)
+    .set({ inviteSendFailedAt: new Date() })
+    .where(eq(users.id, params.userId));
+  return { ok: false, error: lastError ?? "Could not send invite email" };
 }

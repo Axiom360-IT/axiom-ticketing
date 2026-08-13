@@ -27,6 +27,13 @@ export function CountryProvider({
   );
 }
 
+/** The geo-resolved default country (see CountryProvider) — for callers that
+ *  need just the ISO code, not a full phone input (e.g. a country picker for
+ *  bulk-import phone parsing). */
+export function useDefaultCountry(): string {
+  return useContext(DefaultCountryContext);
+}
+
 // Typed explicitly rather than derived from the library's props: its
 // `DefaultInputComponentProps` is an `any` index signature, which collapses
 // `onChange`/`value` to `any` through Omit and breaks call-site inference. The

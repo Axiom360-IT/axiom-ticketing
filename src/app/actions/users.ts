@@ -26,7 +26,7 @@ import {
   provisionUser,
   STAFF_INVITE_DEFAULT_EXPIRY_MS,
 } from "@/lib/users/provision";
-import { computeInviteStatus } from "@/lib/users/invite-status";
+import { computeInviteStatus, type InviteStatus } from "@/lib/users/invite-status";
 import { sendCustomerSetupInvite } from "@/lib/customer/invite";
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -636,6 +636,48 @@ export async function resetUserPassword(
   return { ok: true };
 }
 
+const MAX_BULK_RESEND = 200;
+
+/**
+ * Multi-select "resend invite" from the Users list — covers both people
+ * whose invite failed to send and people who just need a fresh link
+ * (forgot their password, invite expired). Loops resetUserPassword() per
+ * user rather than reimplementing it, so every existing permission check,
+ * role branch (staff vs. customer), and audit entry stays exactly as it is
+ * for a single resend; one user's failure (permission, not found, send
+ * error — resetUserPassword already retries the email once internally, see
+ * sendCustomerSetupInvite) doesn't stop the rest of the batch.
+ */
+export async function bulkResendCustomerInvites(
+  userIds: string[],
+): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  const uniqueIds = [...new Set(userIds)];
+  if (uniqueIds.length === 0) {
+    return { ok: false, error: "Select at least one user." };
+  }
+  if (uniqueIds.length > MAX_BULK_RESEND) {
+    return { ok: false, error: `Select at most ${MAX_BULK_RESEND} users at a time.` };
+  }
+  await enforceUserRateLimit("bulkResendInvites", caller.id);
+
+  let sent = 0;
+  let failed = 0;
+  for (const id of uniqueIds) {
+    try {
+      const result = await resetUserPassword(id);
+      if (result.ok) sent++;
+      else failed++;
+    } catch {
+      // Permission denied / user gone by the time this ran — don't let one
+      // bad id in the selection sink the rest of the batch.
+      failed++;
+    }
+  }
+
+  return { ok: true, sent, failed };
+}
+
 // ── Read helpers used by pages (kept here so the action file owns
 //    the logic, and pages stay lean) ──────────────────────────────
 
@@ -654,6 +696,7 @@ export async function listUsersForAdmin(opts: {
   roleId?: string;
   status?: "active" | "inactive" | "all";
   audience?: "internal" | "external" | "all";
+  inviteStatus?: InviteStatus | "all";
 }) {
   const caller = await requireSessionUser();
   if (!(await can(caller, "users.view", { type: "global" }, productionContext))) {
@@ -678,6 +721,7 @@ export async function listUsersForAdmin(opts: {
       createdAt: users.createdAt,
       inviteExpiresAt: users.inviteExpiresAt,
       inviteAcceptedAt: users.inviteAcceptedAt,
+      inviteSendFailedAt: users.inviteSendFailedAt,
     })
     .from(users)
     .where(where);
@@ -731,6 +775,9 @@ export async function listUsersForAdmin(opts: {
     rows = rows.filter(
       (u) => !u.roles.some((r) => INTERNAL_ROLE_NAMES.has(r.name)),
     );
+  }
+  if (opts.inviteStatus && opts.inviteStatus !== "all") {
+    rows = rows.filter((u) => u.inviteStatus === opts.inviteStatus);
   }
 
   rows.sort((a, b) => a.name.localeCompare(b.name));
