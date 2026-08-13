@@ -8,6 +8,7 @@ export type TicketTypeOption = {
   id: string;
   value: string;
   label: string;
+  icon: string;
   sortOrder: number;
   isActive: boolean;
   isDefault: boolean;
@@ -21,6 +22,7 @@ export const loadAllTicketTypes = cache(
         id: ticketTypes.id,
         value: ticketTypes.value,
         label: ticketTypes.label,
+        icon: ticketTypes.icon,
         sortOrder: ticketTypes.sortOrder,
         isActive: ticketTypes.isActive,
         isDefault: ticketTypes.isDefault,

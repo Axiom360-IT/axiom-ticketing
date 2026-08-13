@@ -8,6 +8,11 @@ import { db, transactional } from "@/lib/db/client";
 import { ticketCategories } from "@/lib/db/schema/ticket-categories";
 import { ticketTypes } from "@/lib/db/schema/ticket-types";
 import { tickets } from "@/lib/db/schema/tickets";
+import {
+  TICKET_TYPE_ICON_KEYS,
+  isTicketTypeIconKey,
+  suggestTicketTypeIcon,
+} from "@/lib/tickets/type-icon-keys";
 
 // Mirrors app/actions/categories.ts and app/actions/ticket-types.ts (near-
 // identical shape in both), adapted to take an explicit SessionUser and to
@@ -153,12 +158,20 @@ async function findTypeByLabel(label: string) {
   return row ?? null;
 }
 
-export async function createTicketTypeViaMcp(user: SessionUser, label: string): Promise<Result> {
+export async function createTicketTypeViaMcp(
+  user: SessionUser,
+  label: string,
+  icon?: string,
+): Promise<Result> {
   const denied = await requireManager(user);
   if (denied) return denied;
   const parsed = labelSchema.safeParse(label);
   if (!parsed.success) return { ok: false, error: "Enter a type name (1-40 characters)." };
   const clean = parsed.data;
+  // No picker over MCP — trust an explicit valid choice, else suggest from
+  // the label so a type created this way still gets something relevant
+  // rather than the bare DB default.
+  const resolvedIcon = icon && isTicketTypeIconKey(icon) ? icon : suggestTicketTypeIcon(clean);
 
   const existing = await db.select({ value: ticketTypes.value, label: ticketTypes.label }).from(ticketTypes);
   if (existing.some((t) => t.label.toLowerCase() === clean.toLowerCase())) {
@@ -173,17 +186,25 @@ export async function createTicketTypeViaMcp(user: SessionUser, label: string): 
   const [maxRow] = await db.select({ max: sql<number>`COALESCE(MAX(${ticketTypes.sortOrder}), 0)` }).from(ticketTypes);
   const sortOrder = Number(maxRow?.max ?? 0) + 1;
 
-  await db.insert(ticketTypes).values({ value, label: clean, sortOrder, createdById: user.id });
-  await audit({ actorId: user.id, action: "ticket_type.create", targetType: "ticket_type", targetId: value, after: { value, label: clean, via: "mcp" } });
+  await db.insert(ticketTypes).values({ value, label: clean, icon: resolvedIcon, sortOrder, createdById: user.id });
+  await audit({ actorId: user.id, action: "ticket_type.create", targetType: "ticket_type", targetId: value, after: { value, label: clean, icon: resolvedIcon, via: "mcp" } });
   return { ok: true, value };
 }
 
-export async function renameTicketTypeViaMcp(user: SessionUser, currentLabel: string, newLabel: string): Promise<Result> {
+export async function renameTicketTypeViaMcp(
+  user: SessionUser,
+  currentLabel: string,
+  newLabel: string,
+  icon?: string,
+): Promise<Result> {
   const denied = await requireManager(user);
   if (denied) return denied;
   const parsed = labelSchema.safeParse(newLabel);
   if (!parsed.success) return { ok: false, error: "Enter a type name (1-40 characters)." };
   const clean = parsed.data;
+  // Unlike create, only an explicit valid icon changes anything — renaming
+  // never silently re-suggests and swaps out an already-chosen icon.
+  const resolvedIcon = icon && isTicketTypeIconKey(icon) ? icon : undefined;
   const current = await findTypeByLabel(currentLabel);
   if (!current) return { ok: false, error: `No type found named "${currentLabel}".` };
 
@@ -194,14 +215,17 @@ export async function renameTicketTypeViaMcp(user: SessionUser, currentLabel: st
     .limit(1);
   if (dup.length > 0) return { ok: false, error: "A type with that name already exists." };
 
-  await db.update(ticketTypes).set({ label: clean, updatedAt: new Date() }).where(eq(ticketTypes.id, current.id));
+  await db
+    .update(ticketTypes)
+    .set({ label: clean, ...(resolvedIcon ? { icon: resolvedIcon } : {}), updatedAt: new Date() })
+    .where(eq(ticketTypes.id, current.id));
   await audit({
     actorId: user.id,
     action: "ticket_type.update",
     targetType: "ticket_type",
     targetId: current.value,
-    before: { label: current.label },
-    after: { label: clean, via: "mcp" },
+    before: { label: current.label, ...(resolvedIcon ? { icon: current.icon } : {}) },
+    after: { label: clean, ...(resolvedIcon ? { icon: resolvedIcon } : {}), via: "mcp" },
   });
   return { ok: true };
 }
@@ -330,9 +354,15 @@ export function registerCategoryTypeWriteTools(server: any, user: SessionUser): 
 
   server.registerTool(
     "create_ticket_type",
-    { title: "Create a ticket type", description: "Creates a new ticket type." + CONFIRM_NOTE, inputSchema: { label: z.string().min(1) } },
-    async ({ label }: { label: string }) => {
-      const r = await createTicketTypeViaMcp(user, label);
+    {
+      title: "Create a ticket type",
+      description:
+        `Creates a new ticket type. icon is optional — one of: ${TICKET_TYPE_ICON_KEYS.join(", ")}. Omit it to auto-suggest one from the name.` +
+        CONFIRM_NOTE,
+      inputSchema: { label: z.string().min(1), icon: z.enum(TICKET_TYPE_ICON_KEYS).optional() },
+    },
+    async ({ label, icon }: { label: string; icon?: string }) => {
+      const r = await createTicketTypeViaMcp(user, label, icon);
       return r.ok ? textResult(r) : errorResult(r.error);
     },
   );
@@ -340,11 +370,17 @@ export function registerCategoryTypeWriteTools(server: any, user: SessionUser): 
     "rename_ticket_type",
     {
       title: "Rename a ticket type",
-      description: "Renames a ticket type (find it by its current name)." + CONFIRM_NOTE,
-      inputSchema: { currentLabel: z.string().min(1), newLabel: z.string().min(1) },
+      description:
+        `Renames a ticket type (find it by its current name). icon is optional — one of: ${TICKET_TYPE_ICON_KEYS.join(", ")}. Omit it to leave the icon unchanged.` +
+        CONFIRM_NOTE,
+      inputSchema: {
+        currentLabel: z.string().min(1),
+        newLabel: z.string().min(1),
+        icon: z.enum(TICKET_TYPE_ICON_KEYS).optional(),
+      },
     },
-    async ({ currentLabel, newLabel }: { currentLabel: string; newLabel: string }) => {
-      const r = await renameTicketTypeViaMcp(user, currentLabel, newLabel);
+    async ({ currentLabel, newLabel, icon }: { currentLabel: string; newLabel: string; icon?: string }) => {
+      const r = await renameTicketTypeViaMcp(user, currentLabel, newLabel, icon);
       return r.ok ? textResult(r) : errorResult(r.error);
     },
   );

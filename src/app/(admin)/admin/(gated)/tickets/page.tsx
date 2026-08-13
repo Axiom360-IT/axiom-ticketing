@@ -11,7 +11,6 @@ import {
   inArray,
   isNull,
   lte,
-  ne,
   or,
   sql,
   type SQL,
@@ -96,6 +95,14 @@ const TICKET_STATUSES = [
 const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const TICKET_STREAMS = ["internal", "external"] as const;
 
+// Explicit status set per view-scope tab — Awaiting Customer / On Hold are
+// their OWN tabs (via chipStatus, not this map) and deliberately excluded
+// from Active; Closed folds in Resolved so "done" tickets have one home.
+const VIEW_STATUSES = {
+  active: ["open", "in_progress"],
+  closed: ["closed", "resolved"],
+} as const;
+
 /** Split a CSV query-string value, drop empties, and intersect with the
  * allowed set so a junk URL parameter can't poison a `WHERE col IN (...)`
  * clause. Returns undefined when no valid values remain (so the caller
@@ -151,6 +158,17 @@ export default async function TicketsPage({
   const typeValues = allTypes.map((t) => t.value);
 
   const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
+  // Which of the 5 tab-row segments is in effect. A single recognized status
+  // chip (Awaiting Customer / On Hold) always wins over the view scope — the
+  // tab hrefs never set both `view` and `status` at once, but this is
+  // computed from the params directly (not trusted as an invariant) so a
+  // hand-edited URL still resolves to exactly one sensible scope.
+  const chipStatus: "awaiting_customer_confirmation" | "on_hold" | null =
+    filterStatus?.length === 1 &&
+    (filterStatus[0] === "awaiting_customer_confirmation" ||
+      filterStatus[0] === "on_hold")
+      ? filterStatus[0]
+      : null;
   const filterPriority = parseEnumCsv(sp.priority, TICKET_PRIORITIES);
   const filterCategory = parseEnumCsv(sp.category, categoryValues);
   const filterType = parseEnumCsv(sp.type, typeValues);
@@ -242,21 +260,22 @@ export default async function TicketsPage({
     );
     if (orClause) conditions.push(orClause);
   }
-  // View tab sets the base status scope; an explicit status filter refines
-  // within it (an out-of-scope status — e.g. "closed" while on Active — is
-  // simply ignored rather than escaping the tab).
-  if (view === "closed") {
-    conditions.push(eq(tickets.status, "closed"));
-  } else if (view === "active") {
-    conditions.push(ne(tickets.status, "closed"));
+  // Tab scope: a status chip (Awaiting Customer / On Hold) is its own exact
+  // match; otherwise the view tab applies its explicit status set (Active =
+  // open/in_progress only, Closed = closed/resolved, All = unrestricted). A
+  // separate Status column-filter selection refines further within
+  // whichever of those applies — an out-of-scope status is simply ignored
+  // rather than escaping the tab.
+  if (chipStatus) {
+    conditions.push(eq(tickets.status, chipStatus));
+  } else if (view === "active" || view === "closed") {
+    conditions.push(inArray(tickets.status, VIEW_STATUSES[view]));
   }
-  if (filterStatus) {
+  if (filterStatus && !chipStatus) {
     const scoped =
-      view === "closed"
-        ? filterStatus.filter((s) => s === "closed")
-        : view === "active"
-          ? filterStatus.filter((s) => s !== "closed")
-          : filterStatus;
+      view === "active" || view === "closed"
+        ? filterStatus.filter((s) => (VIEW_STATUSES[view] as readonly string[]).includes(s))
+        : filterStatus;
     if (scoped.length > 0) conditions.push(inArray(tickets.status, scoped));
   }
   if (filterPriority) conditions.push(inArray(tickets.priority, filterPriority));
@@ -435,17 +454,9 @@ export default async function TicketsPage({
     return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
   };
 
-  // Which single segment is lit: a status chip wins whenever it's the ONLY
-  // status filter active; anything else (no status filter, or a multi-status
-  // pick made via the table's own Status column filter) falls back to the
-  // view tab. Exactly one of the two ever applies, since the hrefs above
-  // never let a click set both `view` and `status` at once.
-  const activeTabId: string =
-    filterStatus?.length === 1 &&
-    (filterStatus[0] === "awaiting_customer_confirmation" ||
-      filterStatus[0] === "on_hold")
-      ? filterStatus[0]
-      : view;
+  // Which single segment is lit: chipStatus (computed above, alongside the
+  // WHERE clause) wins whenever it applies; otherwise the view tab.
+  const activeTabId: string = chipStatus ?? view;
 
   // One combined tab strip, in display order. Active is the default scope,
   // so its two immediate refinements — Awaiting Customer / On Hold, both

@@ -20,7 +20,7 @@ type TopbarProps = {
   branding: BrandingConfig;
   permissions: Permission[];
   /** Sub-nav under "Tickets" in the drawer — one link per active ticket type. */
-  ticketTypes: { value: string; label: string }[];
+  ticketTypes: { value: string; label: string; icon: string }[];
 };
 
 export async function Topbar({ user, branding, permissions, ticketTypes }: TopbarProps) {

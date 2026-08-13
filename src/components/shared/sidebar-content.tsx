@@ -5,38 +5,33 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  Bookmark,
-  Boxes,
   Building2,
   ChartColumnBig,
   ChevronDown,
-  CircleDot,
   ClipboardList,
   Clock,
-  Flag,
   GitBranch,
   History,
   Layers,
   LayoutDashboard,
   LifeBuoy,
   MailWarning,
-  Puzzle,
   Settings,
-  Shapes,
   Shield,
-  Sparkles,
-  Tag,
   Tags,
   ShoppingCart,
   SlidersHorizontal,
   Ticket,
   Users,
-  type LucideIcon,
 } from "lucide-react";
 import { Wordmark } from "@/components/branding/wordmark";
 import { ACCENT_CLASSES, type BrandingConfig } from "@/lib/branding/presets";
 import type { Permission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
+import {
+  TICKET_TYPE_ICON_COMPONENTS,
+  resolveTicketTypeIconKey,
+} from "@/lib/tickets/type-icons";
 
 type NavLabelKey =
   | "navDashboard"
@@ -139,22 +134,6 @@ export const NAV_ITEMS: NavItem[] = [
   ...NAV_GROUPS.flatMap((g) => g.items),
 ];
 
-// Ticket types are an open-ended, admin-managed taxonomy — there's no fixed
-// set to hand-pick a meaningful icon per value, so every type sub-link gets a
-// generic icon from this rotation (by taxonomy sort position), just so the
-// sub-items read as distinct from one another. Add a type in Settings and it
-// gets a sub-link + the next icon in the rotation automatically.
-const TICKET_TYPE_ICONS: LucideIcon[] = [
-  Tag,
-  Boxes,
-  Flag,
-  Sparkles,
-  Puzzle,
-  Shapes,
-  Bookmark,
-  CircleDot,
-];
-
 const COLLAPSE_STORAGE_KEY = "axiom.sidebar.collapsedGroups";
 
 function persistCollapsed(state: Record<string, boolean>) {
@@ -187,7 +166,7 @@ export function SidebarContent({
   branding: BrandingConfig;
   permissions: Permission[];
   /** One sub-link per active ticket type, shown nested under "Tickets". */
-  ticketTypes: { value: string; label: string }[];
+  ticketTypes: { value: string; label: string; icon: string }[];
   onNavigate?: () => void;
   mini?: boolean;
 }) {
@@ -379,9 +358,11 @@ export function SidebarContent({
                       ticketTypes.length > 0 ? (
                         <li>
                           <ul className="mt-0.5 ml-[18px] space-y-0.5 border-l border-slate-800 pl-3">
-                            {ticketTypes.map((type, i) => {
+                            {ticketTypes.map((type) => {
                               const Icon =
-                                TICKET_TYPE_ICONS[i % TICKET_TYPE_ICONS.length];
+                                TICKET_TYPE_ICON_COMPONENTS[
+                                  resolveTicketTypeIconKey(type.icon)
+                                ];
                               return (
                                 <NavLink
                                   key={type.value}

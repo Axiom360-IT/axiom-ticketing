@@ -24,7 +24,7 @@ export function Sidebar({
 }: {
   branding: BrandingConfig;
   permissions: Permission[];
-  ticketTypes: { value: string; label: string }[];
+  ticketTypes: { value: string; label: string; icon: string }[];
 }) {
   const { mini } = useSidebar();
 

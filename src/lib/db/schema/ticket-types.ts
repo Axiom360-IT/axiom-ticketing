@@ -10,6 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth";
+import { DEFAULT_TICKET_TYPE_ICON } from "@/lib/tickets/type-icon-keys";
 
 // ── Ticket types (admin-managed) ──────────────────────────────────────
 //
@@ -30,6 +31,11 @@ export const ticketTypes = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     value: text("value").notNull(),
     label: text("label").notNull(),
+    // Icon key from the curated vocabulary in lib/tickets/type-icon-keys.ts
+    // (rendered wherever the type shows up, e.g. the sidebar sub-nav under
+    // Tickets, §10). Chosen by whoever creates the type — pre-suggested by
+    // matching keywords in the label, always overridable.
+    icon: text("icon").notNull().default(DEFAULT_TICKET_TYPE_ICON),
     sortOrder: integer("sort_order").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     isDefault: boolean("is_default").notNull().default(false),

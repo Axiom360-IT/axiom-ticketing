@@ -11,6 +11,10 @@ import { db, transactional } from "@/lib/db/client";
 import { ticketTypes } from "@/lib/db/schema/ticket-types";
 import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError } from "@/lib/errors";
+import {
+  isTicketTypeIconKey,
+  suggestTicketTypeIcon,
+} from "@/lib/tickets/type-icon-keys";
 
 // Type management is admin configuration — gated on `settings.update`.
 async function requireTypeManager(): Promise<{ id: string }> {
@@ -39,6 +43,7 @@ export type AdminTicketType = {
   id: string;
   value: string;
   label: string;
+  icon: string;
   sortOrder: number;
   isActive: boolean;
   isDefault: boolean;
@@ -68,6 +73,7 @@ export async function listTypesForAdmin(): Promise<AdminTicketType[]> {
     id: r.id,
     value: r.value,
     label: r.label,
+    icon: r.icon,
     sortOrder: r.sortOrder,
     isActive: r.isActive,
     isDefault: r.isDefault,
@@ -75,13 +81,21 @@ export async function listTypesForAdmin(): Promise<AdminTicketType[]> {
   }));
 }
 
-export async function createType(label: string): Promise<Result> {
+export async function createType(
+  label: string,
+  icon?: string,
+): Promise<Result> {
   const user = await requireTypeManager();
   const parsed = labelSchema.safeParse(label);
   if (!parsed.success) {
     return { ok: false, error: "Enter a type name (1–40 characters)." };
   }
   const clean = parsed.data;
+  // Trust an explicit valid choice; otherwise suggest from the label rather
+  // than fall back to the DB column default, so a MCP-created type (which
+  // never sees the picker) still gets something relevant.
+  const resolvedIcon =
+    icon && isTicketTypeIconKey(icon) ? icon : suggestTicketTypeIcon(clean);
 
   const existing = await db
     .select({ value: ticketTypes.value, label: ticketTypes.label })
@@ -103,27 +117,35 @@ export async function createType(label: string): Promise<Result> {
 
   await db
     .insert(ticketTypes)
-    .values({ value, label: clean, sortOrder, createdById: user.id });
+    .values({ value, label: clean, icon: resolvedIcon, sortOrder, createdById: user.id });
 
   await audit({
     actorId: user.id,
     action: "ticket_type.create",
     targetType: "ticket_type",
     targetId: value,
-    after: { value, label: clean },
+    after: { value, label: clean, icon: resolvedIcon },
   });
 
   revalidatePath("/admin/types");
   return { ok: true };
 }
 
-export async function renameType(id: string, label: string): Promise<Result> {
+export async function renameType(
+  id: string,
+  label: string,
+  icon?: string,
+): Promise<Result> {
   const user = await requireTypeManager();
   const parsed = labelSchema.safeParse(label);
   if (!parsed.success) {
     return { ok: false, error: "Enter a type name (1–40 characters)." };
   }
   const clean = parsed.data;
+  // Unlike create, an explicit valid icon is the ONLY way to change it here —
+  // no re-suggesting from the (possibly just-edited) label, so renaming a
+  // type never silently swaps out an icon the admin already chose.
+  const resolvedIcon = icon && isTicketTypeIconKey(icon) ? icon : undefined;
 
   const [current] = await db
     .select()
@@ -148,7 +170,11 @@ export async function renameType(id: string, label: string): Promise<Result> {
 
   await db
     .update(ticketTypes)
-    .set({ label: clean, updatedAt: new Date() })
+    .set({
+      label: clean,
+      ...(resolvedIcon ? { icon: resolvedIcon } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(ticketTypes.id, id));
 
   await audit({
@@ -156,8 +182,8 @@ export async function renameType(id: string, label: string): Promise<Result> {
     action: "ticket_type.update",
     targetType: "ticket_type",
     targetId: current.value,
-    before: { label: current.label },
-    after: { label: clean },
+    before: { label: current.label, ...(resolvedIcon ? { icon: current.icon } : {}) },
+    after: { label: clean, ...(resolvedIcon ? { icon: resolvedIcon } : {}) },
   });
 
   revalidatePath("/admin/types");

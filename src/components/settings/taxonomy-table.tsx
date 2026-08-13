@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TicketTypeIconPicker } from "@/components/settings/ticket-type-icon-picker";
+import { DEFAULT_TICKET_TYPE_ICON } from "@/lib/tickets/type-icon-keys";
 import { cn } from "@/lib/utils";
 import {
   createCategory,
@@ -41,6 +43,8 @@ export type TaxonomyRow = {
   id: string;
   value: string;
   label: string;
+  /** Only present for `kind: "type"` — categories have no icon column. */
+  icon?: string;
   sortOrder: number;
   isActive: boolean;
   isDefault: boolean;
@@ -55,8 +59,8 @@ type Kind = "category" | "type";
 const ACTIONS: Record<
   Kind,
   {
-    create: (label: string) => Promise<Result>;
-    rename: (id: string, label: string) => Promise<Result>;
+    create: (label: string, icon?: string) => Promise<Result>;
+    rename: (id: string, label: string, icon?: string) => Promise<Result>;
     setActive: (id: string, isActive: boolean) => Promise<Result>;
     setDefault: (id: string) => Promise<Result>;
     move: (id: string, dir: "up" | "down") => Promise<Result>;
@@ -280,6 +284,7 @@ function RowActions({
   const [pending, start] = useTransition();
   const [renameOpen, setRenameOpen] = useState(false);
   const [label, setLabel] = useState(row.label);
+  const [icon, setIcon] = useState(row.icon ?? DEFAULT_TICKET_TYPE_ICON);
   const [error, setError] = useState<string | null>(null);
 
   function run(action: () => Promise<Result>, onOk?: () => void) {
@@ -348,13 +353,23 @@ function RowActions({
           <DialogHeader>
             <DialogTitle>{t("renameTitle")}</DialogTitle>
           </DialogHeader>
-          <Input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            maxLength={40}
-            aria-label={t("editLabel")}
-            autoFocus
-          />
+          <div className="flex items-center gap-2">
+            {kind === "type" ? (
+              <TicketTypeIconPicker
+                value={icon}
+                onChange={setIcon}
+                label={t("iconLabel")}
+              />
+            ) : null}
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              maxLength={40}
+              aria-label={t("editLabel")}
+              autoFocus
+              className="flex-1"
+            />
+          </div>
           {error ? (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">
               {error}
@@ -368,7 +383,12 @@ function RowActions({
               disabled={pending || !label.trim()}
               onClick={() =>
                 run(
-                  () => a.rename(row.id, label.trim()),
+                  () =>
+                    a.rename(
+                      row.id,
+                      label.trim(),
+                      kind === "type" ? icon : undefined,
+                    ),
                   () => setRenameOpen(false),
                 )
               }

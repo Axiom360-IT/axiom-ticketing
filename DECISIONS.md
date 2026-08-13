@@ -5,6 +5,18 @@ entries go at the top; date them.
 
 ---
 
+## 2026-08-13 · Ticket-type sidebar icons are admin-chosen, not computed
+
+The sidebar's ticket-type sub-nav (added earlier the same day) originally picked each type's icon by its position in a fixed 8-icon rotation (`i % 8`). That looked "dynamic" but wasn't relevant — it couldn't know that a type named "Onboarding" should get a different icon than "Network Outage," two types could collide on the same icon once there were more than 8, and reordering or deactivating one type silently changed everyone after it's icon for no reason.
+
+- **Icon is now a real column** (`ticket_types.icon`, `lib/db/add-ticket-type-icon-column.ts`, idempotent — this repo's established pattern for single-column additions to an already-migrated table, not a numbered `drizzle-kit generate` migration), not a derived value. The curated vocabulary (30 keys) lives in `lib/tickets/type-icon-keys.ts`.
+- **Admin picks it, pre-suggested by keyword.** `suggestTicketTypeIcon(label)` regex-matches the label ("incident" → alert-triangle, "billing" → credit-card, etc., generic `tag` fallback) to pre-fill a picker (`ticket-type-icon-picker.tsx`, a new `Popover`-based grid — see `components/ui/popover.tsx`, this repo's first vendored Popover wrapper) when creating a type. The admin can always override before saving. Renaming a type never re-suggests on top of an already-chosen icon — only an explicit repick changes it.
+- **Why not full automation (keyword-only, no admin control)?** A type name is free text an admin invents; only they know what it's *for*. A bigger hardcoded label→icon table would still just be guessing, and — unlike the DB-backed choice — would be uncorrectable without a code change.
+- **MCP parity**: `create_ticket_type`/`rename_ticket_type` (`lib/mcp/categories-types-write.ts`) accept an optional `icon` enum param; omitted, they fall back to the same keyword suggestion (no picker over MCP).
+- **A React lint gotcha worth remembering**: binding a component reference produced by a *function call* to a variable, then rendering it as a JSX tag (`const Icon = resolve(x); <Icon/>`), trips `react-hooks/static-components`. Plain object/array indexing doesn't. `resolveTicketTypeIconKey` therefore returns a *key*, and every render site does `TICKET_TYPE_ICON_COMPONENTS[resolveTicketTypeIconKey(x)]` as one expression instead of stashing the resolved component in an intermediate variable.
+
+---
+
 ## 2026-08-08 · MCP write-tool surface + `mcp.connect` permission
 
 The MCP connector (§23 of the README) launched with 8 read tools and one internal-note write tool. In the same feature arc it grew to ~53 tools total: 43 more write tools across tickets, users, roles, organizations, procurement, settings, and taxonomies (mirroring almost every mutating Server Action in the admin panel), plus one more read tool (`summarize_audit_log`). That's a big enough surface-area jump to need principles written down, not just discovered by reading eight new files.

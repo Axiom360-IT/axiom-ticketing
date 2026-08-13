@@ -23,7 +23,7 @@ export function MobileNav({
 }: {
   branding: BrandingConfig;
   permissions: Permission[];
-  ticketTypes: { value: string; label: string }[];
+  ticketTypes: { value: string; label: string; icon: string }[];
 }) {
   const t = useTranslations("admin.shell");
   const [open, setOpen] = useState(false);

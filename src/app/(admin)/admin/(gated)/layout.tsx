@@ -81,7 +81,11 @@ export default async function AdminGatedLayout({
   // Sidebar sub-nav under "Tickets" (one link per active ticket type, §6.1)
   // — only worth the query for a user who can actually see the Tickets link.
   const ticketTypes = user.permissions.has("tickets.view")
-    ? (await loadActiveTicketTypes()).map((t) => ({ value: t.value, label: t.label }))
+    ? (await loadActiveTicketTypes()).map((t) => ({
+        value: t.value,
+        label: t.label,
+        icon: t.icon,
+      }))
     : [];
 
   return (
