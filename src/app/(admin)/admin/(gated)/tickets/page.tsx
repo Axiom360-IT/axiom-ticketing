@@ -421,11 +421,6 @@ export default async function TicketsPage({
     const qs = p.toString();
     return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
   };
-  const viewTabs = [
-    { key: "active" as const, label: t("viewActive") },
-    { key: "closed" as const, label: t("viewClosed") },
-    { key: "all" as const, label: t("viewAll") },
-  ];
 
   // Quick-status chips (parity with the customer portal's status chips):
   // single-click sets `status` to exactly this value, toggling off on a
@@ -443,9 +438,24 @@ export default async function TicketsPage({
     const qs = p.toString();
     return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
   };
-  const statusChips = [
-    { status: "awaiting_customer_confirmation", label: tStatus("awaiting_customer_confirmation") },
-    { status: "on_hold", label: tStatus("on_hold") },
+
+  // One combined tab strip, in display order. Active is the default scope,
+  // so its two immediate refinements — Awaiting Customer / On Hold, both
+  // already inside "Active" since neither is closed — sit right next to it;
+  // Closed and All are the other two scope choices and close out the row.
+  // Two different underlying controls (view = mutually exclusive scope;
+  // status = an independent toggle that doesn't reset the scope), but one
+  // shared segmented look so the row reads as a single tab bar.
+  const tabs = [
+    { kind: "view" as const, key: "active" as const, label: t("viewActive") },
+    {
+      kind: "status" as const,
+      status: "awaiting_customer_confirmation",
+      label: tStatus("awaiting_customer_confirmation"),
+    },
+    { kind: "status" as const, status: "on_hold", label: tStatus("on_hold") },
+    { kind: "view" as const, key: "closed" as const, label: t("viewClosed") },
+    { kind: "view" as const, key: "all" as const, label: t("viewAll") },
   ];
 
   // Carry the active list filters onto the export so it matches what's shown.
@@ -499,50 +509,35 @@ export default async function TicketsPage({
         </div>
       </div>
 
-      {/* View tabs (Active/Closed/All) + the two extra-status quick chips
-          (Awaiting Customer, On Hold) — one unified row, one pill style, so
-          they read as a single tab strip rather than a boxed segmented
-          control sitting next to separate standalone chips. */}
+      {/* Active / Awaiting Customer / On Hold / Closed / All — one segmented
+          control (single bordered pill, segments butted together, active =
+          raised white segment). Two different underlying params (view vs.
+          status) share the one visual control so the row reads as a single
+          tab bar rather than a box next to loose separate chips. */}
       <div
         role="tablist"
         aria-label={t("viewTabsLabel")}
-        className="flex flex-wrap items-center gap-1.5"
+        className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
       >
-        {viewTabs.map((tab) => {
-          const active = view === tab.key;
+        {tabs.map((tab) => {
+          const active =
+            tab.kind === "view" ? view === tab.key : isSingleStatus(tab.status);
+          const href =
+            tab.kind === "view" ? viewHref(tab.key) : statusChipHref(tab.status);
           return (
             <Link
-              key={tab.key}
-              href={viewHref(tab.key)}
+              key={tab.kind === "view" ? tab.key : tab.status}
+              href={href}
               role="tab"
               aria-selected={active}
               className={cn(
-                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
+                "rounded-md px-3 py-1.5 text-sm transition-colors",
                 active
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+                  ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
               )}
             >
               {tab.label}
-            </Link>
-          );
-        })}
-        {statusChips.map((chip) => {
-          const active = isSingleStatus(chip.status);
-          return (
-            <Link
-              key={chip.status}
-              href={statusChipHref(chip.status)}
-              role="tab"
-              aria-selected={active}
-              className={cn(
-                "inline-flex h-9 items-center px-3 rounded-full text-sm font-medium border transition-colors",
-                active
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-              )}
-            >
-              {chip.label}
             </Link>
           );
         })}
