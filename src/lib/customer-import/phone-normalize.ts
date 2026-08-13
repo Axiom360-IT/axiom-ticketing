@@ -1,4 +1,4 @@
-import { parsePhoneNumber, type Country } from "react-phone-number-input";
+import { parsePhoneNumber, type CountryCode } from "libphonenumber-js/min";
 
 /**
  * Best-effort phone normalization for bulk import. Accepts a raw pasted
@@ -10,6 +10,13 @@ import { parsePhoneNumber, type Country } from "react-phone-number-input";
  * back `ok: false` so the caller can drop the phone and keep the person —
  * phone is optional everywhere else in this app, a formatting quirk
  * shouldn't reject the whole row over it.
+ *
+ * Imports the pure parsing engine directly rather than going through
+ * react-phone-number-input (this repo's client-side `<PhoneField>` uses
+ * that instead) — that package's root export also constructs its React
+ * `<PhoneInput>` component at module load and pulls in prop-types,
+ * classnames, country-flag-icons and input-format, none of which belong in
+ * a server action's dependency graph.
  */
 export function normalizeImportPhone(
   raw: string,
@@ -18,7 +25,7 @@ export function normalizeImportPhone(
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false };
   try {
-    const parsed = parsePhoneNumber(trimmed, defaultCountry as Country);
+    const parsed = parsePhoneNumber(trimmed, defaultCountry as CountryCode);
     if (parsed?.isValid()) {
       return { ok: true, e164: parsed.number };
     }
