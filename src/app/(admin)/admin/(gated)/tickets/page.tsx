@@ -406,46 +406,51 @@ export default async function TicketsPage({
     ? t("countMatching", { count: totalItems, query: search })
     : t("count", { count: totalItems });
 
-  // Tab links preserve every active filter/search but reset paging. "active"
-  // is the canonical default, so it carries no `view` param.
-  const viewTabParams = new URLSearchParams(
+  // Tab links preserve every active filter/search but reset paging AND the
+  // other four tabs — `view` and `status` are mutually exclusive here, so
+  // clicking any one of the 5 segments always clears both before setting its
+  // own, leaving exactly one active at a time (a real single-select tab
+  // bar). "Active" itself carries neither param — it's the shared default
+  // both dimensions fall back to.
+  const tabParams = new URLSearchParams(
     Object.entries(sp).filter(
       ([k, v]) =>
-        typeof v === "string" && v.length > 0 && k !== "view" && k !== "page",
+        typeof v === "string" &&
+        v.length > 0 &&
+        k !== "view" &&
+        k !== "status" &&
+        k !== "page",
     ) as [string, string][],
   );
   const viewHref = (v: "active" | "closed" | "all") => {
-    const p = new URLSearchParams(viewTabParams);
-    if (v === "active") p.delete("view");
-    else p.set("view", v);
+    const p = new URLSearchParams(tabParams);
+    if (v !== "active") p.set("view", v);
+    const qs = p.toString();
+    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
+  };
+  const statusChipHref = (status: string) => {
+    const p = new URLSearchParams(tabParams);
+    p.set("status", status);
     const qs = p.toString();
     return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
   };
 
-  // Quick-status chips (parity with the customer portal's status chips):
-  // single-click sets `status` to exactly this value, toggling off on a
-  // second click. Combines with whichever view tab (Active/Closed/All) is
-  // already selected — unlike the tabs, these don't reset it.
-  const isSingleStatus = (status: string) =>
-    filterStatus?.length === 1 && filterStatus[0] === status;
-  const statusChipHref = (status: string) => {
-    const p = new URLSearchParams(
-      Object.entries(sp).filter(
-        ([k, v]) => typeof v === "string" && v.length > 0 && k !== "status" && k !== "page",
-      ) as [string, string][],
-    );
-    if (!isSingleStatus(status)) p.set("status", status);
-    const qs = p.toString();
-    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
-  };
+  // Which single segment is lit: a status chip wins whenever it's the ONLY
+  // status filter active; anything else (no status filter, or a multi-status
+  // pick made via the table's own Status column filter) falls back to the
+  // view tab. Exactly one of the two ever applies, since the hrefs above
+  // never let a click set both `view` and `status` at once.
+  const activeTabId: string =
+    filterStatus?.length === 1 &&
+    (filterStatus[0] === "awaiting_customer_confirmation" ||
+      filterStatus[0] === "on_hold")
+      ? filterStatus[0]
+      : view;
 
   // One combined tab strip, in display order. Active is the default scope,
   // so its two immediate refinements — Awaiting Customer / On Hold, both
   // already inside "Active" since neither is closed — sit right next to it;
   // Closed and All are the other two scope choices and close out the row.
-  // Two different underlying controls (view = mutually exclusive scope;
-  // status = an independent toggle that doesn't reset the scope), but one
-  // shared segmented look so the row reads as a single tab bar.
   const tabs = [
     { kind: "view" as const, key: "active" as const, label: t("viewActive") },
     {
@@ -520,13 +525,13 @@ export default async function TicketsPage({
         className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
       >
         {tabs.map((tab) => {
-          const active =
-            tab.kind === "view" ? view === tab.key : isSingleStatus(tab.status);
+          const id = tab.kind === "view" ? tab.key : tab.status;
+          const active = activeTabId === id;
           const href =
             tab.kind === "view" ? viewHref(tab.key) : statusChipHref(tab.status);
           return (
             <Link
-              key={tab.kind === "view" ? tab.key : tab.status}
+              key={id}
               href={href}
               role="tab"
               aria-selected={active}
