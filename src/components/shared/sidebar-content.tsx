@@ -30,6 +30,7 @@ import type { Permission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import {
   TICKET_TYPE_ICON_COMPONENTS,
+  TICKET_TYPE_ICON_SIDEBAR_COLOR,
   resolveTicketTypeIconKey,
 } from "@/lib/tickets/type-icons";
 
@@ -359,17 +360,15 @@ export function SidebarContent({
                         <li>
                           <ul className="mt-0.5 ml-[18px] space-y-0.5 border-l border-slate-800 pl-3">
                             {ticketTypes.map((type) => {
-                              const Icon =
-                                TICKET_TYPE_ICON_COMPONENTS[
-                                  resolveTicketTypeIconKey(type.icon)
-                                ];
+                              const iconKey = resolveTicketTypeIconKey(type.icon);
+                              const Icon = TICKET_TYPE_ICON_COMPONENTS[iconKey];
                               return (
                                 <NavLink
                                   key={type.value}
                                   item={{
                                     href: `/admin/tickets?type=${encodeURIComponent(type.value)}`,
                                     icon: Icon,
-                                    color: "text-slate-400",
+                                    color: TICKET_TYPE_ICON_SIDEBAR_COLOR[iconKey],
                                   }}
                                   active={activeTicketType === type.value}
                                   label={type.label}
