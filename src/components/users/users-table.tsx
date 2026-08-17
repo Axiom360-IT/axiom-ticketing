@@ -25,8 +25,13 @@ export type UserRow = {
 // Badge for every non-"active" invite state — "invite_failed" gets its own
 // distinct (still red) label from "invite_expired": one means the customer
 // never got the email at all, the other means they got it and didn't click
-// in time. Different admin triage, same fix (resend).
+// in time. Different admin triage, same fix (resend). "provisioning" gets
+// its own sky/blue palette, distinct from the amber/red ones — it reads as
+// "in progress," not "needs attention" (there's nothing to do yet, it'll
+// resolve on its own within moments).
 const INVITE_BADGE_CLASS: Record<Exclude<InviteStatus, "active">, string> = {
+  provisioning:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300",
   invited:
     "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   invite_expired:
@@ -35,6 +40,7 @@ const INVITE_BADGE_CLASS: Record<Exclude<InviteStatus, "active">, string> = {
     "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
 };
 const INVITE_BADGE_KEY: Record<Exclude<InviteStatus, "active">, string> = {
+  provisioning: "inviteStatusProvisioning",
   invited: "inviteStatusInvited",
   invite_expired: "inviteStatusExpired",
   invite_failed: "inviteStatusFailed",
@@ -109,15 +115,20 @@ export function UsersTable({
             {
               id: "select",
               meta: { title: "", headClassName: "w-10 px-2", cellClassName: "px-2" },
-              cell: ({ row }: { row: { original: UserRow } }) => (
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(row.original.id)}
-                  onChange={(e) => toggleSelected(row.original.id, e.target.checked)}
-                  aria-label={t("selectRowLabel", { name: row.original.name })}
-                  className="size-4 accent-blue-600"
-                />
-              ),
+              cell: ({ row }: { row: { original: UserRow } }) => {
+                const provisioning = row.original.inviteStatus === "provisioning";
+                return (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(row.original.id)}
+                    onChange={(e) => toggleSelected(row.original.id, e.target.checked)}
+                    disabled={provisioning}
+                    title={provisioning ? t("selectDisabledProvisioning") : undefined}
+                    aria-label={t("selectRowLabel", { name: row.original.name })}
+                    className="size-4 accent-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                );
+              },
             } satisfies ColumnDef<UserRow>,
           ]
         : []),
@@ -218,8 +229,15 @@ export function UsersTable({
           <UserRowActions
             user={row.original}
             isSelf={row.original.id === currentUserId}
-            canEdit={canEdit}
-            canDeactivate={canDeactivate}
+            // A still-provisioning row has no role/accounts row yet — hide
+            // Edit and Deactivate until finishCustomerProvisioning lands
+            // (View stays available). Reactivate is unaffected: it only
+            // ever applies to an inactive user, which a provisioning row
+            // never is.
+            canEdit={canEdit && row.original.inviteStatus !== "provisioning"}
+            canDeactivate={
+              canDeactivate && row.original.inviteStatus !== "provisioning"
+            }
             canReactivate={canReactivate}
             allRoles={allRoles}
           />

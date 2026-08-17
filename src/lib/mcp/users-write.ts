@@ -325,11 +325,22 @@ export async function resetUserPasswordViaMcp(user: SessionUser, targetEmail: st
   }
 
   const [u] = await db
-    .select({ email: users.email, name: users.name, organizationId: users.organizationId })
+    .select({
+      email: users.email,
+      name: users.name,
+      organizationId: users.organizationId,
+      provisionedAt: users.provisionedAt,
+    })
     .from(users)
     .where(eq(users.id, target.id))
     .limit(1);
   if (!u) return { ok: false, error: "User not found." };
+  if (!u.provisionedAt) {
+    return {
+      ok: false,
+      error: "This account is still being set up — try again in a moment.",
+    };
+  }
 
   const isCustomer = await productionContext.userHasRole(target.id, "Customer");
 

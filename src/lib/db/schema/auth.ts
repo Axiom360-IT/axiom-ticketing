@@ -39,6 +39,15 @@ export const users = pgTable(
     // organizations.ts (which references users for `created_by_id`).
     organizationId: uuid("organization_id"),
     createdById: uuid("created_by_id"),
+    // Set once the row has its accounts/role rows in place (provisionUser,
+    // or finishCustomerProvisioning for a bulk-imported customer). NULL is
+    // the explicit "still provisioning" signal for a bulk-import stub row
+    // created by createCustomerImportStubs — deliberately distinct from
+    // inviteExpiresAt === null's unrelated meaning below ("predates this
+    // feature, or seeded directly"). Checked first in computeInviteStatus so
+    // a stub row (every invite timestamp also null) reads as "provisioning,"
+    // not "active."
+    provisionedAt: timestamp("provisioned_at", { withTimezone: true }),
     isActive: boolean("is_active").notNull().default(true),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     deactivatedById: uuid("deactivated_by_id"),

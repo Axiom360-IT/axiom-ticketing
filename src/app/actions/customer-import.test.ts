@@ -18,9 +18,12 @@ const mockState = vi.hoisted(() => ({
   roleRows: [] as { userId: string; roleName: string }[],
   orgRows: [] as { id: string }[],
   sentEvents: [] as unknown[],
+  auditCalls: [] as unknown[],
   createOrganization: vi.fn(),
   suggestOrgCode: vi.fn(),
   resolveDomainsForImport: vi.fn(async () => new Map()),
+  loadCustomerRoleId: vi.fn(),
+  createCustomerImportStubs: vi.fn(),
 }));
 
 function makeUser(opts: {
@@ -93,6 +96,17 @@ vi.mock("@/lib/customer-import/domain-resolution", () => ({
   resolveDomainsForImport: mockState.resolveDomainsForImport,
 }));
 
+vi.mock("@/lib/users/provision", () => ({
+  loadCustomerRoleId: mockState.loadCustomerRoleId,
+  createCustomerImportStubs: mockState.createCustomerImportStubs,
+}));
+
+vi.mock("@/lib/audit", () => ({
+  audit: vi.fn(async (entry: unknown) => {
+    mockState.auditCalls.push(entry);
+  }),
+}));
+
 const { previewCustomerImport, commitCustomerImport } = await import(
   "./customer-import"
 );
@@ -103,9 +117,17 @@ beforeEach(() => {
   mockState.roleRows = [];
   mockState.orgRows = [];
   mockState.sentEvents = [];
+  mockState.auditCalls = [];
   mockState.createOrganization.mockReset();
   mockState.suggestOrgCode.mockReset().mockResolvedValue({ ok: true, code: "ACM" });
   mockState.resolveDomainsForImport.mockReset().mockResolvedValue(new Map());
+  mockState.loadCustomerRoleId.mockReset().mockResolvedValue("role-customer-1");
+  // Default: every row passed in gets a real stub row (userId derived from
+  // its email so assertions can predict it without threading state through).
+  mockState.createCustomerImportStubs.mockReset().mockImplementation(
+    async (rows: { email: string }[]) =>
+      rows.map((r) => ({ userId: `user-${r.email}`, email: r.email })),
+  );
 });
 
 // ── previewCustomerImport ───────────────────────────────────────────
@@ -258,13 +280,83 @@ describe("commitCustomerImport", () => {
     if (!result.ok) return;
     expect(result.queuedCount).toBe(1);
     expect(result.skippedInvalid).toBe(1);
+    expect(result.skippedRaceDuplicate).toBe(0);
     expect(mockState.sentEvents).toHaveLength(1);
     expect(mockState.sentEvents[0]).toMatchObject({
       name: "customer-import/batch.requested",
       data: {
-        rows: [{ email: "good@acme.com", organizationId: "org-acme" }],
+        customerRoleId: "role-customer-1",
+        rows: [
+          {
+            userId: "user-good@acme.com",
+            email: "good@acme.com",
+            organizationId: "org-acme",
+          },
+        ],
       },
     });
+    expect(mockState.auditCalls).toEqual([
+      expect.objectContaining({
+        action: "user.create",
+        targetId: "user-good@acme.com",
+      }),
+    ]);
+  });
+
+  it("aborts before creating anything when the Customer role is missing", async () => {
+    mockState.resolveDomainsForImport.mockResolvedValue(
+      new Map([
+        [
+          "acme.com",
+          {
+            domain: "acme.com",
+            organizationId: "org-acme",
+            organizationName: "Acme Inc",
+            isFreeMail: false,
+          },
+        ],
+      ]),
+    );
+    mockState.loadCustomerRoleId.mockResolvedValue(null);
+
+    const result = await commitCustomerImport(
+      [{ name: "Good Row", email: "good@acme.com" }],
+      {},
+    );
+
+    expect(result.ok).toBe(false);
+    expect(mockState.createCustomerImportStubs).not.toHaveBeenCalled();
+    expect(mockState.sentEvents).toHaveLength(0);
+    expect(mockState.auditCalls).toHaveLength(0);
+  });
+
+  it("excludes a row that loses a concurrent-duplicate race from the event", async () => {
+    mockState.resolveDomainsForImport.mockResolvedValue(
+      new Map([
+        [
+          "acme.com",
+          {
+            domain: "acme.com",
+            organizationId: "org-acme",
+            organizationName: "Acme Inc",
+            isFreeMail: false,
+          },
+        ],
+      ]),
+    );
+    mockState.createCustomerImportStubs.mockResolvedValue([]); // lost the race
+
+    const result = await commitCustomerImport(
+      [{ name: "Good Row", email: "good@acme.com" }],
+      {},
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.queuedCount).toBe(0);
+    expect(result.skippedRaceDuplicate).toBe(1);
+    expect(mockState.sentEvents).toHaveLength(0);
+    expect(mockState.auditCalls).toHaveLength(0);
   });
 
   it("skips a row whose domain decision is 'skip'", async () => {

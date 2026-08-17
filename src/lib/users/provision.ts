@@ -39,6 +39,18 @@ async function rolesIncludeCustomer(roleIds: string[]): Promise<boolean> {
   return rows.length > 0;
 }
 
+/** The Customer role's id, or null if it's missing (should never happen —
+ *  it's seeded — but callers decide how to react rather than this
+ *  function throwing). */
+export async function loadCustomerRoleId(): Promise<string | null> {
+  const [role] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, CUSTOMER_ROLE_NAME))
+    .limit(1);
+  return role?.id ?? null;
+}
+
 /**
  * The one place that inserts a `users` + `accounts` row on someone else's
  * behalf (admin-created staff, admin/bulk-created customers). Deliberately
@@ -82,6 +94,11 @@ export async function provisionUser(
         organizationId: input.organizationId ?? null,
         createdById: input.createdById,
         isActive: true,
+        // Row + accounts + roles all land in this one transaction, so this
+        // caller's users are immediately fully set up — unlike a bulk-import
+        // stub (createCustomerImportStubs), which leaves this null until
+        // finishCustomerProvisioning completes it later.
+        provisionedAt: new Date(),
         invitedAt: input.invitedAt,
         inviteExpiresAt: input.inviteExpiresAt,
       });
@@ -113,4 +130,108 @@ export async function provisionUser(
   }
 
   return { ok: true, userId: createdId, isCustomer };
+}
+
+export type CustomerImportStubInput = {
+  name: string;
+  email: string;
+  phone: string;
+  organizationId: string;
+};
+
+/**
+ * Bulk-import's synchronous half: creates the bare `users` row for every
+ * given row in ONE statement, immediately — so a bulk-imported customer is
+ * visible on the admin Users list (as "provisioning") the instant the
+ * import is committed, instead of only once the async job gets to them. No
+ * `accounts` row, no roles, `provisionedAt`/`invitedAt`/`inviteExpiresAt`
+ * all left null — finishCustomerProvisioning does the rest later.
+ *
+ * Relies on `users.email`'s real unique constraint (not a pre-check SELECT)
+ * for race safety: `onConflictDoNothing` means a row that loses a genuine
+ * concurrent-duplicate race is simply absent from the returned list, rather
+ * than aborting the whole batch. Callers detect a skipped row by its email
+ * missing from the result.
+ */
+export async function createCustomerImportStubs(
+  rows: CustomerImportStubInput[],
+  createdById: string,
+): Promise<{ userId: string; email: string }[]> {
+  if (rows.length === 0) return [];
+  return db
+    .insert(users)
+    .values(
+      rows.map((row) => ({
+        id: randomUUID(),
+        email: row.email,
+        emailVerified: true,
+        name: row.name,
+        phone: row.phone.length > 0 ? row.phone : null,
+        organizationId: row.organizationId,
+        createdById,
+        isActive: true,
+      })),
+    )
+    .onConflictDoNothing({ target: users.email })
+    .returning({ userId: users.id, email: users.email });
+}
+
+export type FinishCustomerProvisioningInput = {
+  userId: string;
+  email: string;
+  roleIds: string[];
+  createdById: string;
+};
+
+export type FinishCustomerProvisioningResult =
+  | { ok: true; isCustomer: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Bulk-import's async half — completes a stub row created by
+ * createCustomerImportStubs: grants roles, creates its `accounts`
+ * credential row, and marks `provisionedAt`. Mirrors provisionUser's own
+ * transaction shape exactly, just against an already-existing row instead
+ * of inserting a new one. Ticket-claiming stays a separate post-transaction
+ * call, matching provisionUser's existing placement.
+ */
+export async function finishCustomerProvisioning(
+  input: FinishCustomerProvisioningInput,
+): Promise<FinishCustomerProvisioningResult> {
+  const isCustomer = await rolesIncludeCustomer(input.roleIds);
+
+  try {
+    await transactional(async (tx) => {
+      await tx.insert(accounts).values({
+        userId: input.userId,
+        accountId: input.userId,
+        providerId: "credential",
+        password: null,
+      });
+      if (input.roleIds.length > 0) {
+        await tx.insert(userRoles).values(
+          input.roleIds.map((roleId) => ({
+            userId: input.userId,
+            roleId,
+            assignedById: input.createdById,
+          })),
+        );
+      }
+      await tx
+        .update(users)
+        .set({ provisionedAt: new Date() })
+        .where(eq(users.id, input.userId));
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not finish provisioning",
+    };
+  }
+
+  if (isCustomer) {
+    await claimTicketsForCustomer(input.userId, input.email);
+  }
+
+  return { ok: true, isCustomer };
 }

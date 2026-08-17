@@ -576,11 +576,21 @@ export async function resetUserPassword(
       email: users.email,
       name: users.name,
       organizationId: users.organizationId,
+      provisionedAt: users.provisionedAt,
     })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!u) throw new NotFoundError();
+  if (!u.provisionedAt) {
+    // Bulk-import stub, not finished yet — no role/accounts row to reset
+    // against. finishCustomerProvisioning + the first invite will land on
+    // their own within moments; resend once it has.
+    return {
+      ok: false,
+      error: "This account is still being set up — try again in a moment.",
+    };
+  }
 
   const isCustomer = await productionContext.userHasRole(userId, "Customer");
 
@@ -719,6 +729,7 @@ export async function listUsersForAdmin(opts: {
       isActive: users.isActive,
       createdById: users.createdById,
       createdAt: users.createdAt,
+      provisionedAt: users.provisionedAt,
       inviteExpiresAt: users.inviteExpiresAt,
       inviteAcceptedAt: users.inviteAcceptedAt,
       inviteSendFailedAt: users.inviteSendFailedAt,

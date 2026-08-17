@@ -1,29 +1,38 @@
 import { eventType } from "inngest";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { roles } from "@/lib/db/schema/rbac";
-import { provisionUser } from "@/lib/users/provision";
+import { finishCustomerProvisioning } from "@/lib/users/provision";
 import { sendCustomerSetupInvite } from "@/lib/customer/invite";
 import { audit } from "@/lib/audit";
 import { inngest } from "../client";
 
 // Processes one uploaded customer list (see app/actions/customer-import.ts's
-// commitCustomerImport, which resolves every row's organization BEFORE
-// sending this event — this function only provisions accounts). One
+// commitCustomerImport, which resolves every row's organization AND already
+// creates each row's `users` stub — visible on the admin list as
+// "provisioning" — BEFORE sending this event; this function only finishes
+// what's already there: role grant, accounts row, invite email). One
 // step.run per row: a bad/duplicate row fails on its own without sinking
 // the rest, and if the function itself gets retried (Inngest-level, not
 // per-row), already-completed rows are memoized and skipped.
 //
-// Deliberately does NOT throw per-row failures — `provisionUser` and
-// `sendCustomerSetupInvite` already return {ok:false} rather than throw, so
-// a permanently-bad row (duplicate email, org gone) wouldn't benefit from
-// Inngest's retry anyway. The batch summary + audit entry is the admin's
-// signal to fix and re-import just the failed emails.
+// Deliberately does NOT throw per-row failures — `finishCustomerProvisioning`
+// and `sendCustomerSetupInvite` already return {ok:false} rather than throw,
+// so a permanently-bad row wouldn't benefit from Inngest's retry anyway. The
+// batch summary + audit entry is the admin's signal something needs
+// attention — note that unlike before this stub-row split, a row that fails
+// here can no longer simply be re-imported (its email now already has a
+// `users` row, so a re-import sees it as a duplicate) — it needs a manual
+// fix, not a re-run of the same file.
 
 type EventData = {
   batchId: string;
   importedById: string;
-  rows: { name: string; email: string; phone: string; organizationId: string }[];
+  customerRoleId: string;
+  rows: {
+    userId: string;
+    name: string;
+    email: string;
+    phone: string;
+    organizationId: string;
+  }[];
 };
 
 type RowOutcome =
@@ -38,19 +47,7 @@ export const processCustomerImportBatch = inngest.createFunction(
     idempotency: "event.data.batchId",
   },
   async ({ event, step }) => {
-    const { batchId, importedById, rows } = event.data as EventData;
-
-    const customerRoleId = await step.run("load-customer-role", async () => {
-      const [role] = await db
-        .select({ id: roles.id })
-        .from(roles)
-        .where(eq(roles.name, "Customer"))
-        .limit(1);
-      if (!role) {
-        throw new Error("Customer role missing — run pnpm db:seed before importing.");
-      }
-      return role.id;
-    });
+    const { batchId, importedById, customerRoleId, rows } = event.data as EventData;
 
     let created = 0;
     let failed = 0;
@@ -59,35 +56,20 @@ export const processCustomerImportBatch = inngest.createFunction(
 
     for (const row of rows) {
       const outcome: RowOutcome = await step.run(
-        `provision-${row.email}`,
+        `finish-provisioning-${row.email}`,
         async () => {
-          const invitedAt = new Date();
-          const result = await provisionUser({
-            name: row.name,
+          const result = await finishCustomerProvisioning({
+            userId: row.userId,
             email: row.email,
-            organizationId: row.organizationId,
-            phone: row.phone || undefined,
             roleIds: [customerRoleId],
             createdById: importedById,
-            invitedAt,
-            // Placeholder — sendCustomerSetupInvite immediately recomputes
-            // this from the LIVE customer_invite.expiry_hours setting.
-            inviteExpiresAt: invitedAt,
           });
           if (!result.ok) {
             return { status: "failed" as const, error: result.error };
           }
 
-          await audit({
-            actorId: importedById,
-            action: "user.create",
-            targetType: "user",
-            targetId: result.userId,
-            after: { email: row.email, organizationId: row.organizationId, batchId },
-          });
-
           const sendResult = await sendCustomerSetupInvite({
-            userId: result.userId,
+            userId: row.userId,
             name: row.name,
             email: row.email,
             organizationId: row.organizationId,
@@ -95,7 +77,7 @@ export const processCustomerImportBatch = inngest.createFunction(
           });
           return {
             status: "created" as const,
-            userId: result.userId,
+            userId: row.userId,
             inviteSent: sendResult.ok,
             inviteError: sendResult.ok ? undefined : sendResult.error,
           };

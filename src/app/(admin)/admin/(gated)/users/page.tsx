@@ -184,6 +184,7 @@ export default async function UsersListPage({
           showAny={false}
           options={[
             { value: "all", label: t("filterInviteStatusAll") },
+            { value: "provisioning", label: t("filterInviteStatusProvisioning") },
             { value: "invite_failed", label: t("filterInviteStatusFailed") },
             { value: "invited", label: t("filterInviteStatusInvited") },
             { value: "invite_expired", label: t("filterInviteStatusExpired") },

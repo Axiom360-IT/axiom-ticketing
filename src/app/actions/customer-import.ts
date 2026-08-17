@@ -21,6 +21,11 @@ import {
 } from "@/lib/customer-import/domain-guess";
 import { normalizeImportPhone } from "@/lib/customer-import/phone-normalize";
 import { createOrganization, suggestOrgCode } from "@/app/actions/organizations";
+import {
+  createCustomerImportStubs,
+  loadCustomerRoleId,
+} from "@/lib/users/provision";
+import { audit } from "@/lib/audit";
 import { ForbiddenError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { inngest } from "@/inngest/client";
@@ -306,6 +311,10 @@ export type CommitCustomerImportResult =
       skippedDuplicate: number;
       skippedInvalid: number;
       skippedNeedsOrg: number;
+      /** Lost a genuine concurrent-duplicate race on `users.email` between
+       *  re-validation and the stub insert — distinct from skippedDuplicate,
+       *  which is known deterministically at re-validation time. */
+      skippedRaceDuplicate: number;
     }
   | { ok: false; error: string };
 
@@ -386,7 +395,7 @@ export async function commitCustomerImport(
     name: string;
     email: string;
     phone: string;
-    organizationId: string | null;
+    organizationId: string;
   }[] = [];
 
   for (const row of preview.rows) {
@@ -421,23 +430,79 @@ export async function commitCustomerImport(
   }
 
   const batchId = randomUUID();
+  let queuedCount = 0;
+  let skippedRaceDuplicate = 0;
+
   if (finalRows.length > 0) {
-    await inngest.send({
-      name: "customer-import/batch.requested",
-      data: {
-        batchId,
-        importedById: caller.id,
-        rows: finalRows,
-      },
-    });
+    // Resolved synchronously, before any row is created, so a missing
+    // Customer role aborts the whole commit up front rather than leaving
+    // stub rows stuck later with no way to finish provisioning them.
+    const customerRoleId = await loadCustomerRoleId();
+    if (!customerRoleId) {
+      return {
+        ok: false,
+        error: "Customer role is missing — run pnpm db:seed before importing.",
+      };
+    }
+
+    // Creates every row NOW, synchronously, so it's visible on the admin
+    // Users list (as "provisioning") the instant this commit returns —
+    // the async job below only finishes what's already there. A row
+    // missing from the result lost a genuine concurrent-duplicate race on
+    // users.email (rare — the window is preview's re-validation up to this
+    // insert) and is counted separately, not silently dropped.
+    const created = await createCustomerImportStubs(finalRows, caller.id);
+    const createdByEmail = new Map(created.map((c) => [c.email, c.userId]));
+
+    const eventRows: {
+      userId: string;
+      name: string;
+      email: string;
+      phone: string;
+      organizationId: string;
+    }[] = [];
+    for (const row of finalRows) {
+      const userId = createdByEmail.get(row.email);
+      if (!userId) {
+        skippedRaceDuplicate++;
+        continue;
+      }
+      eventRows.push({ ...row, userId });
+    }
+    queuedCount = eventRows.length;
+
+    await Promise.all(
+      eventRows.map((row) =>
+        audit({
+          actorId: caller.id,
+          action: "user.create",
+          targetType: "user",
+          targetId: row.userId,
+          after: { email: row.email, organizationId: row.organizationId, batchId },
+        }),
+      ),
+    );
+
+    if (eventRows.length > 0) {
+      await inngest.send({
+        name: "customer-import/batch.requested",
+        data: {
+          batchId,
+          importedById: caller.id,
+          customerRoleId,
+          rows: eventRows,
+        },
+      });
+    }
   }
 
   return {
     ok: true,
     batchId,
-    queuedCount: finalRows.length,
+    queuedCount,
     skippedDuplicate,
     skippedInvalid,
     skippedNeedsOrg,
+    skippedRaceDuplicate,
   };
 }

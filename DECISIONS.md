@@ -5,6 +5,33 @@ entries go at the top; date them.
 
 ---
 
+## 2026-08-17 · Bulk-imported customers get a synchronous, visible "provisioning" stage
+
+The customer-import batch job (§17) never created a `users` row itself — it only fired an Inngest event, and the row only appeared once the async job's `provisionUser()` call reached that row. Between committing an import and the job finishing, an imported customer had **no database row at all** — invisible everywhere in the admin UI, no way to see "this import is still in flight," and a batch that never got picked up (Inngest down, function crash before any row processed) left zero trace of the attempt.
+
+Fix: split `provisionUser()`'s work into three primitives (`lib/users/provision.ts`), all synchronous-vs-async decided by the caller, not the primitive:
+- **`provisionUser()`** — unchanged for its two existing synchronous callers (`createUser`, `createUserViaMcp`); gained one field, `provisionedAt: new Date()`, so both remain immediately fully-provisioned.
+- **`createCustomerImportStubs()`** (new) — `commitCustomerImport` calls this **synchronously**, before sending the Inngest event: one bulk INSERT for every row, `onConflictDoNothing` on `users.email`'s real unique constraint for atomic race safety (replacing a pre-check SELECT). `provisionedAt` stays null — that absence is the new signal.
+- **`finishCustomerProvisioning()`** (new) — the Inngest job's async half; completes an already-existing stub (role grant, `accounts` row, sets `provisionedAt`) instead of creating one from scratch.
+
+New `InviteStatus` value `provisioning` (`lib/users/invite-status.ts`), checked first — before the legacy "all timestamps null → active" fallback, since a brand-new stub has every invite timestamp null too and would otherwise misread as `active`. Users list: new filter option, a sky/blue badge (distinct from the amber/red "needs attention" palette — this one just needs a moment), bulk-select checkbox disabled, Edit/Deactivate hidden. `resetUserPassword`/`resetUserPasswordViaMcp` refuse to act on a still-provisioning row (no role/accounts row yet to reset against).
+
+Trade-off accepted, not silently absorbed: a row that fails inside `finishCustomerProvisioning` is now visibly stuck (`provisioning` forever) rather than invisible — but unlike before this split, re-importing the same email no longer retries it (the row already exists, so re-import sees `duplicate_existing_customer`). No recovery tool built for this yet; flagged as a natural fast-follow rather than built speculatively.
+
+New nullable `users.provisioned_at` column, migration `pnpm db:add-provisioned-at-column` — combines the usual `ADD COLUMN IF NOT EXISTS` with a one-time backfill (`provisioned_at = created_at` for every existing row, since every row genuinely was fully set up before this feature existed). Unlike this project's other `add-*` scripts, **the backfill is not safe to re-run** once the feature is live — it would wrongly mark a genuinely-stuck row as complete. Must be run before deploying the code that creates stub rows, not after (old `provisionUser()` inserts would otherwise reference a column that doesn't exist yet).
+
+---
+
+## 2026-08-17 · Production hotfix: server-side phone parsing must not import `react-phone-number-input`
+
+Live 500 on every `/admin/users/import` commit (Vercel function logs: `TypeError: Super expression must either be null or a function`, during SSR module evaluation under Turbopack — the signature of a `class X extends undefined` failure). Root cause: `lib/customer-import/phone-normalize.ts` (a module reachable from the `"use server"` `commitCustomerImport` action) imported `parsePhoneNumber` from `react-phone-number-input`'s **root** export. That import doesn't just give you the parser — the root module also constructs the package's full class-based `<PhoneInput>` React component at module load and pulls in `prop-types`, `classnames`, `country-flag-icons`, `input-format`. None of that belongs in a server action's bundle, and it broke under Turbopack's SSR bundling even though a bare local Node import of the same function worked fine (the failure is bundler-specific, not a pure-logic bug).
+
+Fix: import `parsePhoneNumber` from `libphonenumber-js/min` directly instead — the pure parsing engine underneath, zero React/class baggage. Added `libphonenumber-js` as an explicit `package.json` dependency (previously only reachable transitively, unresolvable under pnpm's strict linking). Added `phone-normalize.test.ts`, which had zero direct coverage before — the gap that let this ship without a local test catching it.
+
+**Rule of thumb going forward:** never import a client/React-oriented npm package's root export into server-only code just because it happens to re-export a plain utility function you need — check whether the package ships a dedicated non-React subpath (`/core`, `/min`, etc.) or pull the underlying pure library directly instead.
+
+---
+
 ## 2026-08-14 · Customer-import hardening: phone auto-detect, quoted CSV, concurrent org suggestions, resend-invite bulk action
 
 Four follow-ups to the customer bulk-import feature (§17), each closing a gap found during review of that feature.

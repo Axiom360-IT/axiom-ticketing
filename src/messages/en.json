@@ -881,6 +881,7 @@
       "filterStatusAll": "All",
       "filterInviteStatus": "Invite status",
       "filterInviteStatusAll": "All",
+      "filterInviteStatusProvisioning": "Provisioning",
       "filterInviteStatusFailed": "Failed to send",
       "filterInviteStatusInvited": "Pending",
       "filterInviteStatusExpired": "Expired",
@@ -899,6 +900,7 @@
       },
       "noRoles": "(no roles)",
       "selfBadge": "You",
+      "inviteStatusProvisioning": "Provisioning",
       "inviteStatusInvited": "Invited",
       "inviteStatusExpired": "Invite expired",
       "inviteStatusFailed": "Invite failed to send",
@@ -907,7 +909,8 @@
       "bulkResendButton": "Resend invite",
       "bulkResending": "Sending…",
       "bulkResendResult": "{sent, plural, =0 {} =1 {Sent 1 invite. } other {Sent # invites. }}{failed, plural, =0 {} =1 {1 failed — try again individually.} other {# failed — try again individually.}}",
-      "selectRowLabel": "Select {name}"
+      "selectRowLabel": "Select {name}",
+      "selectDisabledProvisioning": "Still being set up — try again in a moment."
     },
     "rowActions": {
       "openMenuFor": "Actions for {user}",

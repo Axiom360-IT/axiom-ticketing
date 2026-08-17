@@ -38,6 +38,7 @@
     "db:add-mcp-connect-permission": "tsx --env-file=.env.local src/lib/db/add-mcp-connect-permission.ts",
     "db:add-ticket-type-icon": "tsx --env-file=.env.local src/lib/db/add-ticket-type-icon-column.ts",
     "db:add-invite-send-failed": "tsx --env-file=.env.local src/lib/db/add-invite-send-failed-column.ts",
+    "db:add-provisioned-at-column": "tsx --env-file=.env.local src/lib/db/add-provisioned-at-column.ts",
     "db:add-on-hold-status": "tsx --env-file=.env.local src/lib/db/add-on-hold-status.ts",
     "db:add-email-threading": "tsx --env-file=.env.local src/lib/db/add-email-threading.ts",
     "db:harden-audit": "tsx --env-file=.env.local src/lib/db/apply-audit-hardening.ts",
