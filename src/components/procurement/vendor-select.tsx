@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { listActiveVendors } from "@/app/actions/vendors";
 
-const MAX_SUGGESTIONS = 8;
-
 type Props = {
   id?: string;
   value: string;
@@ -51,7 +49,6 @@ export function VendorSelect({
   const matches = query
     ? vendors.filter((v) => v.name.toLowerCase().includes(query.toLowerCase()))
     : vendors;
-  const shown = matches.slice(0, MAX_SUGGESTIONS);
   const exactMatch = vendors.some(
     (v) => v.name.toLowerCase() === query.toLowerCase(),
   );
@@ -102,13 +99,13 @@ export function VendorSelect({
             <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
               {t("vendorLoading")}
             </p>
-          ) : shown.length === 0 && !showCustomOption ? (
+          ) : matches.length === 0 && !showCustomOption ? (
             <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
               {t("vendorNoMatches")}
             </p>
           ) : (
             <ul>
-              {shown.map((v) => (
+              {matches.map((v) => (
                 <li key={v.id}>
                   <button
                     type="button"
