@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ProcurementDecisionButtons } from "@/components/procurement/decision-buttons";
 import { ProcurementStatusBadge } from "@/components/procurement/status-badge";
+import { VendorEditor } from "@/components/procurement/vendor-editor";
 import { getProcurementDetail } from "@/app/actions/procurement";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -41,6 +42,14 @@ export default async function ProcurementDetailPage({
     { type: "global" },
     productionContext,
   );
+  const canEditVendor =
+    canManage ||
+    (await can(
+      user,
+      "procurement.update",
+      { type: "procurement", request: { id: r.id, requestedById: r.requestedById } },
+      productionContext,
+    ));
 
   const t = await getTranslations("procurement.detail");
   const tList = await getTranslations("procurement.list");
@@ -80,8 +89,17 @@ export default async function ProcurementDetailPage({
             />
           ) : null}
           <Row label={t("requesterLabel")} value={r.requestedByEmail} />
-          {r.vendor ? (
-            <Row label={t("vendorLabel")} value={r.vendor} />
+          {r.vendor || canEditVendor ? (
+            <Row
+              label={t("vendorLabel")}
+              value={
+                <VendorEditor
+                  requestId={r.id}
+                  vendor={r.vendor}
+                  canEdit={canEditVendor}
+                />
+              }
+            />
           ) : null}
           {r.estimatedCost ? (
             <Row label={t("costLabel")} value={r.estimatedCost} />

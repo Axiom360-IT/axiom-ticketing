@@ -9,6 +9,7 @@ import { users } from "@/lib/db/schema/auth";
 import { procurementRequests } from "@/lib/db/schema/procurement";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { getAppUrl } from "@/lib/request";
 import { inngest } from "@/inngest/client";
 
@@ -98,11 +99,12 @@ export async function createProcurementRequestViaMcp(
   });
 
   try {
+    const procurementAdminUrl = `${getAppUrl()}/admin/procurement/${row.id}`;
     await inngest.send({
       name: "notification/dispatch",
       data: {
         type: "procurement.submitted",
-        recipientRoles: ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
@@ -114,8 +116,14 @@ export async function createProcurementRequestViaMcp(
               requesterName: author?.name ?? user.id,
               itemName: input.itemName,
               quantity,
-              adminUrl: `${getAppUrl()}/admin/procurement/${row.id}`,
+              adminUrl: procurementAdminUrl,
             },
+          },
+        },
+        sms: {
+          template: {
+            template: "procurement_submitted",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
           },
         },
         inApp: {
@@ -167,23 +175,29 @@ export async function setProcurementStatusViaMcp(
       data: { ticketNumber, itemName: r.itemName, quantity: r.quantity, adminUrl },
     } as const;
     try {
-      if (r.requestedById) {
-        await inngest.send({
-          name: "notification/dispatch",
-          data: {
-            type: "procurement.delivered",
-            recipientUserIds: [r.requestedById],
-            ticketId: r.ticketId,
-            ticketNumber,
-            email: { template: deliveredEmail },
-            inApp: {
-              titleArgs: { itemName: r.itemName },
-              bodyArgs: { quantity: r.quantity, itemName: r.itemName },
-              linkUrl: `/admin/procurement/${requestId}`,
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "procurement.delivered",
+          recipientUserIds: r.requestedById ? [r.requestedById] : [],
+          recipientRoles: [...OVERSIGHT_ROLES],
+          ticketId: r.ticketId,
+          ticketNumber,
+          email: { template: deliveredEmail },
+          sms: {
+            template: {
+              template: "procurement_delivered",
+              data: { ticketNumber, ticketUrl: adminUrl },
             },
           },
-        });
-      } else if (r.requestedByEmail) {
+          inApp: {
+            titleArgs: { itemName: r.itemName },
+            bodyArgs: { quantity: r.quantity, itemName: r.itemName },
+            linkUrl: `/admin/procurement/${requestId}`,
+          },
+        },
+      });
+      if (!r.requestedById && r.requestedByEmail) {
         await sendEmail({ to: r.requestedByEmail, template: deliveredEmail });
       }
     } catch (err) {

@@ -1080,6 +1080,10 @@
       "quantity": "Quantity",
       "estimatedCost": "Estimated cost",
       "vendor": "Vendor",
+      "vendorPlaceholder": "Search vendors or type a new one…",
+      "vendorLoading": "Loading vendors…",
+      "vendorNoMatches": "No vendors match.",
+      "vendorUseCustom": "Use “{name}” as vendor",
       "justification": "Justification",
       "justificationHint": "Why is this needed? Minimum 10 characters.",
       "dateNeededBy": "Needed by",
@@ -1106,6 +1110,9 @@
       "ticketLabel": "Ticket",
       "requesterLabel": "Requester",
       "vendorLabel": "Vendor",
+      "vendorNone": "No vendor set",
+      "editVendor": "Edit vendor",
+      "save": "Save",
       "costLabel": "Estimated cost",
       "neededByLabel": "Needed by",
       "submittedLabel": "Submitted",
@@ -1797,6 +1804,35 @@
     "editLabel": "Type name",
     "hint": "The default type (applied to new/guest/inbound tickets) can't be deleted or deactivated. Types in use by tickets can be deactivated but not deleted, so those tickets keep their label."
   },
+  "vendors": {
+    "title": "Vendors",
+    "subtitle": "Manage the vendor list offered when submitting a procurement request",
+    "count": "{count} vendors",
+    "search": "Search vendors…",
+    "empty": "No vendors yet.",
+    "emptyFiltered": "No vendors match the current filters.",
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "requests": "Requests"
+    },
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "addTitle": "Add vendor",
+    "renameTitle": "Rename vendor",
+    "addLabel": "New vendor name",
+    "addPlaceholder": "New vendor name",
+    "add": "Add",
+    "inUse": "{count} requests",
+    "rename": "Rename",
+    "save": "Save",
+    "cancel": "Cancel",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "delete": "Delete",
+    "editLabel": "Vendor name",
+    "hint": "Vendors in use by procurement requests can be deactivated but not deleted, so those requests keep their label. A requester can still type a one-off vendor that isn't on this list."
+  },
   "moderation": {
     "title": "Inbound moderation",
     "subtitle": "Email replies from senders outside the ticket's organization are held here. Approve & post the reply, optionally trusting the sender so their future replies post automatically, or reject it.",
@@ -2014,8 +2050,9 @@
         "ticket__closed_staff": "Ticket closed",
         "ticket__unassigned_reminder": "Ticket still unassigned",
         "ticket__assigned": "Ticket assigned to me",
-        "ticket__reassigned": "A ticket was reassigned (Superadmin)",
+        "ticket__reassigned": "A ticket was reassigned",
         "ticket__customer_replied": "Customer replied to my ticket",
+        "ticket__message_held": "An inbound reply is held for moderation",
         "ticket__csat_unsatisfied": "Customer reopened after a resolution",
         "ticket__escalated": "Ticket escalated",
         "sla__warning_50": "SLA at 50% of the deadline",
@@ -2179,8 +2216,20 @@
     "ticketEscalated": {
       "body": "{ticketNumber}: Ticket escalated — needs your attention. {ticketUrl}"
     },
+    "ticketUnassignedReminder": {
+      "body": "{ticketNumber}: Still unassigned. {ticketUrl}"
+    },
     "customerReplied": {
       "body": "{ticketNumber}: Customer replied to your ticket. {ticketUrl}"
+    },
+    "procurementSubmitted": {
+      "body": "{ticketNumber}: New procurement request needs actioning. {ticketUrl}"
+    },
+    "procurementDelivered": {
+      "body": "{ticketNumber}: Procurement item delivered. {ticketUrl}"
+    },
+    "attachmentQuarantined": {
+      "body": "{ticketNumber}: Infected attachment quarantined. {ticketUrl}"
     },
     "csatUnsatisfiedStaff": {
       "body": "{ticketNumber}: Customer reopened — still not resolved. {ticketUrl}"
@@ -2241,6 +2290,7 @@
       "navSettings": "Settings",
       "navCategories": "Categories",
       "navTypes": "Types",
+      "navVendors": "Vendors",
       "profileMenuLabel": "Profile menu",
       "profileMenuMyProfile": "My profile",
       "profileMenuSignOut": "Sign out",

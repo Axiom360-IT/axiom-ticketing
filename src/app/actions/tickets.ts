@@ -50,6 +50,7 @@ import {
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import {
   computeDueTimesForNewTicket,
   recomputeSlaForTicket,
@@ -866,7 +867,7 @@ export async function assignTicket(
         name: "notification/dispatch",
         data: {
           type: "ticket.reassigned",
-          recipientRoles: ["Super Admin"],
+          recipientRoles: [...OVERSIGHT_ROLES],
           ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
           email: {
@@ -2756,14 +2757,14 @@ export async function escalateTicket(
       data: {
         type: "ticket.escalated",
         // Notify the role the ticket was escalated to (CR-14), or the standard
-        // supervisory pair when none was selected. Super Admin is ALWAYS
-        // included for oversight (deduped if it's also the chosen target).
+        // supervisory pair when none was selected. Coordinator + Super Admin
+        // are ALWAYS included for oversight (deduped if also the chosen target).
         recipientRoles: [
           ...new Set([
             ...(targetRoleClean
               ? [targetRoleClean]
               : ["IT Director", "Coordinator"]),
-            "Super Admin",
+            ...OVERSIGHT_ROLES,
           ]),
         ],
         ticketId: ticket.id,

@@ -35,6 +35,7 @@ import {
 import { verifyCsatAccessToken, verifyGuestToken } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import type { CsatRating } from "@/lib/tickets/csat";
 import { recordCsatResponse } from "@/lib/tickets/csat-apply";
 
@@ -371,9 +372,8 @@ export async function customerReply(
     after: { length: parsed.data.body.length },
   });
 
-  // Notify the assignee — or, if the ticket is still in triage with no
-  // assignee, broadcast to Coordinators so the reply doesn't sit silently
-  // until someone happens to look at the queue.
+  // Notify the assignee (if any), plus Coordinator + Super Admin always,
+  // so a reply never sits silently even outside the unassigned-triage case.
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
@@ -382,7 +382,7 @@ export async function customerReply(
       data: {
         type: "ticket.customer_replied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
@@ -573,7 +573,7 @@ export async function guestReply(input: {
       data: {
         type: "ticket.customer_replied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {

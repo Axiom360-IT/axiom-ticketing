@@ -31,10 +31,14 @@ export type SmsTemplate =
   | { template: "ticket_assigned"; data: SmsTemplateData }
   | { template: "ticket_reassigned"; data: SmsTemplateData }
   | { template: "ticket_escalated"; data: SmsTemplateData }
+  | { template: "ticket_unassigned_reminder"; data: SmsTemplateData }
   | { template: "customer_replied"; data: SmsTemplateData }
   | { template: "csat_unsatisfied_staff"; data: SmsTemplateData }
   | { template: "sla_warning_80"; data: SmsTemplateData }
   | { template: "sla_breached"; data: SmsTemplateData }
+  | { template: "procurement_submitted"; data: SmsTemplateData }
+  | { template: "procurement_delivered"; data: SmsTemplateData }
+  | { template: "attachment_quarantined"; data: SmsTemplateData }
   // Account-facing (sent to the number being saved)
   | { template: "phone_changed"; data: PhoneChangedSmsData }
   // Customer-facing — different wording from the staff variants because

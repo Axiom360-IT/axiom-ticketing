@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VendorSelect } from "@/components/procurement/vendor-select";
 import { createProcurementRequest } from "@/app/actions/procurement";
 
 const TYPES = ["hardware", "software", "other"] as const;
@@ -127,11 +128,11 @@ export function ProcurementRequestForm({ ticketId, onCancel }: Props) {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="proc-vendor">{tForm("vendor")}</Label>
-          <Input
+          <VendorSelect
             id="proc-vendor"
             value={vendor}
-            onChange={(e) => setVendor(e.target.value)}
-            maxLength={200}
+            onChange={setVendor}
+            placeholder={tForm("vendorPlaceholder")}
           />
         </div>
       </div>

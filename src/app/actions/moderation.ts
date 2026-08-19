@@ -17,6 +17,7 @@ import {
   upsertParticipant,
 } from "@/lib/tickets/participants";
 import { inngest } from "@/inngest/client";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 
 // Inbound-moderation queue (req 5.2). Email replies from senders whose domain
 // doesn't belong to the ticket's organization are stored `held` and surfaced
@@ -174,7 +175,8 @@ async function applyApproval(
     },
   });
 
-  // The message is now live — notify the assignee like any customer reply.
+  // The message is now live — notify the assignee (if any), plus
+  // Coordinator + Super Admin always, like every other customer-reply path.
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
@@ -183,7 +185,7 @@ async function applyApproval(
       data: {
         type: "ticket.customer_replied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         email: {
@@ -199,6 +201,12 @@ async function applyApproval(
             },
           },
           ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "customer_replied",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+          },
         },
         inApp: {
           titleArgs: { ticketNumber: ticket.ticketNumber },

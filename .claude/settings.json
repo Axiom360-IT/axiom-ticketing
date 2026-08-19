@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.production)",
+      "Read(.env.production.local)",
+      "Bash(cat .env)",
+      "Bash(cat .env.local)",
+      "Bash(cat .env.production*)",
+      "Bash(less .env)",
+      "Bash(less .env.local)",
+      "Bash(head .env)",
+      "Bash(head .env.local)",
+      "Bash(tail .env)",
+      "Bash(tail .env.local)",
+      "Bash(more .env)",
+      "Bash(more .env.local)",
+      "Bash(vim .env)",
+      "Bash(vim .env.local)",
+      "Bash(nano .env)",
+      "Bash(nano .env.local)",
+      "Bash(tsx --env-file=.env.local*)",
+      "Bash(tsx --env-file=.env *)",
+      "Bash(node --env-file=.env.local*)",
+      "Bash(node --env-file=.env *)"
+    ]
+  }
+}

@@ -36,6 +36,7 @@
     "db:add-audit-filter-presets": "tsx --env-file=.env.local src/lib/db/add-audit-filter-presets.ts",
     "db:add-mcp-tokens": "tsx --env-file=.env.local src/lib/db/add-mcp-tokens.ts",
     "db:add-mcp-connect-permission": "tsx --env-file=.env.local src/lib/db/add-mcp-connect-permission.ts",
+    "db:add-vendors": "tsx --env-file=.env.local src/lib/db/add-vendors.ts",
     "db:add-ticket-type-icon": "tsx --env-file=.env.local src/lib/db/add-ticket-type-icon-column.ts",
     "db:add-invite-send-failed": "tsx --env-file=.env.local src/lib/db/add-invite-send-failed-column.ts",
     "db:add-provisioned-at-column": "tsx --env-file=.env.local src/lib/db/add-provisioned-at-column.ts",

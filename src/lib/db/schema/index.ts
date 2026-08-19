@@ -16,6 +16,7 @@ export * from "./work-logs";
 export * from "./messages";
 export * from "./attachments";
 export * from "./procurement";
+export * from "./vendors";
 export * from "./audit";
 export * from "./audit-filter-presets";
 export * from "./mcp-tokens";

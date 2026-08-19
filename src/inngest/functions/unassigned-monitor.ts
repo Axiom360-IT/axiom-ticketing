@@ -152,6 +152,12 @@ async function dispatch(t: {
           },
           ticketNumber: t.ticketNumber,
         },
+        sms: {
+          template: {
+            template: "ticket_unassigned_reminder",
+            data: { ticketNumber: t.ticketNumber, ticketUrl: adminUrl },
+          },
+        },
         inApp: {
           titleArgs: { ticketNumber: t.ticketNumber },
           bodyArgs: { subject: t.subject },

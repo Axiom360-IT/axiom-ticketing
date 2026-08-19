@@ -79,10 +79,19 @@ const MANAGEMENT_EVENT_TYPES = [
   "ticket.unassigned_reminder",
   "ticket.reassigned",
   "ticket.escalated",
+  "ticket.message_held",
   "procurement.submitted",
 ] as const satisfies readonly NotificationEventType[];
 
 const MANAGEMENT_ROLES = ["Coordinator", "IT Director", "Super Admin"] as const;
+
+/** Always-CC oversight roles: Coordinator + Super Admin now receive every
+ *  staff-facing event, not just the events that already broadcast to the
+ *  full MANAGEMENT_ROLES trio. Deliberately excludes IT Director — a
+ *  narrower, explicit ask (see DECISIONS.md). Used at dispatch call sites
+ *  that previously only reached one role or reached a role conditionally
+ *  (e.g. "only when unassigned"). */
+export const OVERSIGHT_ROLES = ["Coordinator", "Super Admin"] as const;
 
 /**
  * The staff notification events a user may tune, scoped to their role(s). A

@@ -52,6 +52,7 @@ import {
 import { generateTicketNumber } from "@/lib/ticket-number";
 import { inngest } from "../client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 
 // Inbound email processor. Runs on every `email/inbound.received` event
 // emitted by `app/api/email/inbound/route.ts`. Decisions in order:
@@ -616,7 +617,7 @@ export const processInboundEmail = inngest.createFunction(
               recipientUserIds: ticket.assignedToId
                 ? [ticket.assignedToId]
                 : undefined,
-              recipientRoles: ["Coordinator", "Super Admin"],
+              recipientRoles: [...OVERSIGHT_ROLES],
               ticketId: ticket.id,
               ticketNumber: ticket.ticketNumber,
               inApp: {
@@ -694,10 +695,8 @@ export const processInboundEmail = inngest.createFunction(
       after: { from: fromEmail, length: messageBody.length, relation },
     });
 
-    // Notify the assigned tech via the dispatch fan-out. If the ticket
-    // is still unassigned (sitting in the triage queue), fall back to
-    // broadcasting to Coordinators so the reply doesn't sit silently
-    // until someone happens to look at the queue.
+    // Notify the assigned tech via the dispatch fan-out, plus Coordinator +
+    // Super Admin always so a reply never sits silently.
     await step.run("notify-assignee", async () => {
       try {
         const customerName = authorName;
@@ -706,7 +705,7 @@ export const processInboundEmail = inngest.createFunction(
           data: {
             type: "ticket.customer_replied",
             recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-            recipientRoles: ticket.assignedToId ? undefined : ["Coordinator"],
+            recipientRoles: [...OVERSIGHT_ROLES],
             ticketId: ticket.id,
             ticketNumber: ticket.ticketNumber,
             email: {

@@ -46,15 +46,29 @@ export function HeldMessageCard({ message }: { message: HeldMessage }) {
     });
   }
 
+  const hasDisplayName =
+    message.authorName.trim().toLowerCase() !==
+    message.authorEmail.trim().toLowerCase();
+
   return (
     <Card>
       <CardContent className="space-y-3 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <div className="min-w-0 break-words">
-            <span className="text-sm font-medium">{message.authorName}</span>{" "}
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              &lt;{message.authorEmail}&gt;
-            </span>
+            {hasDisplayName ? (
+              <>
+                <span className="text-sm font-medium">
+                  {message.authorName}
+                </span>{" "}
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  &lt;{message.authorEmail}&gt;
+                </span>
+              </>
+            ) : (
+              <span className="text-sm font-medium">
+                {message.authorEmail}
+              </span>
+            )}
           </div>
           <span className="text-xs text-zinc-400">{message.receivedAt}</span>
         </div>

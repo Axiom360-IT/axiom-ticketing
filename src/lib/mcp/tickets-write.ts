@@ -21,6 +21,7 @@ import { notifyBalanceChanged } from "@/lib/billing/events";
 import { htmlToPlainText, sanitizeMessageHtml } from "@/lib/messages/sanitize";
 import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import {
   computeDueTimesForNewTicket,
   recomputeSlaForTicket,
@@ -973,7 +974,10 @@ export async function escalateTicketViaMcp(
       data: {
         type: "ticket.escalated",
         recipientRoles: [
-          ...new Set([...(targetRoleClean ? [targetRoleClean] : ["IT Director", "Coordinator"]), "Super Admin"]),
+          ...new Set([
+            ...(targetRoleClean ? [targetRoleClean] : ["IT Director", "Coordinator"]),
+            ...OVERSIGHT_ROLES,
+          ]),
         ],
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,

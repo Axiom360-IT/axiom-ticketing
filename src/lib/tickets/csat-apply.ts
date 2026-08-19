@@ -8,6 +8,7 @@ import { ticketReviews } from "@/lib/db/schema/ticket-reviews";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { getAppUrl } from "@/lib/request";
 import { ticketTrackingUrl } from "@/lib/tokens";
 import { inngest } from "@/inngest/client";
@@ -260,7 +261,7 @@ export async function recordCsatResponse(
       data: {
         type: "ticket.csat_unsatisfied",
         recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         email: {
           template: {
             template: "csat_unsatisfied_staff",

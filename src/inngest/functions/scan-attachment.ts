@@ -6,6 +6,7 @@ import { attachments } from "@/lib/db/schema/attachments";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { deleteObject, fetchObject } from "@/lib/storage/signed-urls";
 import { scanBytes } from "@/lib/storage/virus-scan";
 import { inngest } from "../client";
@@ -103,9 +104,9 @@ export const scanAttachment = inngest.createFunction(
       // matched virus signature and an /admin link. The CUSTOMER must never
       // get that one — the signature is internal detail and /admin is a route
       // they can't open — so a customer uploader gets a separate, portal-safe
-      // email instead. If no staff is attributable (unassigned ticket,
-      // customer/guest uploader), fall back to the Coordinator queue so an
-      // infected file is never silently invisible.
+      // email instead. Coordinator + Super Admin always additionally get the
+      // internal notice, not just when no staff is attributable, so an
+      // infected file is never silently invisible to oversight.
       try {
         const [ticket] = await db
           .select({
@@ -140,7 +141,7 @@ export const scanAttachment = inngest.createFunction(
             data: {
               type: "attachment.quarantined",
               recipientUserIds: hasStaff ? [...staffRecipients] : undefined,
-              recipientRoles: hasStaff ? undefined : ["Coordinator"],
+              recipientRoles: [...OVERSIGHT_ROLES],
               email: {
                 template: {
                   template: "attachment_quarantined",
@@ -156,6 +157,12 @@ export const scanAttachment = inngest.createFunction(
                   },
                 },
                 ticketNumber: ticket.ticketNumber,
+              },
+              sms: {
+                template: {
+                  template: "attachment_quarantined",
+                  data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+                },
               },
               inApp: {
                 titleArgs: { ticketNumber: ticket.ticketNumber },

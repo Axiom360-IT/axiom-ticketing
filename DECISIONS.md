@@ -5,6 +5,98 @@ entries go at the top; date them.
 
 ---
 
+## 2026-08-19 · Coordinator + Super Admin now receive every staff-facing notification
+
+Explicit ask: Super Admin (and, on follow-up, Coordinator too) should see
+"every kind of notification" — email, SMS, and in-app — not just the subset
+they were already broadcast on. This is a deliberate departure from several
+rules in the req-6.1–6.4 notification matrix (`docs/notification-matrix.md`),
+which intentionally scoped some events to a single role or to an
+unassigned/no-staff-attributable fallback:
+
+- `ticket.reassigned` was Super Admin only (req 3.2 oversight) — now also
+  Coordinator.
+- `ticket.escalated` always included Super Admin plus the chosen/default
+  target — now Coordinator is always included too, regardless of target.
+- `ticket.customer_replied` reached Coordinator only when the ticket was
+  **unassigned** (a fallback so replies don't go unnoticed) — now Coordinator
+  and Super Admin get it on every reply, unassigned or not. This is the
+  highest-volume change of the set — every customer reply system-wide now
+  additionally pings both roles.
+- `ticket.csat_unsatisfied` was Coordinator + assignee only — now Super Admin
+  too.
+- `procurement.submitted`/`procurement.delivered` reached Coordinator-only
+  and requester-only respectively — now both also reach Super Admin, and
+  `procurement.delivered` reaches Coordinator too (previously no role at
+  all, only the individual requester).
+- `attachment.quarantined` reached Coordinator only when no staff was
+  attributable (fallback) — now Coordinator + Super Admin always get it in
+  addition to any attributable staff recipient.
+
+Implementation: a single new `OVERSIGHT_ROLES = ["Coordinator", "Super
+Admin"]` constant in `src/lib/notifications/audience.ts`, spread into
+`recipientRoles` at each of the 7 affected dispatch call sites (both the
+Server Action and MCP-tool mirror, where both exist) rather than hard-coded
+per site — keeps a future "also add IT Director" change to one line.
+Deliberately still routed through the existing `notification/dispatch` →
+`notification_preferences` pipeline, not a hard bypass: a Coordinator or
+Super Admin who finds a specific event too noisy can still turn off
+email/SMS for just that event type in their own profile, same as any other
+user. Nothing changed in `dispatch-notification.ts`, the preferences UI
+components, or the schema — the existing default-opted-in behavior (a
+missing preference row = fully enabled) already covered "off by default
+unless someone turns it down," which is what was needed.
+
+**Explicitly excluded, both flagged rather than silently decided:**
+- **IT Director** — the ask named only Super Admin and Coordinator, twice.
+  Not added to `OVERSIGHT_ROLES`.
+- **Customer-facing events** (`ticket.assigned_customer`, `agent_replied`,
+  `resolved`, `reopened`, `closed`) — left untouched. Those templates are
+  written in the customer's voice ("your ticket…"); stapling a staff role
+  into that recipient list would put second-person customer copy in a staff
+  inbox. The matrix doc's own first principle ("never reuse one type across
+  customer + staff") argues against it independent of volume concerns.
+- `procurement.approved`/`procurement.rejected` remain dead (no producer —
+  the approval workflow they belonged to doesn't exist in the current
+  4-stage procurement pipeline; see the 2026-08-19 vendor-management entry
+  below for the fuller note on this).
+- The accountant-CC billing pathway (`getAccountantRecipients()`, a flat
+  Settings contact list, not role-based) was left alone — Super Admin
+  already has an opt-in switch for it (`billing.superadmin_receive_copy`,
+  currently off live); Coordinator has no concept of membership in that
+  system at all, and adding one would be a materially different, unprompted
+  feature.
+
+**SMS gap closed alongside this** (same ask: "whatever notifications we're
+sending must have SMS too"): `ticket.unassigned_reminder`,
+`procurement.submitted`, `procurement.delivered`, `attachment.quarantined`
+got new `SmsTemplate` entries; `ticket.customer_replied` already had SMS
+everywhere except the moderation-approve path, which was a plain
+inconsistency, now fixed. `sla.warning_50` and `ticket.message_held` were
+deliberately left in-app-only — both are pre-existing "low-noise heads-up"
+designs (the former has an explicit code comment to that effect), not gaps.
+
+Also found and fixed in passing: `ticket.message_held` existed as a
+dispatched event with an in-app registry descriptor but had no entry in
+`MANAGEMENT_EVENT_TYPES`/`TOGGLEABLE_EVENT_TYPES` — the one event type in
+the whole system nobody could actually tune from their profile (or via the
+`update_my_notification_preference` MCP tool, which would have rejected it
+as "Unknown event type"). Added to `MANAGEMENT_EVENT_TYPES`.
+
+---
+
+## 2026-08-19 · Admin-managed vendor list + editable-after-the-fact vendor, accountant CC on procurement notifications
+
+Three related procurement changes:
+
+1. **New `vendors` table + `/admin/vendors`.** Mirrors the ticket-categories/types admin-taxonomy pattern (name, `is_active`, deactivate-never-delete, `settings.update`-gated CRUD) but deliberately **not** wired as a foreign key from `procurement_requests.vendor` — that column stays plain free text. The procurement form's vendor field is now a search-or-type-custom combobox (`VendorSelect`) that suggests active vendors but lets a requester submit any string; renaming/deactivating a vendor in the admin list never rewrites past requests, same reasoning as `messages.author_name` being a point-in-time snapshot rather than a live join. Seeded with the 27-vendor list currently in use (`pnpm db:add-vendors`).
+2. **`updateProcurementVendor` revives the `procurement.update` permission.** That permission (and its `can()` scope rule — strict requesters can only act on their own request) has existed since the procurement domain was built but had no caller anywhere in the codebase. It's now used for "the requester corrects their own pick before it's actioned"; `procurement.manage` (Coordinator/Super Admin) additionally allows editing *any* request's vendor, matching who already owns stage changes. No new permission was added — both were already the right shape for this.
+3. **Accountants get CC'd on procurement notifications.** `procurement.submitted` (on create) and `procurement.delivered` (on `order_completed`) now also email the `billing.accountant_emails` contact list (± Super Admin copy) via `getAccountantRecipients()` — the same resolver the billing pipeline (§15) uses. Sent as a direct best-effort `sendEmail` alongside the existing `notification/dispatch` call, not folded into it, because accountants aren't `users` rows and have no preferences row for the dispatcher to key off of.
+
+Found and left alone (out of scope for this change, flagged for a future pass): `procurement_approval_threshold` (settings), and the `procurement.approved`/`procurement.rejected` notification types + email templates, are dead — leftover from a pre-CR-24 two-step approval workflow that was removed. Also found: this repo's drizzle-kit migration journal has been stale since migration `0018` — every schema change since (including this one) goes through a hand-written idempotent `pnpm db:add-*` script, not `pnpm db:migrate`. See the new callout in README §5.2 before running `pnpm db:generate` on a future change.
+
+---
+
 ## 2026-08-17 · Bulk-imported customers get a synchronous, visible "provisioning" stage
 
 The customer-import batch job (§17) never created a `users` row itself — it only fired an Inngest event, and the row only appeared once the async job's `provisionUser()` call reached that row. Between committing an import and the job finishing, an imported customer had **no database row at all** — invisible everywhere in the admin UI, no way to see "this import is still in flight," and a batch that never got picked up (Inngest down, function crash before any row processed) left zero trace of the attempt.

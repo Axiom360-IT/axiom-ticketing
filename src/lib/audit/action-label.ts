@@ -25,6 +25,11 @@ const ACTION_LABELS: Record<string, string> = {
   "procurement.create": "Created a procurement request",
   "procurement.approve": "Approved a procurement request",
   "procurement.set_status": "Changed a procurement status",
+  "procurement.update_vendor": "Changed a procurement request's vendor",
+  // Vendors
+  "vendor.create": "Added a vendor",
+  "vendor.update": "Updated a vendor",
+  "vendor.delete": "Deleted a vendor",
   // Roles
   "role.create": "Created a role",
   "role.update": "Updated a role",
@@ -142,6 +147,7 @@ const BILLING_ACTIONS = new Set([
   "procurement.create",
   "procurement.approve",
   "procurement.set_status",
+  "procurement.update_vendor",
 ]);
 const CONFIG_ACTIONS = new Set([
   "settings.update",
@@ -161,6 +167,9 @@ const CONFIG_ACTIONS = new Set([
   "ticket_type.update",
   "ticket_type.set_default",
   "ticket_type.delete",
+  "vendor.create",
+  "vendor.update",
+  "vendor.delete",
 ]);
 const SYSTEM_ACTIONS = new Set([
   "attachment.confirm",

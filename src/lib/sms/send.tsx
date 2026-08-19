@@ -19,10 +19,14 @@ const TEMPLATE_NAMESPACE = {
   ticket_assigned: "sms.ticketAssigned",
   ticket_reassigned: "sms.ticketReassigned",
   ticket_escalated: "sms.ticketEscalated",
+  ticket_unassigned_reminder: "sms.ticketUnassignedReminder",
   customer_replied: "sms.customerReplied",
   csat_unsatisfied_staff: "sms.csatUnsatisfiedStaff",
   sla_warning_80: "sms.slaWarning80",
   sla_breached: "sms.slaBreached",
+  procurement_submitted: "sms.procurementSubmitted",
+  procurement_delivered: "sms.procurementDelivered",
+  attachment_quarantined: "sms.attachmentQuarantined",
   // Account-facing (sent to the number being saved)
   phone_changed: "sms.phoneChanged",
   // Customer-facing

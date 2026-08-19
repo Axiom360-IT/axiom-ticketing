@@ -21,6 +21,8 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { isStrictRequester } from "@/lib/auth/can";
 import { requireSessionUser } from "@/lib/auth/session";
+import { getAccountantRecipients } from "@/lib/billing/accountants";
+import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { procurementRequests } from "@/lib/db/schema/procurement";
@@ -30,6 +32,20 @@ import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getAppUrl } from "@/lib/request";
 import { inngest } from "@/inngest/client";
+
+/** Accountant contacts configured in Settings (`billing.accountant_emails`, ±
+ *  Super Admin copy) get CC'd by email on every procurement notification —
+ *  same resolver the billing pipeline uses. Best-effort: never throws, so a
+ *  Resend hiccup here can't affect the primary notification or the caller's
+ *  state change. */
+async function accountantEmails(): Promise<string[]> {
+  try {
+    return (await getAccountantRecipients()).emails;
+  } catch (err) {
+    console.error("[procurement] accountant recipient lookup failed:", err);
+    return [];
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -178,26 +194,35 @@ export async function createProcurementRequest(
     },
   });
 
-  // Notify Coordinators that a new request needs actioning (no approval step).
+  // Notify Coordinator + Super Admin that a new request needs actioning
+  // (no approval step).
+  const procurementAdminUrl = `${getAppUrl()}/admin/procurement/${row.id}`;
+  const submittedEmailData = {
+    ticketNumber: ticket.ticketNumber,
+    ticketSubject: ticket.subject,
+    requesterName: author?.name ?? caller.id,
+    itemName: data.itemName,
+    quantity: data.quantity,
+    adminUrl: procurementAdminUrl,
+  };
   try {
     await inngest.send({
       name: "notification/dispatch",
       data: {
         type: "procurement.submitted",
-        recipientRoles: ["Coordinator"],
+        recipientRoles: [...OVERSIGHT_ROLES],
         ticketId: data.ticketId,
         ticketNumber: ticket.ticketNumber,
         email: {
           template: {
             template: "procurement_submitted",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              ticketSubject: ticket.subject,
-              requesterName: author?.name ?? caller.id,
-              itemName: data.itemName,
-              quantity: data.quantity,
-              adminUrl: `${getAppUrl()}/admin/procurement/${row.id}`,
-            },
+            data: submittedEmailData,
+          },
+        },
+        sms: {
+          template: {
+            template: "procurement_submitted",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
           },
         },
         inApp: {
@@ -213,6 +238,20 @@ export async function createProcurementRequest(
     });
   } catch (err) {
     console.error("[createProcurementRequest] dispatch failed:", err);
+  }
+
+  // Accountants aren't app users (no preferences to gate on) — CC them
+  // directly with the same content Coordinators get.
+  for (const to of await accountantEmails()) {
+    try {
+      await sendEmail({
+        to,
+        template: { template: "procurement_submitted", data: submittedEmailData },
+        ticketNumber: ticket.ticketNumber,
+      });
+    } catch (err) {
+      console.error("[createProcurementRequest] accountant email failed:", err);
+    }
   }
 
   revalidatePath(`/admin/tickets/${data.ticketId}`);
@@ -264,12 +303,12 @@ export async function setProcurementStatus(
     after: { status },
   });
 
-  // Tell the requester when the order is completed. Route through the
-  // dispatcher (not a bare sendEmail) so the requester's notification
-  // preferences are honored AND an in-app bell entry is created — a
-  // procurement.delivered registry descriptor exists, but the previous direct
-  // send bypassed both (req 6.3). Fall back to a direct email only when there
-  // is no user account to target.
+  // Tell the requester when the order is completed, plus Coordinator +
+  // Super Admin always. Route through the dispatcher (not a bare sendEmail)
+  // so the requester's notification preferences are honored AND an in-app
+  // bell entry is created (req 6.3). A requester with no user account
+  // (legacy/guest) additionally gets a direct fallback email, since they
+  // have no preferences row or bell to route through.
   if (status === "order_completed") {
     const ticket = await ticketSubject(r.ticketId);
     const ticketNumber = ticket?.ticketNumber ?? "";
@@ -284,29 +323,108 @@ export async function setProcurementStatus(
       },
     } as const;
     try {
-      if (r.requestedById) {
-        await inngest.send({
-          name: "notification/dispatch",
-          data: {
-            type: "procurement.delivered",
-            recipientUserIds: [r.requestedById],
-            ticketId: r.ticketId,
-            ticketNumber,
-            email: { template: deliveredEmail },
-            inApp: {
-              titleArgs: { itemName: r.itemName },
-              bodyArgs: { quantity: r.quantity, itemName: r.itemName },
-              linkUrl: `/admin/procurement/${requestId}`,
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "procurement.delivered",
+          recipientUserIds: r.requestedById ? [r.requestedById] : [],
+          recipientRoles: [...OVERSIGHT_ROLES],
+          ticketId: r.ticketId,
+          ticketNumber,
+          email: { template: deliveredEmail },
+          sms: {
+            template: {
+              template: "procurement_delivered",
+              data: { ticketNumber, ticketUrl: adminUrl },
             },
           },
-        });
-      } else if (r.requestedByEmail) {
+          inApp: {
+            titleArgs: { itemName: r.itemName },
+            bodyArgs: { quantity: r.quantity, itemName: r.itemName },
+            linkUrl: `/admin/procurement/${requestId}`,
+          },
+        },
+      });
+      if (!r.requestedById && r.requestedByEmail) {
         await sendEmail({ to: r.requestedByEmail, template: deliveredEmail });
       }
     } catch (err) {
       console.error("[setProcurementStatus] requester notify failed:", err);
     }
+
+    // Accountants aren't app users (no preferences to gate on) — CC them
+    // directly with the same content the requester gets.
+    for (const to of await accountantEmails()) {
+      try {
+        await sendEmail({ to, template: deliveredEmail, ticketNumber });
+      } catch (err) {
+        console.error("[setProcurementStatus] accountant email failed:", err);
+      }
+    }
   }
+
+  revalidatePath(`/admin/procurement/${requestId}`);
+  revalidatePath("/admin/procurement");
+  return { ok: true };
+}
+
+// ── updateProcurementVendor ───────────────────────────────────────
+//
+// Lets the request's own (strict) requester correct their own pick, or lets
+// Coordinator/Super Admin override any request's vendor after the fact —
+// e.g. "the technician picked the wrong vendor, procurement wants a
+// different one." Reuses the existing `procurement.update` scope rule
+// (own-request-only for strict requesters) alongside `procurement.manage`
+// (any request) rather than adding a new permission.
+
+const vendorEditSchema = z.string().trim().max(200);
+
+export async function updateProcurementVendor(
+  requestId: string,
+  vendor: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  const r = await loadRequest(requestId);
+  if (!r) throw new NotFoundError();
+
+  const canManage = await can(
+    caller,
+    "procurement.manage",
+    { type: "global" },
+    productionContext,
+  );
+  const canOwnUpdate =
+    !canManage &&
+    (await can(
+      caller,
+      "procurement.update",
+      { type: "procurement", request: { id: r.id, requestedById: r.requestedById } },
+      productionContext,
+    ));
+  if (!canManage && !canOwnUpdate) {
+    throw new ForbiddenError();
+  }
+
+  const parsed = vendorEditSchema.safeParse(vendor);
+  if (!parsed.success) {
+    return { ok: false, error: "Vendor name is too long." };
+  }
+  const clean = parsed.data.length > 0 ? parsed.data : null;
+  if (clean === r.vendor) return { ok: true };
+
+  await db
+    .update(procurementRequests)
+    .set({ vendor: clean, updatedAt: new Date() })
+    .where(eq(procurementRequests.id, requestId));
+
+  await audit({
+    actorId: caller.id,
+    action: "procurement.update_vendor",
+    targetType: "procurement",
+    targetId: requestId,
+    before: { vendor: r.vendor },
+    after: { vendor: clean },
+  });
 
   revalidatePath(`/admin/procurement/${requestId}`);
   revalidatePath("/admin/procurement");
