@@ -5,7 +5,10 @@ import { users } from "@/lib/db/schema/auth";
 import { notificationPreferences } from "@/lib/db/schema/notifications";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { inAppDescriptor } from "@/lib/notifications/registry";
+import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
+
+const CUSTOMER_ROLE_NAME = "Customer";
 
 // Dispatcher: producer fires one `notification/dispatch`; we read prefs
 // and emit per-recipient child events. The actual sending lives in
@@ -59,43 +62,76 @@ export const dispatchNotification = inngest.createFunction(
 
     // Inngest serializes step results through JSON, so we keep the
     // step body free of Map / Date / Buffer values.
-    const prefRows = await step.run("load-preferences", async () =>
-      db
-        .select({
-          userId: notificationPreferences.userId,
-          emailEnabled: notificationPreferences.emailEnabled,
-          smsEnabled: notificationPreferences.smsEnabled,
-        })
-        .from(notificationPreferences)
-        .where(
-          and(
-            inArray(
-              notificationPreferences.userId,
-              recipients.map((r) => r.id),
+    const [prefRows, customerIds, customerSmsGloballyEnabled] =
+      await step.run("load-preferences", async () => {
+        const [rows, customerRoleRows, setting] = await Promise.all([
+          db
+            .select({
+              userId: notificationPreferences.userId,
+              emailEnabled: notificationPreferences.emailEnabled,
+              smsEnabled: notificationPreferences.smsEnabled,
+              inAppEnabled: notificationPreferences.inAppEnabled,
+            })
+            .from(notificationPreferences)
+            .where(
+              and(
+                inArray(
+                  notificationPreferences.userId,
+                  recipients.map((r) => r.id),
+                ),
+                eq(notificationPreferences.eventType, data.type),
+              ),
             ),
-            eq(notificationPreferences.eventType, data.type),
-          ),
-        ),
-    );
+          db
+            .select({ userId: userRoles.userId })
+            .from(userRoles)
+            .innerJoin(roles, eq(userRoles.roleId, roles.id))
+            .where(
+              and(
+                inArray(
+                  userRoles.userId,
+                  recipients.map((r) => r.id),
+                ),
+                eq(roles.name, CUSTOMER_ROLE_NAME),
+              ),
+            ),
+          getSetting<boolean>("customer_sms.enabled"),
+        ]);
+        return [
+          rows,
+          customerRoleRows.map((r) => r.userId),
+          setting ?? true,
+        ] as const;
+      });
     const prefs = new Map<
       string,
-      { emailEnabled: boolean; smsEnabled: boolean }
+      { emailEnabled: boolean; smsEnabled: boolean; inAppEnabled: boolean }
     >();
     for (const r of prefRows) {
       prefs.set(r.userId, {
         emailEnabled: r.emailEnabled,
         smsEnabled: r.smsEnabled,
+        inAppEnabled: r.inAppEnabled,
       });
     }
+    const customerIdSet = new Set(customerIds);
 
     const descriptor = inAppDescriptor(data.type);
 
     let dispatched = 0;
     for (const r of recipients) {
       const pref = prefs.get(r.id);
-      // Defaults: email + sms both on (matches schema defaults).
+      // Defaults: email + in-app on (matches schema defaults). SMS
+      // defaults on too EXCEPT for a customer who's never touched their
+      // preference — see updateNotificationPreference's insert defaults,
+      // which mirror this (opt-in, not opt-out, for that one case).
       const emailOn = pref?.emailEnabled ?? true;
-      const smsOn = pref?.smsEnabled ?? true;
+      const smsOn = pref?.smsEnabled ?? !customerIdSet.has(r.id);
+      const inAppOn = pref?.inAppEnabled ?? true;
+      // Customers only: the global switch overrides their own preference
+      // entirely when off. Staff SMS is never affected by this setting.
+      const smsAllowedForRecipient =
+        !customerIdSet.has(r.id) || customerSmsGloballyEnabled;
 
       if (data.email && emailOn && r.email) {
         await step.sendEvent(`email-${r.id}`, {
@@ -110,7 +146,7 @@ export const dispatchNotification = inngest.createFunction(
         });
       }
 
-      if (data.sms && smsOn && r.phone) {
+      if (data.sms && smsOn && smsAllowedForRecipient && r.phone) {
         await step.sendEvent(`sms-${r.id}`, {
           name: "notification/sms",
           data: {
@@ -121,7 +157,7 @@ export const dispatchNotification = inngest.createFunction(
         });
       }
 
-      if (descriptor) {
+      if (descriptor && inAppOn) {
         await step.sendEvent(`inapp-${r.id}`, {
           name: "notification/in-app",
           data: {

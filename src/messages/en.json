@@ -357,6 +357,7 @@
         "subtitle": "Choose how you'd like to hear from us about your tickets.",
         "emailColumn": "Email",
         "smsColumn": "SMS",
+        "inAppColumn": "In-app",
         "events": {
           "ticket__assigned_customer": "When my ticket is assigned",
           "ticket__agent_replied": "When the team replies on my ticket",
@@ -1586,6 +1587,12 @@
       "followupHint": "Days a ticket may await the customer's reply before the reminder email is sent. Default 3.",
       "closeLabel": "Auto-close after (days)",
       "closeHint": "Days after the reminder, with still no reply, before the ticket auto-closes. Default 4."
+    },
+    "customerSms": {
+      "title": "Customer SMS notifications",
+      "subtitle": "Master switch for text messages to customers. Staff SMS is unaffected.",
+      "enabledLabel": "Allow SMS notifications to customers",
+      "enabledHint": "When off, the SMS column disappears from customers' notification preferences and no text is ever sent to a customer, no matter their own settings. When on, the column returns — off by default for anyone who hasn't explicitly turned it on."
     },
     "emails": {
       "title": "Email configuration",

@@ -10,6 +10,7 @@ import { CUSTOMER_EVENT_TYPES } from "@/lib/notifications/audience";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { accounts, users } from "@/lib/db/schema/auth";
+import { getSetting } from "@/lib/settings";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,7 +31,12 @@ export default async function PortalProfilePage() {
     .from(users)
     .where(eq(users.id, user.id))
     .limit(1);
-  const prefs = await listMyNotificationPreferences(CUSTOMER_EVENT_TYPES);
+  // Customer SMS defaults OFF (opt-in) for anyone who's never touched it —
+  // unlike every other channel/audience, which defaults on.
+  const [prefs, smsGloballyEnabled] = await Promise.all([
+    listMyNotificationPreferences(CUSTOMER_EVENT_TYPES, false),
+    getSetting<boolean>("customer_sms.enabled"),
+  ]);
   // image stores the R2 storage key; generate a 1-hour signed URL so the
   // browser can cache it for the session.
   const avatarUrl = profile?.image
@@ -88,7 +94,10 @@ export default async function PortalProfilePage() {
         <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
           {tNotifs("subtitle")}
         </p>
-        <CustomerNotificationPrefs initial={prefs} />
+        <CustomerNotificationPrefs
+          initial={prefs}
+          smsEnabled={smsGloballyEnabled ?? true}
+        />
       </div>
     </section>
   );

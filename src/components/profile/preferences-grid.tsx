@@ -33,10 +33,14 @@ export function PreferencesGrid({ initial }: Props) {
       ),
     );
     startTransition(async () => {
+      const row = rows.find((r) => r.eventType === eventType);
       const res = await updateNotificationPreference({
         eventType,
-        channel,
-        enabled: next,
+        emailEnabled: channel === "email" ? next : (row?.emailEnabled ?? true),
+        smsEnabled: channel === "sms" ? next : (row?.smsEnabled ?? true),
+        // Staff have no UI for this — always carry forward the current
+        // value so a toggle here never touches it.
+        inAppEnabled: row?.inAppEnabled ?? true,
       });
       if (!res.ok) {
         setError(res.error);

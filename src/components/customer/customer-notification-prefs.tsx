@@ -7,6 +7,7 @@ import {
   updateNotificationPreference,
 } from "@/app/actions/profile";
 import { CUSTOMER_EVENT_TYPES } from "@/lib/notifications/audience";
+import type { NotificationEventType } from "@/inngest/client";
 
 // Customer-facing notification events come from the shared role matrix
 // (src/lib/notifications/audience.ts) so the grid, the write-validation set,
@@ -18,21 +19,39 @@ const CUSTOMER_EVENTS = CUSTOMER_EVENT_TYPES;
 
 type Props = {
   initial: NotificationPrefRow[];
+  /** Master switch (customer_sms.enabled) — when off, the SMS column is
+   *  hidden entirely rather than shown-and-disabled, since no SMS will be
+   *  sent regardless of what the customer picks here. */
+  smsEnabled: boolean;
 };
 
-export function CustomerNotificationPrefs({ initial }: Props) {
+export function CustomerNotificationPrefs({ initial, smsEnabled }: Props) {
   const t = useTranslations("portal.profile.notifications");
   const [pending, startTransition] = useTransition();
 
   const byEvent = new Map(initial.map((r) => [r.eventType, r] as const));
 
   function toggle(
-    eventType: string,
-    channel: "email" | "sms",
+    eventType: NotificationEventType,
+    channel: "email" | "sms" | "inApp",
     next: boolean,
   ) {
+    const row = byEvent.get(eventType);
+    const current = {
+      emailEnabled: row?.emailEnabled ?? true,
+      smsEnabled: row?.smsEnabled ?? false,
+      inAppEnabled: row?.inAppEnabled ?? true,
+    };
+    const updated = {
+      ...current,
+      ...(channel === "email"
+        ? { emailEnabled: next }
+        : channel === "sms"
+          ? { smsEnabled: next }
+          : { inAppEnabled: next }),
+    };
     startTransition(async () => {
-      await updateNotificationPreference({ eventType, channel, enabled: next });
+      await updateNotificationPreference({ eventType, ...updated });
     });
   }
 
@@ -44,8 +63,13 @@ export function CustomerNotificationPrefs({ initial }: Props) {
           <th className="py-2 px-2 sm:px-4 font-medium text-center w-16 sm:w-auto">
             {t("emailColumn")}
           </th>
+          {smsEnabled ? (
+            <th className="py-2 px-2 sm:px-4 font-medium text-center w-16 sm:w-auto">
+              {t("smsColumn")}
+            </th>
+          ) : null}
           <th className="py-2 pl-2 sm:pl-4 font-medium text-center w-16 sm:w-auto">
-            {t("smsColumn")}
+            {t("inAppColumn")}
           </th>
         </tr>
       </thead>
@@ -53,7 +77,8 @@ export function CustomerNotificationPrefs({ initial }: Props) {
         {CUSTOMER_EVENTS.map((eventType) => {
           const row = byEvent.get(eventType);
           const email = row?.emailEnabled ?? true;
-          const sms = row?.smsEnabled ?? true;
+          const sms = row?.smsEnabled ?? false;
+          const inApp = row?.inAppEnabled ?? true;
           return (
             <tr
               key={eventType}
@@ -72,11 +97,19 @@ export function CustomerNotificationPrefs({ initial }: Props) {
                 onChange={(v) => toggle(eventType, "email", v)}
                 ariaLabel={t("emailColumn")}
               />
+              {smsEnabled ? (
+                <CheckCell
+                  checked={sms}
+                  disabled={pending}
+                  onChange={(v) => toggle(eventType, "sms", v)}
+                  ariaLabel={t("smsColumn")}
+                />
+              ) : null}
               <CheckCell
-                checked={sms}
+                checked={inApp}
                 disabled={pending}
-                onChange={(v) => toggle(eventType, "sms", v)}
-                ariaLabel={t("smsColumn")}
+                onChange={(v) => toggle(eventType, "inApp", v)}
+                ariaLabel={t("inAppColumn")}
               />
             </tr>
           );

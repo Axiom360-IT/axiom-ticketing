@@ -54,6 +54,11 @@ export const notificationPreferences = pgTable(
     eventType: text("event_type").notNull(),
     emailEnabled: boolean("email_enabled").notNull().default(true),
     smsEnabled: boolean("sms_enabled").notNull().default(true),
+    // In-app (bell) was unconditional until this column existed — default
+    // true preserves that behavior for every row that predates it (and for
+    // staff, who have no UI to change it). Only the customer prefs UI
+    // exposes a toggle for this.
+    inAppEnabled: boolean("in_app_enabled").notNull().default(true),
   },
   (t) => [primaryKey({ columns: [t.userId, t.eventType] })],
 );

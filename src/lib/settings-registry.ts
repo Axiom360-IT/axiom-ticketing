@@ -113,6 +113,15 @@ export const SETTING_SCHEMAS = {
   // of Better Auth's own reset-token TTL — see lib/customer/invite-token.ts.
   "customer_invite.expiry_hours": z.number().int().min(1).max(720),
 
+  // Master SMS switch for customers only (staff SMS is unaffected). When
+  // off: the SMS column disappears from the customer notification-prefs UI
+  // and no SMS — per-event or the profile phone-change confirmation text —
+  // is sent to any customer, regardless of their own per-event preference.
+  // When on, the column returns; per-event SMS defaults to OFF for a
+  // customer who's never touched it (opt-in), not on like every other
+  // channel — see dispatch-notification.ts and app/actions/profile.ts.
+  "customer_sms.enabled": z.boolean(),
+
   // Billing / accountant notifications (reqs 8.6–8.9). Accountants are OUR
   // platform's accountants (not per-organization contacts) — a global list of
   // email addresses (for negative-balance + ticket-billing alerts) and phone

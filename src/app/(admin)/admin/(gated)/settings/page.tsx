@@ -130,6 +130,7 @@ export default async function SettingsPage({
   const tRw = await getTranslations("settings.responseWindow");
   const tUa = await getTranslations("settings.unassignedAlert");
   const tCf = await getTranslations("settings.customerFollowup");
+  const tCsms = await getTranslations("settings.customerSms");
   const tEm = await getTranslations("settings.emails");
   const tFu = await getTranslations("settings.fileUpload");
   const tVs = await getTranslations("settings.virusScan");
@@ -367,6 +368,21 @@ export default async function SettingsPage({
                 hint={tCf("closeHint")}
                 initial={num(v["customer_followup.close_days"], 4)}
                 min={1}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{tCsms("title")}</CardTitle>
+              <CardDescription>{tCsms("subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <BooleanSettingForm
+                settingKey="customer_sms.enabled"
+                label={tCsms("enabledLabel")}
+                description={tCsms("enabledHint")}
+                initial={bool(v["customer_sms.enabled"], true)}
               />
             </CardContent>
           </Card>

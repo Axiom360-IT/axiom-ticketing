@@ -6,11 +6,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { auth } from "@/lib/auth";
+import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { notificationPreferences } from "@/lib/db/schema/notifications";
 import { checkRateLimit } from "@/lib/ratelimit";
+import { getSetting } from "@/lib/settings";
 import { sendSms } from "@/lib/sms/send";
 import { matchesMagicBytes } from "@/lib/storage/magic-bytes";
 import {
@@ -133,11 +135,19 @@ export async function updateProfile(
   // reason to the UI instead. Skipped when the number was cleared/unchanged.
   let smsNotice: { sent: boolean } | undefined;
   if (phoneValue && phoneValue !== before?.phone) {
+    // Customer SMS master switch (customer_sms.enabled) — staff are
+    // unaffected. Silently skipped, same as the rate-limit case below: the
+    // profile still saves, there's just no confirmation text.
+    const isCustomer = await productionContext.userHasRole(user.id, "Customer");
+    const customerSmsAllowed =
+      !isCustomer || ((await getSetting<boolean>("customer_sms.enabled")) ?? true);
     // Anti-abuse: cap confirmation texts per user so the profile phone field
     // can't be used to SMS-bomb an arbitrary number (toll fraud / harassment).
     // When over the limit we silently skip the text — the profile still saves.
     // Fails open in dev (no Upstash) so local testing is unaffected.
-    const { allowed } = await checkRateLimit("authConfirmationSms", user.id);
+    const { allowed } = customerSmsAllowed
+      ? await checkRateLimit("authConfirmationSms", user.id)
+      : { allowed: false };
     if (allowed) {
       try {
         const result = await sendSms({
@@ -329,10 +339,17 @@ export type NotificationPrefRow = {
   eventType: NotificationEventType;
   emailEnabled: boolean;
   smsEnabled: boolean;
+  inAppEnabled: boolean;
 };
 
 export async function listMyNotificationPreferences(
   events: readonly NotificationEventType[] = STAFF_EVENT_TYPES,
+  // Default for SMS on a row the user has never touched. Every other
+  // default (email, in-app, and SMS itself for staff) is "on" — the one
+  // exception is customers, who default to SMS off (opt-in, per
+  // customer_sms.enabled). The caller decides which audience it's asking
+  // for, same as the `events` list already does.
+  smsDefault: boolean = true,
 ): Promise<NotificationPrefRow[]> {
   const user = await requireSessionUser();
   const display = new Set<NotificationEventType>(events);
@@ -341,6 +358,7 @@ export async function listMyNotificationPreferences(
       eventType: notificationPreferences.eventType,
       emailEnabled: notificationPreferences.emailEnabled,
       smsEnabled: notificationPreferences.smsEnabled,
+      inAppEnabled: notificationPreferences.inAppEnabled,
     })
     .from(notificationPreferences)
     .where(eq(notificationPreferences.userId, user.id));
@@ -352,53 +370,57 @@ export async function listMyNotificationPreferences(
         eventType: r.eventType as NotificationEventType,
         emailEnabled: r.emailEnabled,
         smsEnabled: r.smsEnabled,
+        inAppEnabled: r.inAppEnabled,
       });
     }
   }
-  // Fill in defaults (email + SMS both on) for events the user has
-  // never touched, so the UI renders the full grid for this audience.
+  // Fill in defaults for events the user has never touched, so the UI
+  // renders the full grid for this audience.
   const out: NotificationPrefRow[] = [];
   for (const t of events) {
     out.push(
-      map.get(t) ?? { eventType: t, emailEnabled: true, smsEnabled: true },
+      map.get(t) ?? {
+        eventType: t,
+        emailEnabled: true,
+        smsEnabled: smsDefault,
+        inAppEnabled: true,
+      },
     );
   }
   return out;
 }
 
+// Full-row upsert rather than a single-channel delta: the caller always
+// sends its current (already-defaulted) view of all three channels, so a
+// first-ever write for an event captures what the UI actually displayed —
+// not a hardcoded default that could silently disagree with it (a real risk
+// now that SMS defaults differently by audience, see smsDefault above).
 export async function updateNotificationPreference(input: {
   eventType: string;
-  channel: "email" | "sms";
-  enabled: boolean;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  inAppEnabled: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!TOGGLEABLE_EVENT_TYPES.has(input.eventType as NotificationEventType)) {
     return { ok: false, error: "Unknown event type" };
   }
-  if (input.channel !== "email" && input.channel !== "sms") {
-    return { ok: false, error: "Unknown channel" };
-  }
   const user = await requireSessionUser();
 
-  const setValues =
-    input.channel === "email"
-      ? { emailEnabled: input.enabled }
-      : { smsEnabled: input.enabled };
+  const values = {
+    emailEnabled: input.emailEnabled,
+    smsEnabled: input.smsEnabled,
+    inAppEnabled: input.inAppEnabled,
+  };
 
   await db
     .insert(notificationPreferences)
-    .values({
-      userId: user.id,
-      eventType: input.eventType,
-      emailEnabled:
-        input.channel === "email" ? input.enabled : true,
-      smsEnabled: input.channel === "sms" ? input.enabled : true,
-    })
+    .values({ userId: user.id, eventType: input.eventType, ...values })
     .onConflictDoUpdate({
       target: [
         notificationPreferences.userId,
         notificationPreferences.eventType,
       ],
-      set: setValues,
+      set: values,
     });
 
   await audit({
@@ -406,7 +428,7 @@ export async function updateNotificationPreference(input: {
     action: "user.update_notification_preference",
     targetType: "notification_preference",
     targetId: `${user.id}:${input.eventType}`,
-    after: { channel: input.channel, enabled: input.enabled },
+    after: values,
   });
 
   revalidatePath("/admin/profile");
