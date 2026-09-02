@@ -17,6 +17,7 @@ import {
 import {
   downloadInboundAttachment,
   fetchResendInboundAttachments,
+  fetchResendInboundContent,
 } from "@/lib/email/fetch-inbound";
 import {
   extractTicketNumber,
@@ -168,7 +169,37 @@ export const processInboundEmail = inngest.createFunction(
     idempotency: "event.data.eventId",
   },
   async ({ event, step }) => {
-    const { payload, eventId } = event.data as EventData;
+    const eventData = event.data as EventData;
+    const { eventId } = eventData;
+    let payload = eventData.payload;
+
+    // The webhook route sends this event WITHOUT the body/headers — Resend's
+    // `email.received` webhook is metadata-only, and fetching+inlining the
+    // full content at webhook time used to blow past Inngest's per-event
+    // payload cap (256KiB-3MiB depending on plan) on long Outlook threads
+    // with several inline images, silently losing the reply (see
+    // app/api/email/inbound/route.ts). Fetch it here instead: a plain
+    // outbound fetch from a background function has no such ceiling, and a
+    // transient Resend API failure just retries this step (this function's
+    // `retries: 2`) rather than depending on Resend's own webhook redelivery.
+    if (payload.providerEmailId) {
+      const emailId = payload.providerEmailId;
+      const content = await step.run("fetch-email-content", async () => {
+        const fetched = await fetchResendInboundContent(emailId);
+        if (!fetched) {
+          throw new Error(
+            `failed to fetch content for inbound email ${emailId}`,
+          );
+        }
+        return fetched;
+      });
+      payload = {
+        ...payload,
+        text: content.text,
+        html: content.html,
+        headers: content.headers,
+      };
+    }
 
     const appUrl = getAppUrl();
     const newTicketUrl = `${appUrl}/portal/submit`;

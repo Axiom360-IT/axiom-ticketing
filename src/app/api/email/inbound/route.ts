@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { processedWebhookEvents } from "@/lib/db/schema/webhooks";
-import { fetchResendInboundContent } from "@/lib/email/fetch-inbound";
 import {
   normalizeResendInbound,
   type ResendInboundPayload,
@@ -91,36 +90,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     return new Response("Bad payload", { status: 200 });
   }
 
-  // Resend's `email.received` webhook is metadata-only — the body, headers and
-  // attachments are NOT in the payload and must be fetched from the Receiving
-  // API by id. Without this the message body is empty and every reply is
-  // dropped as "empty-body". The fetched headers also restore the sender-auth
-  // (DMARC/DKIM/SPF) verdict used for anti-spoofing.
-  const emailId = payload.data?.email_id ?? payload.data?.id;
-  if (emailId) {
-    const content = await fetchResendInboundContent(emailId);
-    if (!content) {
-      // Couldn't retrieve the body — roll back the idempotency marker and 500
-      // so Resend retries this delivery rather than losing the reply (req 5.1).
-      await db
-        .delete(processedWebhookEvents)
-        .where(
-          and(
-            eq(processedWebhookEvents.provider, PROVIDER),
-            eq(processedWebhookEvents.eventId, id),
-          ),
-        )
-        .catch(() => {});
-      return new Response("Content fetch failed", { status: 500 });
-    }
-    payload.data = {
-      ...payload.data,
-      text: content.text,
-      html: content.html,
-      headers: content.headers,
-    };
-  }
-
+  // Resend's `email.received` webhook is metadata-only — the body, headers,
+  // and attachments are NOT in this payload. We used to fetch them here
+  // (GET /emails/receiving/{id}) and inline the full text/html into the
+  // Inngest event below — but Inngest caps event payload size (256KiB on
+  // Free, 512KiB on Basic, 3MiB on Pro), and a long Outlook thread carrying
+  // several inline images routinely produces bloated HTML that blows past
+  // that cap. When it does, `inngest.send()` rejects the event, this handler
+  // 500s ("Enqueue failed"), and the reply never gets threaded or ticketed —
+  // deterministically, so Resend's redelivery retries fail identically every
+  // time. Fetching the full content is now deferred to
+  // `process-inbound-email` itself (inside a retried `step.run`), since a
+  // plain outbound fetch from a background function has no comparable size
+  // ceiling. This handler only needs enough of the raw payload to confirm
+  // there's a real sender before enqueueing.
   const normalized = normalizeResendInbound(payload);
   if (!normalized) {
     console.warn("[email/inbound] payload has no usable sender; dropping");

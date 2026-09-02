@@ -5,6 +5,18 @@ entries go at the top; date them.
 
 ---
 
+## 2026-09-03 · Production bug: inbound emails silently dropped — content fetch moved out of the webhook route
+
+Reported symptom: some inbound emails (both direct and forwarded) never created or threaded a ticket. Resend's own delivery log for the `email.received` webhook showed a 500 response with body **"Enqueue failed"** for the affected deliveries, retried and failing identically every time.
+
+**Root cause.** `app/api/email/inbound/route.ts` used to call `fetchResendInboundContent(emailId)` (Resend's inbound webhook is metadata-only — body/headers must be fetched separately via `GET /emails/receiving/{id}`) and inline the full `text`/`html`/`headers` into the `email/inbound.received` event before calling `inngest.send()`. Inngest enforces a per-event payload cap — **256KiB (Free) / 512KiB (Basic) / 3MiB (Pro)** — and a long Outlook `Fw:`/`Re:` thread carrying several **inline** images (the two reported cases: a 3-inline-image forward and a 21-inline-image reply chain) routinely produces bloated HTML (MSO conditional markup, accumulated quoted history) that exceeds it. `inngest.send()` then throws, the route's catch block rolls back the idempotency row and returns `500 "Enqueue failed"` (`route.ts` line ~150 at the time) — deterministic, so every one of Resend's automatic redelivery attempts fails the same way and the email is permanently lost from the app's point of view unless someone notices it in Resend's dashboard. Short plain-text emails stayed under the cap and worked fine, which is why this only affected "some" emails.
+
+**Fix.** Moved the content fetch out of the webhook route and into `process-inbound-email` itself, inside a `step.run("fetch-email-content", …)` at the very top of the function (before ticket-number/thread resolution, since those also read `payload.headers`). The route now only calls `normalizeResendInbound` on the raw (still metadata-only) payload — just enough to confirm there's a real sender — before enqueueing; the event it sends carries no `text`/`html`/`headers` at all, so its size is now a small, fixed footprint regardless of the email's actual content. A plain outbound `fetch()` from inside an Inngest function has no comparable size ceiling. A transient Resend API failure inside the step throws, which Inngest retries per this function's existing `retries: 2` — the same "never silently lose a reply" guarantee the old webhook-side 500-and-rely-on-Resend's-redelivery approach was going for, just via a retry channel we actually control instead of depending on Resend to keep retrying a webhook delivery. The `"Content fetch failed"` 500 path in the route is gone entirely (nothing left there to fail on that axis).
+
+**Not fixed by this change:** the two specific customer emails reported (from `e.rueca@axiom360.it` and `mwilson@golfcanada.ca`) already exhausted Resend's redelivery attempts before the fix shipped — they need to be manually recreated as tickets (or replayed from Resend's dashboard if it offers a manual redelivery action for a past event) since Resend won't retry a delivery it's already given up on.
+
+---
+
 ## 2026-08-19 · Coordinator + Super Admin now receive every staff-facing notification
 
 Explicit ask: Super Admin (and, on follow-up, Coordinator too) should see
