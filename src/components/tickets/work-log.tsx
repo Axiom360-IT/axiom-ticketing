@@ -9,13 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   addWorkLogEntry,
   deleteWorkLogEntry,
 } from "@/app/actions/work-logs";
@@ -63,7 +56,6 @@ export function WorkLog({
   const [description, setDescription] = useState("");
   const [hours, setHours] = useState("");
   const [minutes, setMinutes] = useState("");
-  const [serviceType, setServiceType] = useState("remote");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pendingDelete, startDelete] = useTransition();
@@ -84,7 +76,6 @@ export function WorkLog({
     const res = await addWorkLogEntry(ticketId, {
       description: description.trim(),
       minutes: totalMins,
-      serviceType: serviceType as "onsite" | "remote",
     });
     setSubmitting(false);
     if (!res.ok) {
@@ -94,7 +85,6 @@ export function WorkLog({
     setDescription("");
     setHours("");
     setMinutes("");
-    setServiceType("remote");
     router.refresh();
   }
 
@@ -138,7 +128,9 @@ export function WorkLog({
                       service:
                         entry.serviceType === "onsite"
                           ? t("serviceOnsite")
-                          : t("serviceRemote"),
+                          : entry.serviceType === "hybrid"
+                            ? t("serviceHybrid")
+                            : t("serviceRemote"),
                       technician: entry.technicianName ?? t("unknownTech"),
                       date: format.dateTime(entry.createdAt, {
                         dateStyle: "medium",
@@ -183,12 +175,8 @@ export function WorkLog({
             />
           </div>
           <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
-            {/* Labels share row 1, controls share row 2 — keeps the two field
-                groups aligned regardless of their individual heights. */}
-            <div className="grid w-fit grid-cols-[auto_auto] items-end gap-x-5 gap-y-1.5">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="wl-hours">{t("timeLabel")}</Label>
-              <Label htmlFor="wl-service">{t("serviceTypeLabel")}</Label>
-
               <div className="flex items-center gap-1.5">
                 <Input
                   id="wl-hours"
@@ -217,23 +205,6 @@ export function WorkLog({
                   {t("minutesShort")}
                 </span>
               </div>
-
-              <Select
-                items={{
-                  remote: t("serviceRemote"),
-                  onsite: t("serviceOnsite"),
-                }}
-                value={serviceType}
-                onValueChange={(v) => setServiceType(v ?? "remote")}
-              >
-                <SelectTrigger id="wl-service" className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="remote">{t("serviceRemote")}</SelectItem>
-                  <SelectItem value="onsite">{t("serviceOnsite")}</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <Button type="submit" disabled={submitting}>

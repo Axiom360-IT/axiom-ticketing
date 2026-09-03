@@ -15,8 +15,6 @@ import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 import { notifyBalanceChanged } from "@/lib/billing/events";
 import { loadTicketScope } from "@/lib/tickets/load";
 
-const SERVICE_TYPES = ["onsite", "remote"] as const;
-
 const addSchema = z.object({
   description: z.string().trim().min(1, "Describe the work done").max(2000),
   // Duration in minutes; up to 24h per entry.
@@ -25,7 +23,10 @@ const addSchema = z.object({
     .int()
     .positive("Time spent must be greater than zero")
     .max(1440, "A single entry can't exceed 24 hours"),
-  serviceType: z.enum(SERVICE_TYPES),
+  // No `serviceType` here — it's no longer chosen per entry. addWorkLogEntry
+  // snapshots the TICKET's current service type onto the new row (see below);
+  // updateWorkLogEntry never touches the column at all, since it's a frozen
+  // snapshot, not an editable field.
 });
 
 // Edit shares the same field rules as add.
@@ -75,7 +76,11 @@ export async function addWorkLogEntry(
       technicianName: me?.name ?? null,
       description: data.description,
       minutes: data.minutes,
-      serviceType: data.serviceType,
+      // Snapshot of the ticket's CURRENT service type at the moment this
+      // entry is logged — not client-supplied. Does not change retroactively
+      // if the ticket's service type is edited later (frozen history, same
+      // as technicianName).
+      serviceType: ticket.serviceType,
       createdById: user.id,
     });
     // Keep the Monthly-Plan balance in sync (no-op unless the ticket is
@@ -93,7 +98,7 @@ export async function addWorkLogEntry(
     targetId: ticket.ticketNumber,
     after: {
       minutes: data.minutes,
-      serviceType: data.serviceType,
+      serviceType: ticket.serviceType,
     },
   });
 
@@ -103,8 +108,11 @@ export async function addWorkLogEntry(
 }
 
 /**
- * Edit an existing work-log entry's description, duration, or service type.
- * Scoped exactly like add/delete: the caller must be able to act on the
+ * Edit an existing work-log entry's description or duration. Service type is
+ * NOT editable here — it's a frozen snapshot taken when the entry was logged
+ * (see addWorkLogEntry), left untouched even if the ticket's service type
+ * changes later. Scoped exactly like add/delete: the caller must be able to
+ * act on the
  * underlying ticket (`tickets.update`), which confines a strict technician
  * to their own assigned/collaborated tickets while letting elevated roles
  * (and Super Admin) correct any entry.
@@ -171,7 +179,6 @@ export async function updateWorkLogEntry(
       .set({
         description: data.description,
         minutes: data.minutes,
-        serviceType: data.serviceType,
         updatedAt: sql`now()`,
       })
       .where(eq(workLogs.id, workLogId));
@@ -186,7 +193,7 @@ export async function updateWorkLogEntry(
     targetType: "ticket",
     targetId: ticket.ticketNumber,
     before: { minutes: entry.minutes },
-    after: { minutes: data.minutes, serviceType: data.serviceType },
+    after: { minutes: data.minutes },
   });
 
   revalidatePath(`/admin/tickets/${ticket.id}`);

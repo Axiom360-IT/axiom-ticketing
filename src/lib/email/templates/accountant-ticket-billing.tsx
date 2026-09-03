@@ -1,5 +1,6 @@
 import { Link, Section, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import type { BillingCategory, BillingStatus } from "@/lib/billing/outcome";
 import { EmailLayout, textStyles } from "./_layout";
 
@@ -36,10 +37,11 @@ export async function AccountantTicketBillingEmail({
   ticketUrl,
   locale,
 }: AccountantTicketBillingProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "accountantTicketBilling",
     locale,
-    namespace: "emails.accountantTicketBilling",
-  });
+    await getTranslations({ locale, namespace: "emails.accountantTicketBilling" }),
+  );
   const categoryLabel = t(`categories.${category}` as `categories.${BillingCategory}`);
   const statusLine = t(`status.${status}` as `status.${BillingStatus}`, {
     overHours,

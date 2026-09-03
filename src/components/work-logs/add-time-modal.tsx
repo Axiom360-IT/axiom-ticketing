@@ -30,7 +30,12 @@ import {
 } from "@/components/work-logs/work-log-fields";
 import { addWorkLogEntry } from "@/app/actions/work-logs";
 
-type LoggableTicket = { id: string; ticketNumber: string; subject: string };
+type LoggableTicket = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  serviceType: string;
+};
 
 export function AddTimeModal({ tickets }: { tickets: LoggableTicket[] }) {
   const router = useRouter();
@@ -48,6 +53,14 @@ export function AddTimeModal({ tickets }: { tickets: LoggableTicket[] }) {
   const ticketLabels = Object.fromEntries(
     tickets.map((tk) => [tk.id, `${tk.ticketNumber} · ${tk.subject}`]),
   );
+  const selectedTicket = tickets.find((tk) => tk.id === ticketId);
+  const selectedServiceTypeLabel = selectedTicket
+    ? selectedTicket.serviceType === "onsite"
+      ? tWorkLog("serviceOnsite")
+      : selectedTicket.serviceType === "hybrid"
+        ? tWorkLog("serviceHybrid")
+        : tWorkLog("serviceRemote")
+    : null;
 
   function reset() {
     setTicketId("");
@@ -71,7 +84,6 @@ export function AddTimeModal({ tickets }: { tickets: LoggableTicket[] }) {
       const res = await addWorkLogEntry(ticketId, {
         description: form.description.trim(),
         minutes: mins,
-        serviceType: form.serviceType as "onsite" | "remote",
       });
       if (!res.ok) {
         setError(res.error);
@@ -131,6 +143,15 @@ export function AddTimeModal({ tickets }: { tickets: LoggableTicket[] }) {
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedServiceTypeLabel ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {tWorkLog("serviceTypeLabel")}:{" "}
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                      {selectedServiceTypeLabel}
+                    </span>{" "}
+                    — {t("serviceTypeSetOnTicket")}
+                  </p>
+                ) : null}
               </div>
 
               <WorkLogFields

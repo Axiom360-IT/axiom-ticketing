@@ -1,5 +1,6 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Three emoji feedback buttons. Colors mirror the in-app emoji picker
@@ -47,10 +48,11 @@ export async function TicketResolvedEmail({
   trackingUrl,
   locale,
 }: TicketResolvedProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketResolved",
     locale,
-    namespace: "emails.ticketResolved",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketResolved" }),
+  );
   const paragraphs = resolutionNote
     .split(/\n\s*\n/)
     .filter((p) => p.trim().length > 0);

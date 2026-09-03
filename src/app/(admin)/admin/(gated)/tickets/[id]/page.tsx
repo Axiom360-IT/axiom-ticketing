@@ -17,6 +17,7 @@ import {
   CategoryBadge,
   EscalatedBadge,
   PriorityBadge,
+  ServiceTypeBadge,
   StatusBadge,
   TypeBadge,
 } from "@/components/tickets/badges";
@@ -42,6 +43,7 @@ import { listActiveParticipants } from "@/lib/tickets/participants";
 import { getLatestTicketReview } from "@/lib/tickets/reviews";
 import { TicketCategoryControl } from "@/components/tickets/ticket-category-control";
 import { TicketTypeControl } from "@/components/tickets/ticket-type-control";
+import { TicketServiceTypeControl } from "@/components/tickets/ticket-service-type-control";
 import {
   getCategoryLabelMap,
   loadActiveTicketCategories,
@@ -755,6 +757,25 @@ export default async function TicketDetailPage({
                   category={ticket.category}
                   label={categoryLabel}
                 />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {t("serviceTypeTitle")}
+                <InfoHint label={t("serviceTypeHelp")} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {canUpdate ? (
+                <TicketServiceTypeControl
+                  ticketId={ticket.id}
+                  current={ticket.serviceType}
+                />
+              ) : (
+                <ServiceTypeBadge serviceType={ticket.serviceType} />
               )}
             </CardContent>
           </Card>

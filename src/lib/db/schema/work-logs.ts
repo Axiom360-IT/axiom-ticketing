@@ -40,7 +40,11 @@ export const workLogs = pgTable(
     description: text("description").notNull(),
     // Duration in minutes (e.g. 90 = 1h30m). Always > 0 (CHECK below).
     minutes: integer("minutes").notNull(),
-    // On-site vs remote — selected by the technician per entry.
+    // On-site / remote / hybrid — no longer chosen per entry. Snapshots
+    // whatever `tickets.serviceType` was set to at the moment this entry was
+    // logged (same frozen-history pattern as `technicianName` above), so it
+    // does NOT change retroactively if the ticket's service type is later
+    // edited.
     serviceType: text("service_type").notNull(),
     createdById: uuid("created_by_id").references(() => users.id, {
       onDelete: "set null",
@@ -59,7 +63,7 @@ export const workLogs = pgTable(
     check("work_logs_minutes_check", sql`${t.minutes} > 0`),
     check(
       "work_logs_service_type_check",
-      sql`${t.serviceType} IN ('onsite','remote')`,
+      sql`${t.serviceType} IN ('onsite','remote','hybrid')`,
     ),
   ],
 );

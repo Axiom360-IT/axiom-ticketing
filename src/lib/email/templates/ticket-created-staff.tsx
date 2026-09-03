@@ -1,5 +1,6 @@
 import { Hr, Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Staff-facing "a new ticket arrived" alert. Distinct from the customer-facing
@@ -21,10 +22,11 @@ export async function TicketCreatedStaffEmail({
   adminUrl,
   locale,
 }: TicketCreatedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketCreatedStaff",
     locale,
-    namespace: "emails.ticketCreatedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketCreatedStaff" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber, customerName })}

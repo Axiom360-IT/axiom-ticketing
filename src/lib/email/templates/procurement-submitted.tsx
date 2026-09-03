@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type ProcurementSubmittedProps = {
@@ -21,10 +22,11 @@ export async function ProcurementSubmittedEmail({
   adminUrl,
   locale,
 }: ProcurementSubmittedProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "procurementSubmitted",
     locale,
-    namespace: "emails.procurementSubmitted",
-  });
+    await getTranslations({ locale, namespace: "emails.procurementSubmitted" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { itemName })}

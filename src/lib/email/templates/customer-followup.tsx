@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type CustomerFollowupProps = {
@@ -21,10 +22,11 @@ export async function CustomerFollowupEmail({
   closeDate,
   locale,
 }: CustomerFollowupProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "customerFollowup",
     locale,
-    namespace: "emails.customerFollowup",
-  });
+    await getTranslations({ locale, namespace: "emails.customerFollowup" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

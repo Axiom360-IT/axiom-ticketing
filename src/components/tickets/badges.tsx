@@ -233,3 +233,32 @@ export function CategoryBadge({
     </span>
   );
 }
+
+// Ticket-level service type (onsite / remote / hybrid). Fixed 3-value enum,
+// not admin-managed, so labels come straight from tickets.workLog.
+export function ServiceTypeBadge({
+  serviceType,
+  className,
+}: {
+  serviceType: string;
+  className?: string;
+}) {
+  const t = useTranslations("tickets.workLog");
+  const display =
+    serviceType === "onsite"
+      ? t("serviceOnsite")
+      : serviceType === "hybrid"
+        ? t("serviceHybrid")
+        : t("serviceRemote");
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+        "bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300",
+        className,
+      )}
+    >
+      {display}
+    </span>
+  );
+}

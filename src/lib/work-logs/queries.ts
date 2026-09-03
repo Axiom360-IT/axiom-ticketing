@@ -80,7 +80,7 @@ function buildConditions(user: SessionUser, filters: WorkLogFilters): SQL[] {
   if (orgs.length > 0) conditions.push(inArray(tickets.organizationId, orgs));
 
   const services = parseCsv(filters.serviceType).filter(
-    (s) => s === "onsite" || s === "remote",
+    (s) => s === "onsite" || s === "remote" || s === "hybrid",
   );
   if (services.length > 0) {
     conditions.push(inArray(workLogs.serviceType, services));
@@ -201,15 +201,18 @@ export async function listWorkLogs(
 /** Tickets the caller can log time against from the timesheet "Add time"
  *  picker: tickets assigned to them or where they collaborate, that aren't
  *  closed. The add action re-checks `tickets.update`, so this is purely a
- *  convenience shortlist. */
-export async function listLoggableTickets(
-  userId: string,
-): Promise<{ id: string; ticketNumber: string; subject: string }[]> {
+ *  convenience shortlist. Includes each ticket's `serviceType` so the modal
+ *  can show it read-only once a ticket is picked — service type is no longer
+ *  chosen per log entry. */
+export async function listLoggableTickets(userId: string): Promise<
+  { id: string; ticketNumber: string; subject: string; serviceType: string }[]
+> {
   const rows = await db
     .selectDistinct({
       id: tickets.id,
       ticketNumber: tickets.ticketNumber,
       subject: tickets.subject,
+      serviceType: tickets.serviceType,
       updatedAt: tickets.updatedAt,
     })
     .from(tickets)
@@ -226,10 +229,11 @@ export async function listLoggableTickets(
     .orderBy(desc(tickets.updatedAt))
     .limit(100);
 
-  return rows.map(({ id, ticketNumber, subject }) => ({
+  return rows.map(({ id, ticketNumber, subject, serviceType }) => ({
     id,
     ticketNumber,
     subject,
+    serviceType,
   }));
 }
 

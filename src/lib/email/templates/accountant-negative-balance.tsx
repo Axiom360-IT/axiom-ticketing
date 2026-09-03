@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Accountant alert when an organization's Monthly-Plan balance goes negative
@@ -22,10 +23,11 @@ export async function AccountantNegativeBalanceEmail({
   orgUrl,
   locale,
 }: AccountantNegativeBalanceProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "accountantNegativeBalance",
     locale,
-    namespace: "emails.accountantNegativeBalance",
-  });
+    await getTranslations({ locale, namespace: "emails.accountantNegativeBalance" }),
+  );
   return (
     <EmailLayout preview={t("preview", { orgName })} title={t("title")} locale={locale}>
       <Text style={textStyles.body}>{t("body", { orgName, overHours })}</Text>

@@ -2367,6 +2367,57 @@ export async function setTicketType(
   return { ok: true };
 }
 
+// ── Set the ticket's service type ────────────────────────────────────
+//
+// Onsite / remote / hybrid, set once on the ticket itself (not a fixed admin
+// taxonomy like category/type — just a closed 3-value enum). Work-log entries
+// no longer choose this per entry; each new entry snapshots whatever this
+// value is at the moment it's logged (see addWorkLogEntry).
+
+const TICKET_SERVICE_TYPES = ["onsite", "remote", "hybrid"] as const;
+export type TicketServiceType = (typeof TICKET_SERVICE_TYPES)[number];
+
+export async function setTicketServiceType(
+  ticketId: string,
+  serviceType: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireSessionUser();
+  const ticket = await loadTicketScope(ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  if (!TICKET_SERVICE_TYPES.includes(serviceType as TicketServiceType)) {
+    return { ok: false, error: "Invalid service type." };
+  }
+  if (ticket.serviceType === serviceType) return { ok: true };
+
+  await db
+    .update(tickets)
+    .set({ serviceType, updatedAt: new Date() })
+    .where(eq(tickets.id, ticket.id));
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.service_type_change",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { serviceType: ticket.serviceType },
+    after: { serviceType },
+  });
+
+  revalidatePath("/admin/tickets");
+  revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
 // ── Change the ticket's customer ─────────────────────────────────────
 //
 // When a staff member forwards a customer's email into the system, the ticket

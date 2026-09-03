@@ -1,5 +1,6 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Staff-facing "the customer replied" email. Distinct from the customer-facing
@@ -23,10 +24,11 @@ export async function CustomerRepliedStaffEmail({
   ticketUrl,
   locale,
 }: CustomerRepliedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "customerRepliedStaff",
     locale,
-    namespace: "emails.customerRepliedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.customerRepliedStaff" }),
+  );
   const paragraphs = body.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
 
   return (

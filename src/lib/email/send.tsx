@@ -2,6 +2,7 @@ import { render } from "@react-email/render";
 import { getTranslations } from "next-intl/server";
 import { resend } from "./client";
 import { buildOutboundMessageId } from "./message-id";
+import { withEmailOverrides } from "./template-text";
 import { getSetting } from "../settings";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import {
@@ -425,7 +426,15 @@ async function defaultSubject(
   locale: AppLocale,
 ): Promise<string> {
   const namespace = TEMPLATE_NAMESPACE[t.template];
-  const tr = await getTranslations({ locale, namespace });
+  // Subjects live in the same per-template namespace as the body copy, and are
+  // rendered here rather than inside the component — so they need the same
+  // admin-override pass the template bodies get (`emails.<key>` minus the
+  // "emails." prefix is the override table's template_key).
+  const tr = await withEmailOverrides(
+    namespace.slice("emails.".length),
+    locale,
+    await getTranslations({ locale, namespace }),
+  );
   // Pass every primitive field on the template data as a placeholder
   // value — next-intl ignores keys that aren't referenced by the message,
   // so each template can pick whichever fields it needs (ticketNumber,

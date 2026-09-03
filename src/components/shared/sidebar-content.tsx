@@ -15,6 +15,7 @@ import {
   Layers,
   LayoutDashboard,
   LifeBuoy,
+  Mail,
   MailWarning,
   Settings,
   Shield,
@@ -50,6 +51,7 @@ type NavLabelKey =
   | "navCategories"
   | "navTypes"
   | "navVendors"
+  | "navEmailTemplates"
   | "navAudit";
 
 type GroupLabelKey =
@@ -126,6 +128,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/categories", labelKey: "navCategories", icon: Tags, color: "text-pink-400", requires: "settings.update" },
       { href: "/admin/types", labelKey: "navTypes", icon: Layers, color: "text-sky-400", requires: "settings.update" },
       { href: "/admin/vendors", labelKey: "navVendors", icon: Store, color: "text-lime-400", requires: "settings.update" },
+      { href: "/admin/email-templates", labelKey: "navEmailTemplates", icon: Mail, color: "text-rose-400", requires: "settings.update" },
       { href: "/admin/settings", labelKey: "navSettings", icon: Settings, color: "text-indigo-400", requires: "settings.view" },
     ],
   },

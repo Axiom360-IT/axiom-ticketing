@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type CsatUnsatisfiedStaffProps = {
@@ -17,10 +18,11 @@ export async function CsatUnsatisfiedStaffEmail({
   ticketUrl,
   locale,
 }: CsatUnsatisfiedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "csatUnsatisfiedStaff",
     locale,
-    namespace: "emails.csatUnsatisfiedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.csatUnsatisfiedStaff" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

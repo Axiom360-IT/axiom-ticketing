@@ -2,6 +2,7 @@
 
 import { type ChangeEvent, useRef, useState } from "react";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { getCountries, getCountryCallingCode } from "react-phone-number-input";
 import countryLabels from "react-phone-number-input/locale/en.json";
@@ -94,6 +95,24 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
     if (!file) return;
     setText(await file.text());
     e.target.value = "";
+  }
+
+  // Client-side only — mirrors exactly the 3 columns parseImportRows()
+  // reads (name, email, phone). The header row is recognized and skipped
+  // automatically by the parser, same as any header a real export tool
+  // would produce.
+  function downloadTemplate() {
+    const csv =
+      "Name,Email,Phone\r\nJamie Client,jamie@example.com,+14165550123\r\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "customer-import-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function handlePreview() {
@@ -436,6 +455,51 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("pasteHint")}</p>
+
+        <div className="space-y-2 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">{t("requirementsTitle")}</h3>
+            <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="h-4 w-4" />
+              {t("downloadTemplateButton")}
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("requirementsColColumn")}</TableHead>
+                  <TableHead>{t("requirementsColNotes")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-medium">
+                    {t("fieldName")} <span className="text-red-500">*</span>
+                  </TableCell>
+                  <TableCell className="text-zinc-500 dark:text-zinc-400">
+                    {t("requiredNameNote")}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">
+                    {t("fieldEmail")} <span className="text-red-500">*</span>
+                  </TableCell>
+                  <TableCell className="text-zinc-500 dark:text-zinc-400">
+                    {t("requiredEmailNote")}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t("fieldPhone")}</TableCell>
+                  <TableCell className="text-zinc-500 dark:text-zinc-400">
+                    {t("optionalPhoneNote")}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="import-text">{t("textareaLabel")}</Label>
           <Textarea

@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Customer-facing counterpart to attachment-quarantined. When the uploader is
@@ -22,10 +23,11 @@ export async function AttachmentRemovedCustomerEmail({
   portalUrl,
   locale,
 }: AttachmentRemovedCustomerProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "attachmentRemovedCustomer",
     locale,
-    namespace: "emails.attachmentRemovedCustomer",
-  });
+    await getTranslations({ locale, namespace: "emails.attachmentRemovedCustomer" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

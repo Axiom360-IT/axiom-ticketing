@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Sent when a customer replies to a ticket that's already closed. We
@@ -19,10 +20,11 @@ export async function InboundClosedTicketEmail({
   newTicketUrl,
   locale,
 }: InboundClosedTicketProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "inboundClosedTicket",
     locale,
-    namespace: "emails.inboundClosedTicket",
-  });
+    await getTranslations({ locale, namespace: "emails.inboundClosedTicket" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

@@ -27,6 +27,13 @@ export const tickets = pgTable(
     // "service_request" so existing rows and untriaged tickets have a value.
     // Validated in the app layer against the active types (like category).
     type: text("type").notNull().default("service_request"),
+    // Delivery mode for the ticket as a whole: onsite | remote | hybrid.
+    // Replaces the old per-work-log-entry picker — a technician logging work
+    // no longer chooses this per entry, they inherit whatever the ticket is
+    // currently set to (see work_logs.serviceType). Defaults to 'remote' so
+    // every ticket (including pre-existing rows, backfilled by migration)
+    // has a value; changeable from the ticket sidebar like type/category.
+    serviceType: text("service_type").notNull().default("remote"),
     priority: text("priority").notNull(),
     status: text("status").notNull().default("open"),
     stream: text("stream").notNull(),
@@ -212,6 +219,10 @@ export const tickets = pgTable(
     check(
       "tickets_escalation_reason_check",
       sql`${t.escalationReason} IS NULL OR ${t.escalationReason} IN ('beyond_scope','requires_access','critical_impact','vendor_involvement','other')`,
+    ),
+    check(
+      "tickets_service_type_check",
+      sql`${t.serviceType} IN ('onsite','remote','hybrid')`,
     ),
   ],
 );

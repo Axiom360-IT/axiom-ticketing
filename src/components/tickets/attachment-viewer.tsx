@@ -15,6 +15,20 @@ const PdfViewerModal = dynamic(
   () => import("./pdf-viewer-modal").then((m) => m.PdfViewerModal),
   { ssr: false },
 );
+// Video/unsupported-preview modals are lightweight (no heavy client-only
+// lib), but loaded on demand too so they never inflate the thread's initial
+// bundle for a preview most messages won't need.
+const VideoViewerModal = dynamic(
+  () => import("./video-viewer-modal").then((m) => m.VideoViewerModal),
+  { ssr: false },
+);
+const UnsupportedPreviewModal = dynamic(
+  () =>
+    import("./unsupported-preview-modal").then(
+      (m) => m.UnsupportedPreviewModal,
+    ),
+  { ssr: false },
+);
 
 export type ViewerAttachment = {
   id: string;
@@ -35,12 +49,31 @@ function isImage(mime: string): boolean {
 function isPdf(mime: string): boolean {
   return mime.toLowerCase() === "application/pdf";
 }
+function isVideo(mime: string): boolean {
+  return mime.toLowerCase().startsWith("video/");
+}
+// Office formats have no general-purpose in-browser renderer — these open the
+// "preview unavailable, download instead" modal rather than a silent
+// new-tab fallback (see UnsupportedPreviewModal).
+const OFFICE_MIME_TYPES = new Set([
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+function isOfficeDoc(mime: string): boolean {
+  return OFFICE_MIME_TYPES.has(mime.toLowerCase());
+}
 
 /**
  * Shared attachment renderer for every conversation thread (admin + portal +
- * guest). Images become thumbnails that open a zoomable lightbox; PDFs open an
- * inline preview; anything else downloads. The only thing that differs per
- * surface is how a signed URL is obtained — injected via `resolveUrl`.
+ * guest). Images become thumbnails that open a zoomable lightbox; PDFs and
+ * videos open an inline preview; Office docs open a "preview unavailable,
+ * download instead" modal; anything else downloads directly. The only thing
+ * that differs per surface is how a signed URL is obtained — injected via
+ * `resolveUrl`.
  */
 export function AttachmentViewer({
   items,
@@ -59,6 +92,13 @@ export function AttachmentViewer({
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
+  const [video, setVideo] = useState<{ url: string; fileName: string } | null>(
+    null,
+  );
+  const [unsupported, setUnsupported] = useState<{
+    url: string;
+    fileName: string;
+  } | null>(null);
 
   const imageIdKey = images.map((a) => a.id).join(",");
 
@@ -114,6 +154,10 @@ export function AttachmentViewer({
     if (!url) return;
     if (isPdf(a.mimeType)) {
       setPdf({ url, fileName: a.fileName });
+    } else if (isVideo(a.mimeType)) {
+      setVideo({ url, fileName: a.fileName });
+    } else if (isOfficeDoc(a.mimeType)) {
+      setUnsupported({ url, fileName: a.fileName });
     } else {
       window.open(url, "_blank", "noopener,noreferrer");
     }
@@ -185,6 +229,10 @@ export function AttachmentViewer({
                   <span className="rounded bg-blue-100 px-1 py-px text-[10px] font-medium uppercase text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                     PDF
                   </span>
+                ) : isVideo(a.mimeType) ? (
+                  <span className="rounded bg-purple-100 px-1 py-px text-[10px] font-medium uppercase text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                    VIDEO
+                  </span>
                 ) : (
                   <Download
                     className="size-3.5 text-zinc-400"
@@ -217,6 +265,22 @@ export function AttachmentViewer({
           url={pdf.url}
           fileName={pdf.fileName}
           onClose={() => setPdf(null)}
+        />
+      ) : null}
+
+      {video ? (
+        <VideoViewerModal
+          url={video.url}
+          fileName={video.fileName}
+          onClose={() => setVideo(null)}
+        />
+      ) : null}
+
+      {unsupported ? (
+        <UnsupportedPreviewModal
+          url={unsupported.url}
+          fileName={unsupported.fileName}
+          onClose={() => setUnsupported(null)}
         />
       ) : null}
     </div>

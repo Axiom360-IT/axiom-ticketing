@@ -23,6 +23,29 @@ Deliberately NOT changed: `requestMagicLink` still swallows delivery failures in
 
 ---
 
+## 2026-09-03 · Service type moves to the ticket; admin-editable email copy; richer attachment preview
+
+Four client-requested changes shipped together.
+
+**1. Service type is a ticket-level field, not a per-work-log one.** New `tickets.service_type` (onsite | remote | **hybrid** — hybrid is new, `pnpm db:add-ticket-service-type`, default `remote` so every existing row has a value) set from a new "Service Type" sidebar card, mirroring the existing Type/Category control pattern (`setTicketServiceType` + `TicketServiceTypeControl`, both gated on `tickets.update` — no new permission). The per-entry picker is gone from BOTH work-log surfaces: the ticket-detail card and the `/admin/work-log` "Add time" modal (which now shows the chosen ticket's service type read-only instead). `addWorkLogEntry` no longer accepts `serviceType` from the client at all — it stamps the ticket's current value server-side.
+
+The non-obvious call: **a work-log row's `service_type` is a frozen snapshot**, not a live join. Editing a ticket's service type later does NOT rewrite past entries, and `updateWorkLogEntry` never touches the column — same reasoning as `work_logs.technician_name` and `messages.author_name` being point-in-time snapshots. An hour logged as remote work stays logged as remote work even if the ticket later becomes hybrid, because that's what actually happened. `work_logs.service_type`'s CHECK was widened to accept `hybrid` so a snapshot can hold it. Sidebar labels were also renamed Type → **Ticket Type** and Category → **Ticket Category** (i18n strings only) so three adjacent cards don't read ambiguously.
+
+**2. Email copy is admin-editable (`/admin/email-templates`, §25.1).** All 33 email message namespaces, plain-text fields only. Chosen shape and why:
+- **Override the existing i18n keys, don't template raw HTML.** Every template already renders from named keys; a sparse `email_template_overrides` table stores only reworded fields, so no row = compiled-in default, "reset" = DELETE, and a fresh DB behaves exactly as before. Nothing about the React Email layout is admin-editable — that keeps a wording change from being able to break an email's markup or open an HTML-injection surface in outbound mail.
+- **Rich-text keys are excluded, not validated.** `emails.ticketResolved.viewLine` (the only `t.rich` key in the codebase) embeds markup bound to a React element; there's no safe way to let free text reproduce that, so it simply isn't offered.
+- **Wiring is a wrapper, not a rewrite.** `withEmailOverrides(templateKey, locale, translator)` takes the translator each template already built — so every call site keeps next-intl's compile-time message-key checking verbatim — and returns a **Proxy** whose apply trap consults overrides while `.rich`/`.markup`/`.raw`/`.has` pass through with their original `this`. A codemod applied the one-line wrap to all 33 files; `defaultSubject()` in `send.tsx` got it too, since subjects render there rather than inside the component.
+- **Placeholder safety is asymmetric on purpose:** a save is rejected if it introduces a `{token}` the default didn't have (nothing would substitute it, so it would ship as literal `{foo}` to a customer), but dropping a token the default used is allowed — the admin's wording may legitimately not need it.
+- Editable FIELDS are derived from the message catalog at runtime, so adding a key to a template's namespace makes it editable with no second list to drift. Gated on `settings.update` + the same fresh-password re-auth as `updateSetting`, audited, and deliberately **not** exposed over MCP (consistent with `update_setting` being refusal-only there).
+
+**3. Attachment preview extended.** Images (lightbox) and PDFs (paginated modal) already previewed in-app; video now opens an in-app player and Office documents open a modal that says preview isn't available and offers the download, rather than silently punting to a new browser tab. Office formats have no in-browser renderer without a third-party conversion service, so "open in the app and explain" beat either shipping a broken preview or leaving the silent new-tab fallback.
+
+**Found while doing this — `file_upload.allowed_mime_types` is a dead setting.** The real upload gate is the hardcoded `ALLOWED_MIME_TYPES` set in `lib/storage/mime.ts`; `getAttachmentLimits()` only reads the size/count keys, and nothing anywhere reads the MIME list. The two had drifted: `video/mp4` was in the seeded setting (and in `magic-bytes.ts`) but NOT in the hardcoded set, so video uploads were being rejected outright — which would have made the new video preview unreachable. Fixed minimally by adding `video/mp4` to the hardcoded set; wiring the setting up to actually drive the gate is left as a separate change rather than folded in here, and is now flagged in README §25.
+
+**4. Customer import wizard** gained a field-requirements table and a "Download template" button (client-side Blob CSV matching the exact 3 columns the parser reads). Purely additive — the existing paste/upload textarea is untouched.
+
+---
+
 ## 2026-09-03 · Production bug: inbound emails silently dropped — content fetch moved out of the webhook route
 
 Reported symptom: some inbound emails (both direct and forwarded) never created or threaded a ticket. Resend's own delivery log for the `email.received` webhook showed a 500 response with body **"Enqueue failed"** for the affected deliveries, retried and failing identically every time.

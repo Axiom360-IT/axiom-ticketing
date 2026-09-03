@@ -1,5 +1,6 @@
 import { Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Sent when an account is temporarily locked after N failed sign-in
@@ -18,10 +19,11 @@ export async function AccountLockoutEmail({
   minutes,
   locale,
 }: AccountLockoutProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "accountLockout",
     locale,
-    namespace: "emails.accountLockout",
-  });
+    await getTranslations({ locale, namespace: "emails.accountLockout" }),
+  );
   return (
     <EmailLayout preview={t("preview")} title={t("title")} locale={locale}>
       <Text style={textStyles.body}>{t("greeting", { userName })}</Text>

@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Sent when an admin creates a new staff user OR triggers a password
@@ -24,10 +25,11 @@ export async function StaffSetupInviteEmail({
   flow,
   locale,
 }: StaffSetupInviteProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "staffSetupInvite",
     locale,
-    namespace: "emails.staffSetupInvite",
-  });
+    await getTranslations({ locale, namespace: "emails.staffSetupInvite" }),
+  );
   return (
     <EmailLayout
       preview={flow === "set" ? t("previewSet") : t("previewReset")}

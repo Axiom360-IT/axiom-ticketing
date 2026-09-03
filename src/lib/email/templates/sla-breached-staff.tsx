@@ -1,5 +1,6 @@
 import { Hr, Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Staff-facing "an SLA was breached" alert. Broadcast to the oversight roles
@@ -19,10 +20,11 @@ export async function SlaBreachedStaffEmail({
   adminUrl,
   locale,
 }: SlaBreachedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "slaBreachedStaff",
     locale,
-    namespace: "emails.slaBreachedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.slaBreachedStaff" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

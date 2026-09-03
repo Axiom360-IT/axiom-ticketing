@@ -32,6 +32,11 @@ const ALLOWED_MIME_TYPES = new Set<string>([
   // Logs / archives commonly attached on tickets
   "application/zip",
   "application/x-zip-compressed",
+  // Video — short screen recordings/clips attached to a ticket. Was already
+  // seeded into the (currently unused, see DECISIONS.md) `file_upload.
+  // allowed_mime_types` setting and recognized by magic-bytes.ts, but missing
+  // from this actual enforcement gate — uploads were silently rejected.
+  "video/mp4",
 ]);
 
 export function isAllowedMimeType(mime: string | null | undefined): boolean {

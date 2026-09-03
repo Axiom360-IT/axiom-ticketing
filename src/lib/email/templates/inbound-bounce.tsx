@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Sent when a customer emails support but we can't match their reply to
@@ -17,10 +18,11 @@ export async function InboundBounceEmail({
   newTicketUrl,
   locale,
 }: InboundBounceProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "inboundBounce",
     locale,
-    namespace: "emails.inboundBounce",
-  });
+    await getTranslations({ locale, namespace: "emails.inboundBounce" }),
+  );
   return (
     <EmailLayout
       preview={t("preview")}

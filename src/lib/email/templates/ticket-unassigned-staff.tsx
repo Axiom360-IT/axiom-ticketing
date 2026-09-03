@@ -1,5 +1,6 @@
 import { Hr, Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Staff-facing "this ticket is still unassigned" nudge. Sent by the
@@ -18,10 +19,11 @@ export async function TicketUnassignedStaffEmail({
   adminUrl,
   locale,
 }: TicketUnassignedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketUnassignedStaff",
     locale,
-    namespace: "emails.ticketUnassignedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketUnassignedStaff" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

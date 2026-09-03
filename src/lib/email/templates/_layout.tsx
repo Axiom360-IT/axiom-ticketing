@@ -10,6 +10,7 @@ import {
   Text,
 } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 
 type LayoutProps = {
   preview: string;
@@ -75,7 +76,11 @@ export async function EmailLayout({
   ticketNumber,
   locale,
 }: LayoutProps) {
-  const t = await getTranslations({ locale, namespace: "emails.shared" });
+  const t = await withEmailOverrides(
+    "shared",
+    locale,
+    await getTranslations({ locale, namespace: "emails.shared" }),
+  );
   return (
     <Html>
       <Head />

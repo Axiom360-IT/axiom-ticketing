@@ -21,6 +21,7 @@ export * from "./audit";
 export * from "./audit-filter-presets";
 export * from "./mcp-tokens";
 export * from "./notifications";
+export * from "./email-template-overrides";
 export * from "./settings";
 export * from "./webhooks";
 export * from "./failed-notifications";

@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type CustomerEmailVerificationProps = {
@@ -13,10 +14,11 @@ export async function CustomerEmailVerificationEmail({
   verifyUrl,
   locale,
 }: CustomerEmailVerificationProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "customerEmailVerification",
     locale,
-    namespace: "emails.customerEmailVerification",
-  });
+    await getTranslations({ locale, namespace: "emails.customerEmailVerification" }),
+  );
   return (
     <EmailLayout preview={t("preview")} title={t("title")} locale={locale}>
       <Text style={textStyles.body}>{t("greeting", { recipientName })}</Text>

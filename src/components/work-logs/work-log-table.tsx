@@ -129,13 +129,16 @@ export function WorkLogTable({
               options: [
                 { value: "remote", label: tWorkLog("serviceRemote") },
                 { value: "onsite", label: tWorkLog("serviceOnsite") },
+                { value: "hybrid", label: tWorkLog("serviceHybrid") },
               ],
             },
           },
           cell: ({ row }) =>
             row.original.serviceType === "onsite"
               ? tWorkLog("serviceOnsite")
-              : tWorkLog("serviceRemote"),
+              : row.original.serviceType === "hybrid"
+                ? tWorkLog("serviceHybrid")
+                : tWorkLog("serviceRemote"),
         },
         {
           id: "billable",
@@ -185,7 +188,6 @@ export function WorkLogTable({
                 id: row.original.id,
                 description: row.original.description,
                 minutes: row.original.minutes,
-                serviceType: row.original.serviceType,
                 ticketNumber: row.original.ticketNumber,
               }}
             />

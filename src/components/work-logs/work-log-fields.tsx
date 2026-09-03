@@ -3,27 +3,18 @@
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 export type WorkLogFormValue = {
   description: string;
   hours: string;
   minutes: string;
-  serviceType: string;
 };
 
 export const EMPTY_WORK_LOG: WorkLogFormValue = {
   description: "",
   hours: "",
   minutes: "",
-  serviceType: "remote",
 };
 
 /** Total minutes from the hours/minutes string pair (0 when blank). */
@@ -35,10 +26,12 @@ export function workLogMinutes(value: WorkLogFormValue): number {
 }
 
 /**
- * The description + time-spent + service-type fields shared by the "Add
- * time" and "Edit entry" timesheet modals. Controlled: the parent owns the
- * value and submission. Labels come from `tickets.workLog` so they match the
- * per-ticket work-log card exactly.
+ * The description + time-spent fields shared by the "Add time" and "Edit
+ * entry" timesheet modals. Controlled: the parent owns the value and
+ * submission. Labels come from `tickets.workLog` so they match the per-ticket
+ * work-log card exactly. Service type is NOT part of this form — it lives on
+ * the ticket itself (see TicketServiceTypeControl) and each new entry
+ * silently snapshots whatever the ticket is currently set to.
  */
 export function WorkLogFields({
   value,
@@ -71,59 +64,37 @@ export function WorkLogFields({
         />
       </div>
 
-      {/* Two field groups, each label-over-control. Stacked on mobile (so the
-          modal never overflows), side by side and bottom-aligned from sm up. */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idPrefix}-hours`}>{t("timeLabel")}</Label>
-          <div className="flex items-center gap-1.5">
-            <Input
-              id={`${idPrefix}-hours`}
-              type="number"
-              min={0}
-              max={24}
-              value={value.hours}
-              onChange={(e) => onChange({ hours: e.target.value })}
-              className="w-14 text-center tabular-nums"
-              aria-label={t("hoursLabel")}
-              disabled={disabled}
-            />
-            <span className="text-sm text-zinc-500 dark:text-zinc-400">
-              {t("hoursShort")}
-            </span>
-            <Input
-              id={`${idPrefix}-minutes`}
-              type="number"
-              min={0}
-              max={59}
-              value={value.minutes}
-              onChange={(e) => onChange({ minutes: e.target.value })}
-              className="w-14 text-center tabular-nums"
-              aria-label={t("minutesLabel")}
-              disabled={disabled}
-            />
-            <span className="text-sm text-zinc-500 dark:text-zinc-400">
-              {t("minutesShort")}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idPrefix}-service`}>{t("serviceTypeLabel")}</Label>
-          <Select
-            items={{ remote: t("serviceRemote"), onsite: t("serviceOnsite") }}
-            value={value.serviceType}
-            onValueChange={(v) => onChange({ serviceType: v ?? "remote" })}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-hours`}>{t("timeLabel")}</Label>
+        <div className="flex items-center gap-1.5">
+          <Input
+            id={`${idPrefix}-hours`}
+            type="number"
+            min={0}
+            max={24}
+            value={value.hours}
+            onChange={(e) => onChange({ hours: e.target.value })}
+            className="w-14 text-center tabular-nums"
+            aria-label={t("hoursLabel")}
             disabled={disabled}
-          >
-            <SelectTrigger id={`${idPrefix}-service`} className="w-full sm:w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="remote">{t("serviceRemote")}</SelectItem>
-              <SelectItem value="onsite">{t("serviceOnsite")}</SelectItem>
-            </SelectContent>
-          </Select>
+          />
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+            {t("hoursShort")}
+          </span>
+          <Input
+            id={`${idPrefix}-minutes`}
+            type="number"
+            min={0}
+            max={59}
+            value={value.minutes}
+            onChange={(e) => onChange({ minutes: e.target.value })}
+            className="w-14 text-center tabular-nums"
+            aria-label={t("minutesLabel")}
+            disabled={disabled}
+          />
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+            {t("minutesShort")}
+          </span>
         </div>
       </div>
     </div>

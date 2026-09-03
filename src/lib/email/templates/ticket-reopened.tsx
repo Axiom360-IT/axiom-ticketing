@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketReopenedProps = {
@@ -21,10 +22,11 @@ export async function TicketReopenedEmail({
   trackingUrl,
   locale,
 }: TicketReopenedProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketReopened",
     locale,
-    namespace: "emails.ticketReopened",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketReopened" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

@@ -1,5 +1,6 @@
 import { Hr, Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Staff-facing "a ticket was closed" alert (oversight). Distinct from the
@@ -23,10 +24,11 @@ export async function TicketClosedStaffEmail({
   adminUrl,
   locale,
 }: TicketClosedStaffProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketClosedStaff",
     locale,
-    namespace: "emails.ticketClosedStaff",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketClosedStaff" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

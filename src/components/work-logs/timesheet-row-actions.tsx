@@ -27,7 +27,6 @@ type Entry = {
   id: string;
   description: string;
   minutes: number;
-  serviceType: string;
   ticketNumber: string;
 };
 
@@ -51,7 +50,6 @@ export function TimesheetRowActions({
     description: entry.description,
     hours: String(Math.floor(entry.minutes / 60) || ""),
     minutes: String(entry.minutes % 60 || ""),
-    serviceType: entry.serviceType,
   }));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -61,7 +59,6 @@ export function TimesheetRowActions({
       description: entry.description,
       hours: String(Math.floor(entry.minutes / 60) || ""),
       minutes: String(entry.minutes % 60 || ""),
-      serviceType: entry.serviceType,
     });
     setError(null);
   }
@@ -78,7 +75,6 @@ export function TimesheetRowActions({
       const res = await updateWorkLogEntry(entry.id, {
         description: form.description.trim(),
         minutes: mins,
-        serviceType: form.serviceType as "onsite" | "remote",
       });
       if (!res.ok) {
         setError(res.error);

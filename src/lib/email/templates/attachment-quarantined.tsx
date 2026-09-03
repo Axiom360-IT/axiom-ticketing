@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 // Sent to the uploader and the assigned tech when the virus scanner
@@ -25,10 +26,11 @@ export async function AttachmentQuarantinedEmail({
   ticketUrl,
   locale,
 }: AttachmentQuarantinedProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "attachmentQuarantined",
     locale,
-    namespace: "emails.attachmentQuarantined",
-  });
+    await getTranslations({ locale, namespace: "emails.attachmentQuarantined" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

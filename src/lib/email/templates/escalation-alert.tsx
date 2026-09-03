@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type EscalationAlertProps = {
@@ -23,10 +24,11 @@ export async function EscalationAlertEmail({
   ticketUrl,
   locale,
 }: EscalationAlertProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "escalationAlert",
     locale,
-    namespace: "emails.escalationAlert",
-  });
+    await getTranslations({ locale, namespace: "emails.escalationAlert" }),
+  );
   return (
     <EmailLayout
       preview={t("preview", { ticketNumber })}

@@ -1,5 +1,6 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type TicketReplyProps = {
@@ -21,10 +22,11 @@ export async function TicketReplyEmail({
   trackingUrl,
   locale,
 }: TicketReplyProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "ticketReply",
     locale,
-    namespace: "emails.ticketReply",
-  });
+    await getTranslations({ locale, namespace: "emails.ticketReply" }),
+  );
   // Simple paragraph splitter so the reply body shows nicely
   const paragraphs = body.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
 

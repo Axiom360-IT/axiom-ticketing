@@ -1,5 +1,6 @@
 import { Link, Text } from "@react-email/components";
 import { getTranslations } from "next-intl/server";
+import { withEmailOverrides } from "@/lib/email/template-text";
 import { EmailLayout, textStyles } from "./_layout";
 
 export type NewAssignmentProps = {
@@ -21,10 +22,11 @@ export async function NewAssignmentEmail({
   ticketUrl,
   locale,
 }: NewAssignmentProps) {
-  const t = await getTranslations({
+  const t = await withEmailOverrides(
+    "newAssignment",
     locale,
-    namespace: "emails.newAssignment",
-  });
+    await getTranslations({ locale, namespace: "emails.newAssignment" }),
+  );
   const tPriority = await getTranslations({
     locale,
     namespace: "tickets.priority",
