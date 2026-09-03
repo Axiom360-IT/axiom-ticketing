@@ -20,6 +20,19 @@ export type SendCustomerInviteResult = { ok: true } | { ok: false; error: string
  * always reflects the current admin-configured window, not whatever it was
  * when the account was first created.
  */
+/** Flag the row so it surfaces under the Users list's "Failed to send"
+ *  invite-status filter. Never throws — a failure to record the failure must
+ *  not mask the original one. */
+async function markInviteSendFailed(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ inviteSendFailedAt: new Date() })
+    .where(eq(users.id, userId))
+    .catch((err: unknown) => {
+      console.error("[customer/invite] could not stamp inviteSendFailedAt", err);
+    });
+}
+
 export async function sendCustomerSetupInvite(params: {
   userId: string;
   name: string;
@@ -27,31 +40,52 @@ export async function sendCustomerSetupInvite(params: {
   organizationId: string | null;
   flow: "set" | "reset";
 }): Promise<SendCustomerInviteResult> {
-  const expiryHours =
-    (await getSetting<number>("customer_invite.expiry_hours")) ??
-    DEFAULT_EXPIRY_HOURS;
-  const invitedAt = new Date();
-  const inviteExpiresAt = new Date(
-    invitedAt.getTime() + expiryHours * 60 * 60 * 1000,
-  );
-
-  await db
-    .update(users)
-    .set({ invitedAt, inviteExpiresAt, updatedAt: invitedAt })
-    .where(eq(users.id, params.userId));
-
+  // Everything needed to BUILD the invite runs inside this try. It used to sit
+  // outside the send's try/catch below, so a config problem threw straight out
+  // of this function instead of being reported as a failed invite — most
+  // notably `getAppUrl()`, which THROWS in production when
+  // NEXT_PUBLIC_APP_URL is unset, and `signCustomerInviteToken()`, which
+  // throws without CUSTOMER_INVITE_TOKEN_SECRET. Inside the bulk-import
+  // Inngest step that surfaced as a retried step and never stamped
+  // `inviteSendFailedAt`, leaving the row invisible to the "Failed to send"
+  // filter. Every failure path now returns {ok:false} and flags the row.
+  let expiryHours: number;
   let organizationName: string | null = null;
-  if (params.organizationId) {
-    const [org] = await db
-      .select({ name: organizations.name })
-      .from(organizations)
-      .where(eq(organizations.id, params.organizationId))
-      .limit(1);
-    organizationName = org?.name ?? null;
-  }
+  let setupUrl: string;
+  try {
+    expiryHours =
+      (await getSetting<number>("customer_invite.expiry_hours")) ??
+      DEFAULT_EXPIRY_HOURS;
+    const invitedAt = new Date();
+    const inviteExpiresAt = new Date(
+      invitedAt.getTime() + expiryHours * 60 * 60 * 1000,
+    );
 
-  const token = signCustomerInviteToken(params.userId);
-  const setupUrl = `${getAppUrl()}/portal/setup?token=${encodeURIComponent(token)}`;
+    await db
+      .update(users)
+      .set({ invitedAt, inviteExpiresAt, updatedAt: invitedAt })
+      .where(eq(users.id, params.userId));
+
+    if (params.organizationId) {
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, params.organizationId))
+        .limit(1);
+      organizationName = org?.name ?? null;
+    }
+
+    const token = signCustomerInviteToken(params.userId);
+    setupUrl = `${getAppUrl()}/portal/setup?token=${encodeURIComponent(token)}`;
+  } catch (err) {
+    const error =
+      err instanceof Error
+        ? err.message
+        : "Could not prepare the invite email";
+    console.error("[customer/invite] preparation failed", err);
+    await markInviteSendFailed(params.userId);
+    return { ok: false, error };
+  }
 
   // One immediate retry before giving up — most send failures at this layer
   // are a transient provider hiccup, not a permanent problem with the
@@ -86,9 +120,6 @@ export async function sendCustomerSetupInvite(params: {
     }
   }
 
-  await db
-    .update(users)
-    .set({ inviteSendFailedAt: new Date() })
-    .where(eq(users.id, params.userId));
+  await markInviteSendFailed(params.userId);
   return { ok: false, error: lastError ?? "Could not send invite email" };
 }

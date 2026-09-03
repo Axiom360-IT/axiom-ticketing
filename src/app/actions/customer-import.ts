@@ -315,6 +315,16 @@ export type CommitCustomerImportResult =
        *  re-validation and the stub insert — distinct from skippedDuplicate,
        *  which is known deterministically at re-validation time. */
       skippedRaceDuplicate: number;
+      /** Whether the background invitation job was actually accepted by
+       *  Inngest. False = the accounts exist but NOBODY has been emailed, and
+       *  nothing will retry on its own. The UI must not claim "queued" in
+       *  that case. */
+      enqueued: boolean;
+      /** Why the enqueue failed, when it did. */
+      enqueueError?: string;
+      /** Inngest's event id, for correlating this batch with a run in the
+       *  Inngest dashboard when invites don't arrive. */
+      eventId?: string;
     }
   | { ok: false; error: string };
 
@@ -432,6 +442,11 @@ export async function commitCustomerImport(
   const batchId = randomUUID();
   let queuedCount = 0;
   let skippedRaceDuplicate = 0;
+  // Defaults to true because "nothing to enqueue" is vacuously fine; only a
+  // rejected inngest.send() flips it false.
+  let enqueued = true;
+  let enqueueError: string | undefined;
+  let eventId: string | undefined;
 
   if (finalRows.length > 0) {
     // Resolved synchronously, before any row is created, so a missing
@@ -484,15 +499,37 @@ export async function commitCustomerImport(
     );
 
     if (eventRows.length > 0) {
-      await inngest.send({
-        name: "customer-import/batch.requested",
-        data: {
-          batchId,
-          importedById: caller.id,
-          customerRoleId,
-          rows: eventRows,
-        },
-      });
+      // The stub rows are already committed at this point, so a failed
+      // enqueue is NOT "nothing happened" — it's "accounts exist, nobody was
+      // emailed, and nothing will retry." Report that distinctly instead of
+      // returning a blanket success (which is what made an entire broken
+      // batch look identical to a healthy one).
+      try {
+        const { ids } = await inngest.send({
+          name: "customer-import/batch.requested",
+          data: {
+            batchId,
+            importedById: caller.id,
+            customerRoleId,
+            rows: eventRows,
+          },
+        });
+        eventId = ids?.[0];
+      } catch (err) {
+        enqueued = false;
+        enqueueError =
+          err instanceof Error
+            ? err.message
+            : "Could not queue the invitation job";
+        console.error("[customer-import] enqueue failed", err);
+        await audit({
+          actorId: caller.id,
+          action: "user.bulk_import_enqueue_failed",
+          targetType: "user",
+          targetId: batchId,
+          after: { batchId, rows: eventRows.length, error: enqueueError },
+        });
+      }
     }
   }
 
@@ -504,5 +541,8 @@ export async function commitCustomerImport(
     skippedInvalid,
     skippedNeedsOrg,
     skippedRaceDuplicate,
+    enqueued,
+    ...(enqueueError ? { enqueueError } : {}),
+    ...(eventId ? { eventId } : {}),
   };
 }

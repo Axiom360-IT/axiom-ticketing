@@ -501,7 +501,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     ? buildOutboundMessageId(ticketNumber, inboundDomain)
     : undefined;
 
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: `${displayName} <${fromEmail}>`,
     to,
     subject: finalSubject,
@@ -517,4 +517,19 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       ...(messageId ? { "Message-ID": messageId } : {}),
     },
   });
+
+  // The Resend SDK RETURNS API errors as `{ data, error }` rather than
+  // throwing them. Discarding that result (as this used to) makes a REJECTED
+  // send — unverified sending domain, suppressed/invalid recipient, rate
+  // limit, bad API key — indistinguishable from a delivered one: callers log
+  // success, `users.inviteSendFailedAt` never gets stamped, and the only
+  // evidence is an absence in the Resend dashboard. Throw instead, so the
+  // caller's try/catch and Inngest's retries actually see it.
+  if (error) {
+    throw new Error(
+      `Resend rejected the send to ${String(to)}: ${
+        error.message || error.name || "unknown error"
+      }`,
+    );
+  }
 }

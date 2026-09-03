@@ -165,18 +165,55 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
   }
 
   if (step === "result" && result) {
+    // The success screen must report what actually happened, not just that the
+    // form submitted: `enqueued: false` means the accounts exist but the
+    // invitation job was rejected, so no email will ever be sent and nothing
+    // retries. That case previously rendered as an ordinary success.
+    const failedToQueue = !result.enqueued;
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{t("resultTitle")}</CardTitle>
+          <CardTitle>
+            {failedToQueue ? t("resultEnqueueFailedTitle") : t("resultTitle")}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            {t("resultBody", { count: result.queuedCount })}{" "}
-            <Link href="/admin/users?tab=external" className="underline">
-              {t("resultCheckLink")}
-            </Link>
+          {failedToQueue ? (
+            <div
+              role="alert"
+              className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <p>{t("resultEnqueueFailedBody", { count: result.queuedCount })}</p>
+              {result.enqueueError ? (
+                <p className="font-mono text-xs">
+                  {t("resultEnqueueFailedDetail", { error: result.enqueueError })}
+                </p>
+              ) : null}
+              <p>
+                {t("resultEnqueueFailedNext", { batchId: result.batchId })}
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                {t("resultBody", { count: result.queuedCount })}{" "}
+                <Link href="/admin/users?tab=external" className="underline">
+                  {t("resultCheckLink")}
+                </Link>
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t("resultProvisioningHint")}
+              </p>
+            </>
+          )}
+
+          <p className="font-mono text-xs text-zinc-400 dark:text-zinc-500">
+            {t("resultBatchId", { batchId: result.batchId })}
+            {result.eventId
+              ? ` · ${t("resultEventId", { eventId: result.eventId })}`
+              : ""}
           </p>
+
           <ul className="text-sm text-zinc-500 dark:text-zinc-400 space-y-1">
             {result.skippedDuplicate > 0 ? (
               <li>{t("resultSkippedDuplicate", { count: result.skippedDuplicate })}</li>
@@ -186,6 +223,13 @@ export function CustomerImportWizard({ organizations }: { organizations: OrgOpti
             ) : null}
             {result.skippedNeedsOrg > 0 ? (
               <li>{t("resultSkippedNeedsOrg", { count: result.skippedNeedsOrg })}</li>
+            ) : null}
+            {result.skippedRaceDuplicate > 0 ? (
+              <li>
+                {t("resultSkippedRaceDuplicate", {
+                  count: result.skippedRaceDuplicate,
+                })}
+              </li>
             ) : null}
           </ul>
           <div className="flex gap-2 pt-2">

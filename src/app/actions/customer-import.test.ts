@@ -18,6 +18,9 @@ const mockState = vi.hoisted(() => ({
   roleRows: [] as { userId: string; roleName: string }[],
   orgRows: [] as { id: string }[],
   sentEvents: [] as unknown[],
+  /** Set to make the faked inngest.send() reject, so the enqueue-failure
+   *  branch is exercised (the real-world failure this reporting exists for). */
+  sendError: null as Error | null,
   auditCalls: [] as unknown[],
   createOrganization: vi.fn(),
   suggestOrgCode: vi.fn(),
@@ -81,6 +84,7 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@/inngest/client", () => ({
   inngest: {
     send: vi.fn(async (event: unknown) => {
+      if (mockState.sendError) throw mockState.sendError;
       mockState.sentEvents.push(event);
       return { ids: ["evt-mock"] };
     }),
@@ -117,6 +121,7 @@ beforeEach(() => {
   mockState.roleRows = [];
   mockState.orgRows = [];
   mockState.sentEvents = [];
+  mockState.sendError = null;
   mockState.auditCalls = [];
   mockState.createOrganization.mockReset();
   mockState.suggestOrgCode.mockReset().mockResolvedValue({ ok: true, code: "ACM" });
@@ -301,6 +306,75 @@ describe("commitCustomerImport", () => {
         targetId: "user-good@acme.com",
       }),
     ]);
+  });
+
+  it("reports enqueued:true with the Inngest event id when the send is accepted", async () => {
+    mockState.resolveDomainsForImport.mockResolvedValue(
+      new Map([
+        [
+          "acme.com",
+          {
+            domain: "acme.com",
+            organizationId: "org-acme",
+            organizationName: "Acme Inc",
+            isFreeMail: false,
+          },
+        ],
+      ]),
+    );
+
+    const result = await commitCustomerImport(
+      [{ name: "Good Row", email: "good@acme.com" }],
+      {},
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.enqueued).toBe(true);
+    expect(result.eventId).toBe("evt-mock");
+    expect(result.enqueueError).toBeUndefined();
+  });
+
+  it("still reports the created accounts, but enqueued:false, when Inngest rejects the event", async () => {
+    // The regression this guards: the stub rows are already committed when the
+    // send happens, so a rejected enqueue means "accounts exist, nobody was
+    // emailed, nothing retries". It must NOT read as an ordinary success.
+    mockState.resolveDomainsForImport.mockResolvedValue(
+      new Map([
+        [
+          "acme.com",
+          {
+            domain: "acme.com",
+            organizationId: "org-acme",
+            organizationName: "Acme Inc",
+            isFreeMail: false,
+          },
+        ],
+      ]),
+    );
+    mockState.sendError = new Error("event key invalid");
+
+    const result = await commitCustomerImport(
+      [{ name: "Good Row", email: "good@acme.com" }],
+      {},
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The account WAS created — that half really happened.
+    expect(result.queuedCount).toBe(1);
+    // ...but nothing was queued, and the caller can tell.
+    expect(result.enqueued).toBe(false);
+    expect(result.enqueueError).toContain("event key invalid");
+    expect(result.eventId).toBeUndefined();
+    expect(mockState.sentEvents).toHaveLength(0);
+    // And it's recorded for an admin to find later.
+    expect(mockState.auditCalls).toContainEqual(
+      expect.objectContaining({
+        action: "user.bulk_import_enqueue_failed",
+        targetId: result.batchId,
+      }),
+    );
   });
 
   it("aborts before creating anything when the Customer role is missing", async () => {
