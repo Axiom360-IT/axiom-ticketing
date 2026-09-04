@@ -1,0 +1,74 @@
+name: Inngest sync
+
+# Inngest only learns this app's function list when something sends a PUT to
+# /api/inngest. Nothing in the build does that, and on 2026-09-04 we found the
+# app had last synced on 2026-05-21 — Inngest knew 10 of 17 functions, so seven
+# background jobs (monthly plan reset, billing alerts, unassigned-ticket nags,
+# customer follow-ups, draft cleanup, customer-import invites) had silently
+# never run for 105 days, and sla-monitor was still executing May's schedule.
+#
+# The Vercel integration was already enabled the whole time. Its failures are
+# silent by design (a failed auto-sync lands in "Unattached Syncs" rather than
+# alerting), which is why this workflow does not just sync — it ASSERTS, on a
+# schedule, that Inngest's function count matches this build's.
+
+on:
+  # Vercel fires this on a successful deploy when its GitHub integration is
+  # connected. Deliberately NOT `push`: CI runs while Vercel is still building,
+  # so a push-triggered sync registers the PREVIOUS deployment's function list
+  # and then reports success.
+  repository_dispatch:
+    types: [vercel.deployment.success, vercel.deployment.promoted]
+  # The part that would have caught this incident on day two.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: >-
+      github.event_name != 'repository_dispatch' ||
+      github.event.client_payload.environment == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP_URL: https://support.axiom360.it
+      APP_ID: axiom-ticketing
+      INNGEST_SIGNING_KEY: ${{ secrets.INNGEST_SIGNING_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The sha that was actually deployed — not whatever main points at now.
+          ref: ${{ github.event.client_payload.git.sha || github.ref }}
+
+      - name: Ask Inngest to re-read our function list
+        run: |
+          set -euo pipefail
+          curl -sS -L --fail-with-body -X PUT "$APP_URL/api/inngest"
+          echo
+
+      - name: Assert Inngest knows every function in this build
+        run: |
+          set -euo pipefail
+          expected=$(sed -n '/^export const functions = \[/,/^\];/p' src/inngest/functions/index.ts \
+                     | grep -cE '^  [A-Za-z][A-Za-z0-9]*,$')
+          # Guard the parser itself: a regex that silently matches nothing would
+          # otherwise "pass" forever once Inngest also reported a low count.
+          if [ "$expected" -lt 5 ]; then
+            echo "::error::Parsed only $expected functions from src/inngest/functions/index.ts — fix this parser, don't trust the result."
+            exit 1
+          fi
+          actual=$(curl -sS --fail-with-body \
+                     -H "Authorization: Bearer $INNGEST_SIGNING_KEY" \
+                     "https://api.inngest.com/v2/apps/$APP_ID" | jq -r '.data.functionCount')
+          echo "defined in code: $expected | registered with Inngest: $actual"
+          # NB: never assert on latestSync.status — it read "success" throughout
+          # the 105 days that seven functions were missing. The count is the
+          # only trustworthy signal.
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Inngest has $actual functions but this build defines $expected — background jobs are silently not running. Run: curl -X PUT $APP_URL/api/inngest"
+            exit 1
+          fi

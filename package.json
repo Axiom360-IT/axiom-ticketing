@@ -47,6 +47,7 @@
     "db:add-email-threading": "tsx --env-file=.env.local src/lib/db/add-email-threading.ts",
     "db:harden-audit": "tsx --env-file=.env.local src/lib/db/apply-audit-hardening.ts",
     "db:reset-for-production": "tsx --env-file=.env.local src/lib/db/reset-for-production.ts",
+    "inngest:sync": "curl -sS -L --fail-with-body -X PUT \"${INNGEST_APP_URL:-https://support.axiom360.it}/api/inngest\" && echo",
     "db:list-users": "tsx --env-file=.env.local src/lib/db/list-users.ts"
   },
   "dependencies": {

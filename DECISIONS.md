@@ -5,6 +5,26 @@ entries go at the top; date them.
 
 ---
 
+## 2026-09-04 · Inngest app had not synced since launch: 7 of 17 functions were never registered
+
+Follow-on from the 2026-09-03 entry below. That investigation concluded `process-customer-import-batch` wasn't registered with Inngest Cloud. Querying the Cloud API directly showed the problem was far wider:
+
+```
+functionCount: 10   lastSync: 2026-05-21T07:24:35Z   status: "success"
+```
+
+The app synced **once, at launch, and never again — 105 days.** Cloud knew 10 of the 17 functions in `src/inngest/functions/index.ts`. Never registered, therefore never run since May: `monthly-plan-reset` (so **no Monthly-Plan org balance has reset since launch**, req 8.2), `billing-balance-monitor`, `notify-accountant-resolved`, `unassigned-ticket-monitor`, `customer-followup-monitor`, `cleanup-stale-drafts`, and `process-customer-import-batch`. Additionally `sla-monitor` was still executing the **`*/5` schedule from May** rather than the `*/20` set in 1c3c39b (2026-06-18) — Cloud runs the config captured at sync time, so a changed cron is as stale as a missing function.
+
+**Two things made this invisible for 105 days.** First, the Vercel–Inngest integration *was* installed and enabled the entire time; a failed automatic sync creates an "Unattached Sync" rather than alerting anyone. Second, `latestSync.status` read `"success"` throughout — it describes the last sync that happened, not whether the registry matches the deployed build. **Never health-check on that field; compare `functionCount` instead.**
+
+Resolved by `curl -X PUT https://support.axiom360.it/api/inngest` (→ `{"message":"Successfully registered","modified":true}`, 10 → 17). The PUT branch takes no signature (`InngestCommHandler.js:1037`); the handler then authenticates outbound with its own signing key, so triggering a sync needs no credential — which is also why it must never be aimed at localhost while production keys are loaded, or the production app gets repointed at a laptop.
+
+**Prevention added:** `.github/workflows/inngest-sync.yml` — syncs on Vercel's `repository_dispatch` after a production deploy, and, more importantly, **asserts on a daily schedule** that Inngest's `functionCount` equals the length of the exported `functions` array. Deliberately not triggered by `push`: CI runs while Vercel is still building, so a push-triggered sync would register the previous deployment's list and report success. Plus `pnpm inngest:sync` as break-glass.
+
+**Rejected:** setting `appVersion` on the client — in inngest@4.3.0 it has 6 producers and 0 consumers outside `inngest/connect`; it is a field *in* a sync payload, never a trigger *for* one, and a hardcoded value can cause Cloud to *skip* a sync, reproducing this incident as its own fix. Also rejected: a `postbuild` sync script, which runs inside the build container before the deployment exists and would re-register the *previous* function list on a green build — worse than nothing, because it manufactures evidence the problem is handled.
+
+---
+
 ## 2026-09-03 · Silent email failures: Resend errors were discarded, invite prep threw outside its own error handling, and the import wizard always claimed success
 
 Reported symptom: importing a customer showed "Import queued", no invite email ever arrived, **Resend showed no send attempt at all**, and the Inngest dashboard said *"No function triggered by this event"* for `customer-import/batch.requested`.

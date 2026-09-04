@@ -286,7 +286,10 @@ Pure-logic modules ship with co-located vitest files: `crypto.test.ts`, `sla-com
 
 ## 8. Inngest functions (`src/inngest/`)
 
-> **⚠️ Adding a function requires a manual app re-sync.** Inngest Cloud only learns the function list from an inbound **`PUT /api/inngest`** (`InngestCommHandler.js:1089` — nothing registers on boot or on GET), the client sets no `appVersion` to trigger an auto-resync, and this repo has **no sync automation** (no `vercel.json`, no CI step, no postbuild hook). Deploy a new function without re-syncing and its events land in Inngest reporting **"No function triggered by this event"** — the event is accepted, no run is ever created, and the producing code sees a successful `send()`. After deploying a new function: click Resync on the app in Inngest Cloud, or `curl -X PUT https://<prod-domain>/api/inngest`. This bit the customer-import batch job in production; see DECISIONS.md 2026-09-03.
+> **⚠️ Inngest must be told when the function list changes — and its failure is silent.**
+> Inngest Cloud only learns this app's functions from a **`PUT /api/inngest`** (`InngestCommHandler.js:1089` — nothing registers on boot or GET). On 2026-09-04 we found the app had last synced **2026-05-21**: Inngest knew **10 of 17** functions, so seven jobs (monthly-plan reset, billing alerts, unassigned-ticket nags, customer follow-ups, draft cleanup, customer-import invites) had **never run in 105 days**, and `sla-monitor` was still executing May's `*/5` schedule instead of `*/20`. The Vercel integration was enabled the whole time — a failed auto-sync lands in Inngest's "Unattached Syncs" without alerting. **`latestSync.status` read `"success"` throughout**; never use it as a health signal — compare `functionCount` instead.
+>
+> Automation now in place: `.github/workflows/inngest-sync.yml` syncs after each production deploy (`repository_dispatch` from Vercel — deliberately not `push`, which races the build) **and asserts daily** that Inngest's `functionCount` matches this build's. Break glass manually with `pnpm inngest:sync` (§29). If the integration ever syncs a per-deployment `*.vercel.app` URL that Deployment Protection blocks, set `INNGEST_SERVE_ORIGIN=https://support.axiom360.it` in Vercel, **Production scope only** — setting it on Preview would point previews at the production deployment.
 
 `client.ts` defines the typed event union (`Events`) and the dispatch payload (`NotificationDispatchPayload`). `functions/index.ts` re-exports every function; `/api/inngest/route.ts` serves them.
 
@@ -794,6 +797,7 @@ Other notable posture:
 | `pnpm db:add-ticket-type-icon` | Idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for `ticket_types.icon` (§5.1) |
 | `pnpm db:add-invite-send-failed` | Idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for `users.invite_send_failed_at` (§5.1, §22.2) |
 | `pnpm db:add-provisioned-at-column` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for `users.provisioned_at` + a one-time backfill (§5.1, §17, §22.2) — **the backfill is NOT safe to re-run** once bulk-import stub rows can exist; see `DECISIONS.md` |
+| `pnpm inngest:sync` | Tells Inngest Cloud to re-read this app's function list (`PUT /api/inngest`). Needed after adding or removing an Inngest function if the Vercel integration didn't fire — see §8. Target overridable via `INNGEST_APP_URL`; **never point it at localhost while `.env.local` holds production keys**, or the production app gets repointed at your laptop and all 17 functions go offline |
 | `pnpm db:add-ticket-service-type` | Idempotent: adds `tickets.service_type` (default `remote`) + its CHECK, and widens `work_logs.service_type`'s CHECK to allow `hybrid` (§5.1) |
 | `pnpm db:add-email-template-overrides` | Idempotent `CREATE TABLE IF NOT EXISTS` for `email_template_overrides` + its indexes (§5.1, §25.1) |
 
