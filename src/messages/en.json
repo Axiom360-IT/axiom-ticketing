@@ -1838,6 +1838,10 @@
     "hint": "The default type (applied to new/guest/inbound tickets) can't be deleted or deactivated. Types in use by tickets can be deactivated but not deleted, so those tickets keep their label."
   },
   "emailTemplates": {
+    "searchLabel": "Search email templates",
+    "searchPlaceholder": "Search template names and email text — e.g. \"invoice\", \"password\"…",
+    "searchResults": "{count, plural, =0 {No templates match} =1 {1 template matches} other {# templates match}}",
+    "searchEmpty": "No template name or email text contains that. Try a shorter word.",
     "title": "Email templates",
     "subtitle": "Reword any email the system sends. Edits apply to every email sent from now on; anything you don't touch keeps its default wording.",
     "fieldCount": "{count, plural, =1 {1 field} other {# fields}}",

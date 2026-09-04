@@ -713,7 +713,7 @@ Categories:
 
 ### 25.1 Email copy (Settings → **Email templates** tab)
 
-Every email's text already lives as named i18n keys under `emails.<templateKey>` (§26). Settings → **Email templates** (`/admin/settings?tab=email-templates`) lets an admin reword any of those **plain-text** keys without a deploy, storing only what they actually changed:
+Every email's text already lives as named i18n keys under `emails.<templateKey>` (§26). Settings → **Email templates** (`/admin/settings?tab=email-templates`) lets an admin reword any of those **plain-text** keys without a deploy, storing only what they actually changed: A search box filters by template name **and by the copy itself** (including unsaved drafts), auto-expanding matches — so "which email says this?" is answerable without opening all 33.
 
 - **Storage** — `email_template_overrides` (§5.1), sparse: one row per reworded field. No row = the compiled-in default. "Reset to default" deletes the row.
 - **Resolution** — `lib/email/template-text.ts:withEmailOverrides(templateKey, locale, translator)` wraps each template's next-intl translator (a Proxy, so `t.rich`/`.markup`/`.raw`/`.has` pass straight through untouched) and is applied by all 33 template components plus `defaultSubject()` in `send.tsx` (subjects render there, not in the component). Overrides interpolate `{name}` tokens exactly like next-intl's basic interpolation (`lib/email/template-interpolate.ts`, pure + unit-tested).
