@@ -203,6 +203,7 @@ export default async function UsersListPage({
         canEdit={canEdit}
         canDeactivate={canDeactivate}
         canReactivate={canReactivate}
+        canResendInvite={canResetPassword}
         enableBulkActions={audience === "external" && canResetPassword}
       />
 

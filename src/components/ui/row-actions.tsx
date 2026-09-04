@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Eye, MailPlus, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { TableCell, TableHead } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -66,12 +66,21 @@ type Props = {
   ariaLabelPrefix: string;
   view?: () => void;
   edit?: () => void;
+  /** Re-send a pending account invite. Sits before `remove` so the
+   *  destructive icon stays last in the row. */
+  resendInvite?: { onClick: () => void; disabled?: boolean };
   remove?: RemoveAction;
 };
 
-export function RowActionIcons({ ariaLabelPrefix, view, edit, remove }: Props) {
+export function RowActionIcons({
+  ariaLabelPrefix,
+  view,
+  edit,
+  resendInvite,
+  remove,
+}: Props) {
   const t = useTranslations("common");
-  if (!view && !edit && !remove) return null;
+  if (!view && !edit && !resendInvite && !remove) return null;
 
   const removeLabel =
     remove?.variant === "deactivate"
@@ -101,6 +110,16 @@ export function RowActionIcons({ ariaLabelPrefix, view, edit, remove }: Props) {
           tone="edit"
         >
           <Pencil className="h-4 w-4" aria-hidden="true" />
+        </IconButton>
+      ) : null}
+      {resendInvite ? (
+        <IconButton
+          onClick={resendInvite.onClick}
+          disabled={resendInvite.disabled}
+          label={`${t("resendInvite")} ${ariaLabelPrefix}`}
+          tone="edit"
+        >
+          <MailPlus className="h-4 w-4" aria-hidden="true" />
         </IconButton>
       ) : null}
       {remove ? (

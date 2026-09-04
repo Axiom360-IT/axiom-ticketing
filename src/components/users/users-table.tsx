@@ -59,6 +59,7 @@ export function UsersTable({
   /** Adds a checkbox column + bulk "Resend invite" bar — for the External
    *  (customer) tab, where invite/reset resends are the whole point of
    *  filtering by invite status in the first place. */
+  canResendInvite = false,
   enableBulkActions = false,
 }: {
   data: UserRow[];
@@ -70,6 +71,7 @@ export function UsersTable({
   canEdit: boolean;
   canDeactivate: boolean;
   canReactivate: boolean;
+  canResendInvite?: boolean;
   enableBulkActions?: boolean;
 }) {
   const t = useTranslations("users.list");
@@ -227,6 +229,7 @@ export function UsersTable({
         meta: { title: tCommon("actions"), sticky: true },
         cell: ({ row }) => (
           <UserRowActions
+            canResendInvite={canResendInvite}
             user={row.original}
             isSelf={row.original.id === currentUserId}
             // A still-provisioning row has no role/accounts row yet — hide
@@ -245,7 +248,7 @@ export function UsersTable({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentUserId, allRoles, canEdit, canDeactivate, canReactivate, enableBulkActions, selectedIds],
+    [currentUserId, allRoles, canEdit, canDeactivate, canReactivate, canResendInvite, enableBulkActions, selectedIds],
   );
 
   return (

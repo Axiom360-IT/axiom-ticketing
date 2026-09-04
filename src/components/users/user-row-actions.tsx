@@ -16,7 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RowActionIcons } from "@/components/ui/row-actions";
-import { reactivateUser, updateUser } from "@/app/actions/users";
+import {
+  reactivateUser,
+  resetUserPassword,
+  updateUser,
+} from "@/app/actions/users";
 
 export type UserRowSummary = {
   id: string;
@@ -33,6 +37,10 @@ type Props = {
   canEdit: boolean;
   canDeactivate: boolean;
   canReactivate: boolean;
+  /** `users.reset_password`. Drives the per-row "Resend invite" icon, which
+   *  reuses the exact same action the bulk bar loops over — so permission
+   *  checks, role branch and audit entry are identical either way. */
+  canResendInvite?: boolean;
   allRoles: { id: string; name: string }[];
 };
 
@@ -42,6 +50,7 @@ export function UserRowActions({
   canEdit,
   canDeactivate,
   canReactivate,
+  canResendInvite = false,
   allRoles,
 }: Props) {
   const t = useTranslations("common");
@@ -53,6 +62,8 @@ export function UserRowActions({
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [resendOpen, setResendOpen] = useState(false);
+  const [resendDone, setResendDone] = useState<string | null>(null);
 
   const [name, setName] = useState(user.name);
   const [roleIds, setRoleIds] = useState<string[]>(user.roles.map((r) => r.id));
@@ -93,6 +104,26 @@ export function UserRowActions({
     });
   }
 
+  function submitResend() {
+    setError(null);
+    setResendDone(null);
+    startTransition(async () => {
+      const result = await resetUserPassword(user.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setResendDone(tDialog("resendSent", { email: user.email }));
+      setResendOpen(false);
+      router.refresh();
+    });
+  }
+
+  // Only offered for customers: staff go through Better Auth's own reset flow,
+  // and an account that has already accepted its invite has nothing to resend.
+  const isCustomer = user.roles.some((r) => r.name === "Customer");
+  const showResend = canResendInvite && isCustomer && user.isActive;
+
   // Self-deactivation is dangerous — the server enforces it too,
   // but hide the icon so it isn't presented as an option.
   const showRemove =
@@ -114,6 +145,9 @@ export function UserRowActions({
         ariaLabelPrefix={user.name}
         view={() => setViewOpen(true)}
         edit={canEdit ? () => setEditOpen(true) : undefined}
+        resendInvite={
+          showResend ? { onClick: () => setResendOpen(true), disabled: pending } : undefined
+        }
         remove={
           showRemove
             ? { onClick: () => setRemoveOpen(true), variant: removeVariant }
@@ -266,6 +300,49 @@ export function UserRowActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Resend invite confirm ──────────────────────────── */}
+      <Dialog open={resendOpen} onOpenChange={setResendOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tDialog("resendTitle", { user: user.name })}</DialogTitle>
+            <DialogDescription>
+              {tDialog("resendDescription", { email: user.email })}
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResendOpen(false)}
+              disabled={pending}
+            >
+              {t("cancel")}
+            </Button>
+            <Button onClick={submitResend} disabled={pending}>
+              {pending ? tDialog("resending") : tDialog("resendConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {resendDone ? (
+        <Dialog open onOpenChange={() => setResendDone(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{tDialog("resendSentTitle")}</DialogTitle>
+              <DialogDescription>{resendDone}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setResendDone(null)}>{t("close")}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {/* ── Deactivate / Reactivate confirm modal ─────────── */}
       <Dialog open={removeOpen} onOpenChange={setRemoveOpen}>

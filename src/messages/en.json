@@ -1,5 +1,6 @@
 {
   "common": {
+    "resendInvite": "Resend invite",
     "appName": "Axiom360 Ticketing System",
     "export": {
       "label": "Export",
@@ -921,6 +922,12 @@
       "selectDisabledProvisioning": "Still being set up — try again in a moment."
     },
     "rowActions": {
+      "resendTitle": "Resend invite to {user}?",
+      "resendDescription": "Sends a fresh set-your-password link to {email}. Any earlier link stops working.",
+      "resendConfirm": "Send invite",
+      "resending": "Sending…",
+      "resendSentTitle": "Invite sent",
+      "resendSent": "A new invite is on its way to {email}.",
       "openMenuFor": "Actions for {user}",
       "openFullProfile": "Open full profile",
       "editTitle": "Edit {user}",
