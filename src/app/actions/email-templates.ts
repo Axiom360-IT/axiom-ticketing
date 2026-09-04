@@ -146,6 +146,6 @@ export async function updateEmailTemplateField(
     after: { value },
   });
 
-  revalidatePath("/admin/email-templates");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }

@@ -4,6 +4,8 @@ import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { LogoUpload } from "@/components/settings/logo-upload";
+import { EmailTemplateEditor } from "@/components/settings/email-template-editor";
+import { loadEmailTemplateViews } from "@/lib/email/template-fields";
 import { loadBranding } from "@/lib/branding/load";
 import { BusinessHoursForm } from "@/components/settings/business-hours-form";
 import { HolidaysList } from "@/components/settings/holidays-list";
@@ -52,6 +54,7 @@ const SETTINGS_TABS = [
   "email",
   "security",
   "branding",
+  "email-templates",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
@@ -115,6 +118,11 @@ export default async function SettingsPage({
         ).map((r) => r.name)
       : [];
 
+  // Email-template copy, loaded only for its own tab — 33 templates worth of
+  // fields has no business being fetched while someone edits SLA hours.
+  const emailTemplates =
+    tab === "email-templates" ? await loadEmailTemplateViews() : null;
+
   // Current logo (signed URL) for the branding tab's uploader.
   const brandingLogoUrl =
     tab === "branding" ? ((await loadBranding()).logoUrl ?? null) : null;
@@ -132,6 +140,7 @@ export default async function SettingsPage({
   const tCf = await getTranslations("settings.customerFollowup");
   const tCsms = await getTranslations("settings.customerSms");
   const tEm = await getTranslations("settings.emails");
+  const tEt = await getTranslations("emailTemplates");
   const tFu = await getTranslations("settings.fileUpload");
   const tVs = await getTranslations("settings.virusScan");
   const tRl = await getTranslations("settings.rateLimits");
@@ -157,6 +166,7 @@ export default async function SettingsPage({
         <SettingsTabLink tab="email" active={tab === "email"} label={t("tabEmail")} />
         <SettingsTabLink tab="security" active={tab === "security"} label={t("tabSecurity")} />
         <SettingsTabLink tab="branding" active={tab === "branding"} label={t("tabBranding")} />
+        <SettingsTabLink tab="email-templates" active={tab === "email-templates"} label={t("tabEmailTemplates")} />
       </nav>
 
       {/* ── Operations ─────────────────────────────────────────────── */}
@@ -670,6 +680,18 @@ export default async function SettingsPage({
           </CardContent>
         </Card>
       ) : null}
+      {tab === "email-templates" && emailTemplates ? (
+        <div className="space-y-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">{tEt("title")}</h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {tEt("subtitle")}
+            </p>
+          </div>
+          <EmailTemplateEditor templates={emailTemplates} />
+        </div>
+      ) : null}
+
     </div>
   );
 }

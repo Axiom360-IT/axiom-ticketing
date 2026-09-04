@@ -180,7 +180,7 @@ The App Router tree is split into two route groups: `(admin)` and `(public)`. Th
   - `hierarchy/` — visual creator-tree (includes any user with at least one non-Customer role via a correlated `EXISTS` subquery on `user_roles`; pure-Customer accounts are filtered out, but all staff roles — including Technicians who can't themselves create users — remain so Super Admin's descendants are visible)
   - `categories/`, `types/` — admin-managed ticket taxonomies (`ticket_categories`/`ticket_types`, §5.1), both gated on `settings.update` and built on the shared `TaxonomyTable`/`AddTaxonomyButton` components
   - `vendors/` — admin-managed vendor list (`vendors`, §5.1) backing the procurement-form picker, gated on `settings.update`. Deliberately its own simpler `VendorTable`/`AddVendorButton` pair rather than a third `TaxonomyTable` kind — vendors have no ordering or default concept, just name/status
-  - `email-templates/` — reword any of the 33 email message namespaces (§25.1), gated on `settings.update`. Its own page rather than a Settings tab: 33 templates × several fields each is far past what one tab should hold
+  - `settings/` — also hosts the **Email templates** tab (§25.1): reword any of the 33 email message namespaces, gated on `settings.update`. A tab rather than its own page so all admin configuration stays in one place; its data is loaded only when that tab is active.
   - `moderation/` — held inbound-message queue (§18); approve-once / approve-and-trust / reject
   - `work-log/` — cross-technician timesheet (`worklog.view_all` unlocks seeing everyone's entries; without it, a user sees only their own)
   - `reports/`
@@ -711,9 +711,9 @@ Categories:
 
 `updateSetting` requires re-auth freshness, audits before/after, and `revalidatePath`s any pages that read the changed key. Ticket categories and types (§5.1) are admin-managed but live in their own tables/pages (`/admin/categories`, `/admin/types`), not in this key/value store.
 
-### 25.1 Email copy (`/admin/email-templates`)
+### 25.1 Email copy (Settings → **Email templates** tab)
 
-Every email's text already lives as named i18n keys under `emails.<templateKey>` (§26). `/admin/email-templates` lets an admin reword any of those **plain-text** keys without a deploy, storing only what they actually changed:
+Every email's text already lives as named i18n keys under `emails.<templateKey>` (§26). Settings → **Email templates** (`/admin/settings?tab=email-templates`) lets an admin reword any of those **plain-text** keys without a deploy, storing only what they actually changed:
 
 - **Storage** — `email_template_overrides` (§5.1), sparse: one row per reworded field. No row = the compiled-in default. "Reset to default" deletes the row.
 - **Resolution** — `lib/email/template-text.ts:withEmailOverrides(templateKey, locale, translator)` wraps each template's next-intl translator (a Proxy, so `t.rich`/`.markup`/`.raw`/`.has` pass straight through untouched) and is applied by all 33 template components plus `defaultSubject()` in `send.tsx` (subjects render there, not in the component). Overrides interpolate `{name}` tokens exactly like next-intl's basic interpolation (`lib/email/template-interpolate.ts`, pure + unit-tested).

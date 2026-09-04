@@ -1,6 +1,14 @@
 import "server-only";
 import enMessages from "@/messages/en.json";
-import { isEditableField } from "./template-catalog";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { emailTemplateOverrides } from "@/lib/db/schema/email-template-overrides";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
+import {
+  EMAIL_TEMPLATE_CATALOG,
+  type EmailTemplateGroup,
+  isEditableField,
+} from "./template-catalog";
 import { placeholdersIn } from "./template-interpolate";
 
 // The editable FIELDS of an email template are derived from the message
@@ -65,4 +73,47 @@ export function buildTemplateFieldViews(
       effectiveValue: overrideValue ?? f.defaultValue,
     };
   });
+}
+
+export type EmailTemplateView = {
+  key: string;
+  group: EmailTemplateGroup;
+  fields: EmailTemplateFieldView[];
+  editedCount: number;
+};
+
+/**
+ * Every editable template with its current (default-or-overridden) copy, for
+ * the Settings → Email templates tab. One query for all overrides, merged
+ * in-process against the compiled-in message catalog — there is nothing
+ * per-template to fetch, so this stays a single round-trip regardless of how
+ * many templates exist.
+ */
+export async function loadEmailTemplateViews(): Promise<EmailTemplateView[]> {
+  const rows = await db
+    .select({
+      templateKey: emailTemplateOverrides.templateKey,
+      fieldKey: emailTemplateOverrides.fieldKey,
+      value: emailTemplateOverrides.value,
+    })
+    .from(emailTemplateOverrides)
+    .where(eq(emailTemplateOverrides.locale, DEFAULT_LOCALE));
+
+  const byTemplate = new Map<string, Map<string, string>>();
+  for (const r of rows) {
+    const existing = byTemplate.get(r.templateKey) ?? new Map<string, string>();
+    existing.set(r.fieldKey, r.value);
+    byTemplate.set(r.templateKey, existing);
+  }
+
+  return EMAIL_TEMPLATE_CATALOG.map((entry) => {
+    const overrides = byTemplate.get(entry.key) ?? new Map<string, string>();
+    const fields = buildTemplateFieldViews(entry.key, overrides);
+    return {
+      key: entry.key,
+      group: entry.group,
+      fields,
+      editedCount: fields.filter((f) => f.overrideValue !== null).length,
+    };
+  }).filter((tpl) => tpl.fields.length > 0);
 }

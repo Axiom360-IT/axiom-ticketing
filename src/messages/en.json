@@ -1441,7 +1441,8 @@
       "tabBilling": "Billing",
       "tabEmail": "Email",
       "tabSecurity": "Security",
-      "tabBranding": "Branding"
+      "tabBranding": "Branding",
+      "tabEmailTemplates": "Email templates"
     },
     "billing": {
       "title": "Accountant notifications",
@@ -2339,7 +2340,6 @@
       "navCategories": "Categories",
       "navTypes": "Types",
       "navVendors": "Vendors",
-      "navEmailTemplates": "Email templates",
       "profileMenuLabel": "Profile menu",
       "profileMenuMyProfile": "My profile",
       "profileMenuSignOut": "Sign out",

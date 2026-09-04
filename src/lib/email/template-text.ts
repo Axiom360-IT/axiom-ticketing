@@ -7,7 +7,7 @@ import { isEditableField } from "./template-catalog";
 // ── Admin-reworded email copy ─────────────────────────────────────────
 //
 // Templates render their text from next-intl keys. This layer lets an admin
-// override any of those PLAIN-TEXT keys from /admin/email-templates without
+// override any of those PLAIN-TEXT keys from Settings → Email templates without
 // touching code or the message catalog: `withEmailOverrides` wraps a
 // template's translator so an overridden key returns the admin's wording and
 // everything else falls through to the compiled-in default untouched.

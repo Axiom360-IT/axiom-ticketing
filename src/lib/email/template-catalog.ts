@@ -1,5 +1,5 @@
 // Catalog of the email templates whose copy an admin can reword from
-// /admin/email-templates. Pure data (no server-only imports) so the client
+// Settings → Email templates. Pure data (no server-only imports) so the client
 // editor can use it for grouping/labels too.
 //
 // `key` is the namespace suffix under `emails.` in src/messages/<locale>.json
