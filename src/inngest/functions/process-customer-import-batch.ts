@@ -103,7 +103,10 @@ export const processCustomerImportBatch = inngest.createFunction(
       await audit({
         actorId: importedById,
         action: "user.bulk_import",
-        targetType: "user",
+        // The target is an import BATCH, not a user — typing it "user" made the
+        // audit log link to /admin/users/<batchId>, a 404 by construction.
+        // "user_import" has no link mapping, so it renders as plain text.
+        targetType: "user_import",
         targetId: batchId,
         after: {
           batchId,

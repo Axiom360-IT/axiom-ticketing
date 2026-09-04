@@ -401,6 +401,12 @@
       "description": "We hit an unexpected error loading this page.",
       "tryAgain": "Try again"
     },
+    "adminNotFound": {
+      "title": "We couldn't find that",
+      "description": "This page doesn't exist, or the item it pointed to has been deleted. Links from the audit log can outlive the thing they reference.",
+      "backToDashboard": "Back to dashboard",
+      "goToTickets": "Go to tickets"
+    },
     "notFoundPage": {
       "title": "Page not found",
       "description": "We couldn't find the page you're looking for.",
