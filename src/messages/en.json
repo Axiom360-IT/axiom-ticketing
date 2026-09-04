@@ -922,6 +922,11 @@
       "selectDisabledProvisioning": "Still being set up — try again in a moment."
     },
     "rowActions": {
+      "finishTitle": "Finish setup for {user}?",
+      "finishDescription": "This account was created by an import that never finished, so it has no sign-in yet. This completes it and emails {email} a set-your-password link.",
+      "finishConfirm": "Finish setup & invite",
+      "finishedButInviteFailed": "The account was completed, but the invite email failed: {error}",
+      "unknownError": "unknown error",
       "resendTitle": "Resend invite to {user}?",
       "resendDescription": "Sends a fresh set-your-password link to {email}. Any earlier link stops working.",
       "resendConfirm": "Send invite",

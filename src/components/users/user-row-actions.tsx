@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { RowActionIcons } from "@/components/ui/row-actions";
 import {
+  completeProvisioningAndInvite,
   reactivateUser,
   resetUserPassword,
   updateUser,
@@ -41,6 +42,10 @@ type Props = {
    *  reuses the exact same action the bulk bar loops over — so permission
    *  checks, role branch and audit entry are identical either way. */
   canResendInvite?: boolean;
+  /** True while the bulk-import stub hasn't been finished by the background
+   *  job. Such a row has no role and no credentials row, so the mail icon
+   *  repairs it (finish provisioning, then invite) rather than resending. */
+  isProvisioning?: boolean;
   allRoles: { id: string; name: string }[];
 };
 
@@ -51,6 +56,7 @@ export function UserRowActions({
   canDeactivate,
   canReactivate,
   canResendInvite = false,
+  isProvisioning = false,
   allRoles,
 }: Props) {
   const t = useTranslations("common");
@@ -108,12 +114,30 @@ export function UserRowActions({
     setError(null);
     setResendDone(null);
     startTransition(async () => {
-      const result = await resetUserPassword(user.id);
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      // A never-finished import stub needs its role + credentials row created
+      // before an invite means anything; a finished account just needs a new
+      // link. Same button either way — the admin shouldn't have to know which.
+      if (isProvisioning) {
+        const result = await completeProvisioningAndInvite(user.id);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setResendDone(
+          result.inviteSent
+            ? tDialog("resendSent", { email: user.email })
+            : tDialog("finishedButInviteFailed", {
+                error: result.inviteError ?? tDialog("unknownError"),
+              }),
+        );
+      } else {
+        const result = await resetUserPassword(user.id);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setResendDone(tDialog("resendSent", { email: user.email }));
       }
-      setResendDone(tDialog("resendSent", { email: user.email }));
       setResendOpen(false);
       router.refresh();
     });
@@ -121,8 +145,12 @@ export function UserRowActions({
 
   // Only offered for customers: staff go through Better Auth's own reset flow,
   // and an account that has already accepted its invite has nothing to resend.
+  // A provisioning stub has no roles yet, so it can't be identified by role —
+  // but it is by definition an unfinished customer import, and it's precisely
+  // the row that most needs this action.
   const isCustomer = user.roles.some((r) => r.name === "Customer");
-  const showResend = canResendInvite && isCustomer && user.isActive;
+  const showResend =
+    canResendInvite && user.isActive && (isCustomer || isProvisioning);
 
   // Self-deactivation is dangerous — the server enforces it too,
   // but hide the icon so it isn't presented as an option.
@@ -305,9 +333,15 @@ export function UserRowActions({
       <Dialog open={resendOpen} onOpenChange={setResendOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{tDialog("resendTitle", { user: user.name })}</DialogTitle>
+            <DialogTitle>
+              {isProvisioning
+                ? tDialog("finishTitle", { user: user.name })
+                : tDialog("resendTitle", { user: user.name })}
+            </DialogTitle>
             <DialogDescription>
-              {tDialog("resendDescription", { email: user.email })}
+              {isProvisioning
+                ? tDialog("finishDescription", { email: user.email })
+                : tDialog("resendDescription", { email: user.email })}
             </DialogDescription>
           </DialogHeader>
           {error ? (
@@ -324,7 +358,11 @@ export function UserRowActions({
               {t("cancel")}
             </Button>
             <Button onClick={submitResend} disabled={pending}>
-              {pending ? tDialog("resending") : tDialog("resendConfirm")}
+              {pending
+                ? tDialog("resending")
+                : isProvisioning
+                  ? tDialog("finishConfirm")
+                  : tDialog("resendConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

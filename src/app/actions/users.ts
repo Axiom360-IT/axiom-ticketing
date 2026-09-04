@@ -23,6 +23,8 @@ import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getAppUrl } from "@/lib/request";
 import {
+  finishCustomerProvisioning,
+  loadCustomerRoleId,
   provisionUser,
   STAFF_INVITE_DEFAULT_EXPIRY_MS,
 } from "@/lib/users/provision";
@@ -658,6 +660,93 @@ const MAX_BULK_RESEND = 200;
  * error — resetUserPassword already retries the email once internally, see
  * sendCustomerSetupInvite) doesn't stop the rest of the batch.
  */
+/**
+ * Repair a bulk-import row whose background job never finished it.
+ *
+ * A stub created by `createCustomerImportStubs` has no role and no `accounts`
+ * row — only `users`. Sending it an invite would NOT work: `acceptCustomerInvite`
+ * UPDATEs the `accounts` row to store the password hash, so with no row to
+ * update the customer would set a password that goes nowhere, and they'd have
+ * no Customer role even if it did. So the repair has to finish provisioning
+ * FIRST (role + accounts row + provisionedAt) and only then invite — exactly
+ * the two steps `process-customer-import-batch` performs, just triggered by a
+ * human instead of an event that never arrived.
+ *
+ * Gated on `users.create` rather than `users.reset_password`: this creates the
+ * account rows the import was supposed to create, which is a creation act.
+ */
+export async function completeProvisioningAndInvite(
+  userId: string,
+): Promise<
+  { ok: true; inviteSent: boolean; inviteError?: string } | { ok: false; error: string }
+> {
+  const caller = await requireSessionUser();
+  if (!(await can(caller, "users.create", { type: "global" }, productionContext))) {
+    throw new ForbiddenError();
+  }
+  await enforceUserRateLimit("bulkResendInvites", caller.id);
+
+  const [u] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      organizationId: users.organizationId,
+      isActive: users.isActive,
+      provisionedAt: users.provisionedAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!u) throw new NotFoundError();
+  if (u.provisionedAt) {
+    return {
+      ok: false,
+      error: "This account is already set up — use Resend invite instead.",
+    };
+  }
+  if (!u.isActive) {
+    return { ok: false, error: "Reactivate this account before finishing setup." };
+  }
+
+  const customerRoleId = await loadCustomerRoleId();
+  if (!customerRoleId) {
+    return {
+      ok: false,
+      error: "The Customer role is missing — seed roles before finishing setup.",
+    };
+  }
+
+  const finished = await finishCustomerProvisioning({
+    userId: u.id,
+    email: u.email,
+    roleIds: [customerRoleId],
+    createdById: caller.id,
+  });
+  if (!finished.ok) return { ok: false, error: finished.error };
+
+  const sendResult = await sendCustomerSetupInvite({
+    userId: u.id,
+    name: u.name,
+    email: u.email,
+    organizationId: u.organizationId,
+    flow: "set",
+  });
+
+  await audit({
+    actorId: caller.id,
+    action: "user.complete_provisioning",
+    targetType: "user",
+    targetId: u.id,
+    after: { email: u.email, inviteSent: sendResult.ok },
+  });
+
+  revalidatePath("/admin/users");
+  return sendResult.ok
+    ? { ok: true, inviteSent: true }
+    : { ok: true, inviteSent: false, inviteError: sendResult.error };
+}
+
 export async function bulkResendCustomerInvites(
   userIds: string[],
 ): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {

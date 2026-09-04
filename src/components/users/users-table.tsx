@@ -230,6 +230,7 @@ export function UsersTable({
         cell: ({ row }) => (
           <UserRowActions
             canResendInvite={canResendInvite}
+            isProvisioning={row.original.inviteStatus === "provisioning"}
             user={row.original}
             isSelf={row.original.id === currentUserId}
             // A still-provisioning row has no role/accounts row yet — hide
