@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RowActionIcons } from "@/components/ui/row-actions";
+import type { InviteStatus } from "@/lib/users/invite-status";
 import {
   completeProvisioningAndInvite,
   reactivateUser,
@@ -42,10 +43,12 @@ type Props = {
    *  reuses the exact same action the bulk bar loops over — so permission
    *  checks, role branch and audit entry are identical either way. */
   canResendInvite?: boolean;
-  /** True while the bulk-import stub hasn't been finished by the background
-   *  job. Such a row has no role and no credentials row, so the mail icon
-   *  repairs it (finish provisioning, then invite) rather than resending. */
-  isProvisioning?: boolean;
+  /** Drives the mail icon. Only accounts that haven't completed sign-up show
+   *  it — a `provisioning` stub gets repaired, a pending/expired/failed invite
+   *  gets resent, and an `active` account shows nothing, because there is no
+   *  invite outstanding to resend. (An active customer who forgot their
+   *  password is served by the bulk bar and the user detail page instead.) */
+  inviteStatus?: InviteStatus;
   allRoles: { id: string; name: string }[];
 };
 
@@ -56,7 +59,7 @@ export function UserRowActions({
   canDeactivate,
   canReactivate,
   canResendInvite = false,
-  isProvisioning = false,
+  inviteStatus = "active",
   allRoles,
 }: Props) {
   const t = useTranslations("common");
@@ -148,9 +151,15 @@ export function UserRowActions({
   // A provisioning stub has no roles yet, so it can't be identified by role —
   // but it is by definition an unfinished customer import, and it's precisely
   // the row that most needs this action.
+  const isProvisioning = inviteStatus === "provisioning";
+  // A provisioning stub has no roles yet, so it can't be identified by role —
+  // but it is by definition an unfinished customer import.
   const isCustomer = user.roles.some((r) => r.name === "Customer");
   const showResend =
-    canResendInvite && user.isActive && (isCustomer || isProvisioning);
+    canResendInvite &&
+    user.isActive &&
+    inviteStatus !== "active" &&
+    (isCustomer || isProvisioning);
 
   // Self-deactivation is dangerous — the server enforces it too,
   // but hide the icon so it isn't presented as an option.

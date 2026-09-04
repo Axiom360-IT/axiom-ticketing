@@ -15,6 +15,7 @@ const mockState = vi.hoisted(() => ({
   txInsertCalls: [] as { table: string; values: unknown }[],
   txUpdateCalls: [] as { table: string; values: unknown }[],
   txShouldThrow: false,
+  txExistingCredential: [] as { id: string }[],
   claimTicketsForCustomer: vi.fn(async () => {}),
 }));
 
@@ -67,10 +68,27 @@ vi.mock("@/lib/db/client", () => ({
         return {
           values: (v: unknown) => {
             mockState.txInsertCalls.push({ table: tableName, values: v });
-            return Promise.resolve();
+            // Thenable so it can be awaited directly, and chainable so
+            // `.onConflictDoNothing()` (used for the idempotent role grant)
+            // resolves the same way.
+            const result = {
+              onConflictDoNothing: () => Promise.resolve(),
+              then: (resolve: (v: unknown) => unknown) => resolve(undefined),
+            };
+            return result;
           },
         };
       },
+      // finishCustomerProvisioning checks for an existing credential row
+      // before inserting one, so the tx needs a select. Returns whatever the
+      // test stages, defaulting to "no existing row".
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve(mockState.txExistingCredential),
+          }),
+        }),
+      }),
       update: (table: unknown) => {
         const tableName = getTableName(table as never);
         return {
@@ -103,6 +121,7 @@ beforeEach(() => {
   mockState.customerRoleRows = [{ id: "role-customer-1" }];
   mockState.insertedUsersReturn = [];
   mockState.insertValuesCalls = [];
+  mockState.txExistingCredential = [];
   mockState.txInsertCalls = [];
   mockState.txUpdateCalls = [];
   mockState.txShouldThrow = false;
@@ -222,6 +241,31 @@ describe("finishCustomerProvisioning", () => {
       }),
     );
     expect(mockState.claimTicketsForCustomer).toHaveBeenCalledWith("u-1", "a@acme.com");
+  });
+
+  it("is idempotent: re-running against a half-finished row still completes it", async () => {
+    // The live failure this guards. A row can already hold its role and
+    // credentials while provisionedAt is still null (an earlier attempt that
+    // never got stamped). A blind re-insert hit user_roles' composite PK,
+    // rolled the whole transaction back, and left the row stuck forever.
+    mockState.txExistingCredential = [{ id: "acct-existing" }];
+
+    const result = await finishCustomerProvisioning({
+      userId: "u-1",
+      email: "a@acme.com",
+      roleIds: ["role-customer"],
+      createdById: "admin-1",
+    });
+
+    expect(result).toEqual({ ok: true, isCustomer: true });
+    // No second credentials row for an account that already had one...
+    expect(
+      mockState.txInsertCalls.filter((c) => c.table === "accounts"),
+    ).toHaveLength(0);
+    // ...and provisionedAt still gets stamped, which is the whole point.
+    expect(
+      mockState.txUpdateCalls.some((c) => c.table === "users"),
+    ).toBe(true);
   });
 
   it("does not claim tickets when the granted role isn't Customer", async () => {

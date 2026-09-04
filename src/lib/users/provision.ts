@@ -202,20 +202,43 @@ export async function finishCustomerProvisioning(
 
   try {
     await transactional(async (tx) => {
-      await tx.insert(accounts).values({
-        userId: input.userId,
-        accountId: input.userId,
-        providerId: "credential",
-        password: null,
-      });
+      // Idempotent by design: this runs from an Inngest step (retried on any
+      // failure) and from the admin repair action, so it must survive being
+      // applied to a row that is already half-finished. `user_roles` has a
+      // composite PK on (user_id, role_id), so a blind re-insert raised a
+      // duplicate-key error that rolled back the whole transaction — leaving
+      // the row stuck exactly as it was, forever. Observed live on a row that
+      // already had both its role and credentials but had never been stamped
+      // provisioned.
+      const [existingCredential] = await tx
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.userId, input.userId),
+            eq(accounts.providerId, "credential"),
+          ),
+        )
+        .limit(1);
+      if (!existingCredential) {
+        await tx.insert(accounts).values({
+          userId: input.userId,
+          accountId: input.userId,
+          providerId: "credential",
+          password: null,
+        });
+      }
       if (input.roleIds.length > 0) {
-        await tx.insert(userRoles).values(
-          input.roleIds.map((roleId) => ({
-            userId: input.userId,
-            roleId,
-            assignedById: input.createdById,
-          })),
-        );
+        await tx
+          .insert(userRoles)
+          .values(
+            input.roleIds.map((roleId) => ({
+              userId: input.userId,
+              roleId,
+              assignedById: input.createdById,
+            })),
+          )
+          .onConflictDoNothing();
       }
       await tx
         .update(users)
