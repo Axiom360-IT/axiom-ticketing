@@ -1,4 +1,5 @@
-import { eventType } from "inngest";
+import { eventType, NonRetriableError } from "inngest";
+import { isPermanentSendFailure } from "@/lib/notifications/permanent-failure";
 import { sendSms } from "@/lib/sms/send";
 import type { SmsTemplate } from "@/lib/notifications/sms-types";
 import { inngest } from "../client";
@@ -21,11 +22,19 @@ export const sendSmsNotification = inngest.createFunction(
   },
   async ({ event }) => {
     const d = event.data as EventData;
-    await sendSms({
-      to: d.to,
-      locale: d.locale,
-      template: d.template,
-    });
+    try {
+      await sendSms({ to: d.to, locale: d.locale, template: d.template });
+    } catch (err) {
+      // Twilio 20003 (bad credentials / suspended account) and invalid-number
+      // errors cannot resolve between attempts — see permanent-failure.ts.
+      if (isPermanentSendFailure(err)) {
+        throw new NonRetriableError(
+          err instanceof Error ? err.message : "SMS rejected by provider",
+          { cause: err },
+        );
+      }
+      throw err;
+    }
     return { ok: true };
   },
 );

@@ -2,7 +2,11 @@ import { render } from "@react-email/render";
 import { getTranslations } from "next-intl/server";
 import { resend } from "./client";
 import { buildOutboundMessageId } from "./message-id";
+import { EmailSendError } from "./send-error";
 import { withEmailOverrides } from "./template-text";
+
+// Re-exported so existing importers of `@/lib/email/send` keep working.
+export { EmailSendError } from "./send-error";
 import { getSetting } from "../settings";
 import { DEFAULT_LOCALE, pickLocale, type AppLocale } from "../i18n";
 import {
@@ -535,10 +539,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   // evidence is an absence in the Resend dashboard. Throw instead, so the
   // caller's try/catch and Inngest's retries actually see it.
   if (error) {
-    throw new Error(
+    throw new EmailSendError(
       `Resend rejected the send to ${String(to)}: ${
         error.message || error.name || "unknown error"
       }`,
+      error.name,
     );
   }
 }

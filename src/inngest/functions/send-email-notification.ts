@@ -1,4 +1,5 @@
-import { eventType } from "inngest";
+import { eventType, NonRetriableError } from "inngest";
+import { isPermanentSendFailure } from "@/lib/notifications/permanent-failure";
 import { sendEmail, type EmailTemplate } from "@/lib/email/send";
 import { inngest } from "../client";
 
@@ -22,13 +23,26 @@ export const sendEmailNotification = inngest.createFunction(
   },
   async ({ event }) => {
     const d = event.data as EventData;
-    await sendEmail({
-      to: d.to,
-      locale: d.locale,
-      template: d.template,
-      ticketNumber: d.ticketNumber,
-      replyToTicket: d.replyToTicket,
-    });
+    try {
+      await sendEmail({
+        to: d.to,
+        locale: d.locale,
+        template: d.template,
+        ticketNumber: d.ticketNumber,
+        replyToTicket: d.replyToTicket,
+      });
+    } catch (err) {
+      // An exhausted daily quota or a rejected API key will fail identically on
+      // every retry, so retrying only multiplies the failure count (and the
+      // 5xx count on /api/inngest). Surface it once instead.
+      if (isPermanentSendFailure(err)) {
+        throw new NonRetriableError(
+          err instanceof Error ? err.message : "Email rejected by provider",
+          { cause: err },
+        );
+      }
+      throw err;
+    }
     return { ok: true };
   },
 );
