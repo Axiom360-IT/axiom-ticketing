@@ -119,6 +119,13 @@ const CATEGORY_META: Record<
 
 // Non-success outcomes get a loud badge — a denied/failed privileged attempt
 // must never look like a routine success. (Labels come from auditOutcomeLabel.)
+// Audit actions whose target has always been an import BATCH, never a user.
+// See targetHref below for why this list exists rather than a data fix.
+const LEGACY_BATCH_TARGET_ACTIONS = new Set([
+  "user.bulk_import",
+  "user.bulk_import_enqueue_failed",
+]);
+
 function outcomeStyle(outcome: string): string {
   return outcome === "denied"
     ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
@@ -202,10 +209,17 @@ export default async function AuditPage({
     ticketNumbers.length > 0 ? await resolveTicketLinkIds(ticketNumbers) : {};
 
   function targetHref(row: {
+    action: string;
     targetType: string | null;
     targetId: string | null;
   }): string | null {
     if (!row.targetType || !row.targetId) return null;
+    // Bulk-import entries written before Sep 2026 recorded targetType "user"
+    // with the import BATCH id as the target, so the link they produce is a
+    // 404 by construction. They are fixed at the source now, but the log is
+    // append-only — a DB trigger blocks UPDATE — so the old rows cannot be
+    // corrected in place. Read time is the only place left to correct them.
+    if (LEGACY_BATCH_TARGET_ACTIONS.has(row.action)) return null;
     switch (row.targetType) {
       case "ticket":
         return ticketIdByNumber[row.targetId]
