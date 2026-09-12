@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeInviteStatus } from "./invite-status";
+import {
+  computeInviteStatus,
+  PROVISIONING_STUCK_AFTER_MS,
+} from "./invite-status";
 
 describe("computeInviteStatus", () => {
   it("is active once accepted, regardless of expiry", () => {
@@ -65,6 +68,38 @@ describe("computeInviteStatus", () => {
   });
 
   it("is provisioning for a brand-new bulk-import stub (every timestamp null)", () => {
+    expect(
+      computeInviteStatus({
+        provisionedAt: null,
+        inviteAcceptedAt: null,
+        inviteExpiresAt: null,
+      }),
+    ).toBe("provisioning");
+  });
+
+  it("stays provisioning while the row is still young", () => {
+    expect(
+      computeInviteStatus({
+        createdAt: new Date(Date.now() - 60_000),
+        provisionedAt: null,
+        inviteAcceptedAt: null,
+        inviteExpiresAt: null,
+      }),
+    ).toBe("provisioning");
+  });
+
+  it("ages into provisioning_stuck once the wait runs long", () => {
+    expect(
+      computeInviteStatus({
+        createdAt: new Date(Date.now() - PROVISIONING_STUCK_AFTER_MS - 1000),
+        provisionedAt: null,
+        inviteAcceptedAt: null,
+        inviteExpiresAt: null,
+      }),
+    ).toBe("provisioning_stuck");
+  });
+
+  it("never cries wolf when the caller did not select createdAt", () => {
     expect(
       computeInviteStatus({
         provisionedAt: null,

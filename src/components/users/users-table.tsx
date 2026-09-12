@@ -28,10 +28,14 @@ export type UserRow = {
 // in time. Different admin triage, same fix (resend). "provisioning" gets
 // its own sky/blue palette, distinct from the amber/red ones — it reads as
 // "in progress," not "needs attention" (there's nothing to do yet, it'll
-// resolve on its own within moments).
+// resolve on its own within moments). Once that wait runs long it becomes
+// "provisioning_stuck" and moves into the red band, because by then the
+// only thing that resolves it is somebody looking at it.
 const INVITE_BADGE_CLASS: Record<Exclude<InviteStatus, "active">, string> = {
   provisioning:
     "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300",
+  provisioning_stuck:
+    "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
   invited:
     "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   invite_expired:
@@ -41,6 +45,7 @@ const INVITE_BADGE_CLASS: Record<Exclude<InviteStatus, "active">, string> = {
 };
 const INVITE_BADGE_KEY: Record<Exclude<InviteStatus, "active">, string> = {
   provisioning: "inviteStatusProvisioning",
+  provisioning_stuck: "inviteStatusProvisioningStuck",
   invited: "inviteStatusInvited",
   invite_expired: "inviteStatusExpired",
   invite_failed: "inviteStatusFailed",

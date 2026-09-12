@@ -151,9 +151,8 @@ export function UserRowActions({
   // A provisioning stub has no roles yet, so it can't be identified by role —
   // but it is by definition an unfinished customer import, and it's precisely
   // the row that most needs this action.
-  const isProvisioning = inviteStatus === "provisioning";
-  // A provisioning stub has no roles yet, so it can't be identified by role —
-  // but it is by definition an unfinished customer import.
+  const isProvisioning =
+    inviteStatus === "provisioning" || inviteStatus === "provisioning_stuck";
   const isCustomer = user.roles.some((r) => r.name === "Customer");
   const showResend =
     canResendInvite &&

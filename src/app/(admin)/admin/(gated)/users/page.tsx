@@ -185,6 +185,10 @@ export default async function UsersListPage({
           options={[
             { value: "all", label: t("filterInviteStatusAll") },
             { value: "provisioning", label: t("filterInviteStatusProvisioning") },
+            {
+              value: "provisioning_stuck",
+              label: t("filterInviteStatusProvisioningStuck"),
+            },
             { value: "invite_failed", label: t("filterInviteStatusFailed") },
             { value: "invited", label: t("filterInviteStatusInvited") },
             { value: "invite_expired", label: t("filterInviteStatusExpired") },
