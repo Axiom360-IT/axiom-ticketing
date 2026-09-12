@@ -1337,7 +1337,7 @@
         "roles": "Roles",
         "settings": "Settings",
         "audit": "Audit log",
-        "mcp": "Claude connector"
+        "mcp": "AI agent connector"
       },
       "moduleDescription": {
         "tickets": "Submit, assign, and resolve customer support requests.",
@@ -1347,7 +1347,7 @@
         "roles": "Custom roles and per-action permission grants.",
         "settings": "SLA targets, business hours, email, and security knobs.",
         "audit": "Append-only record of every privileged action.",
-        "mcp": "Connecting Claude (or another MCP client) to this app."
+        "mcp": "Connecting an AI agent (Claude or any other MCP-compatible tool) to this app."
       },
       "selectAll": "Grant all in this module",
       "selectedCount": "{selected} of {total} selected",
@@ -1400,7 +1400,7 @@
         "settings__update": "Update settings",
         "audit__view": "View audit log",
         "audit__export": "Export audit log",
-        "mcp__connect": "Connect Claude"
+        "mcp__connect": "Connect an AI agent"
       },
       "description": {
         "tickets__view": "Read the ticket queue and ticket detail pages.",
@@ -1446,7 +1446,7 @@
         "settings__update": "Change system-wide configuration values.",
         "audit__view": "Read the append-only audit log.",
         "audit__export": "Export audit-log entries to CSV.",
-        "mcp__connect": "Generate a personal access token to connect Claude to this app from the profile page."
+        "mcp__connect": "Generate a personal access token to connect an AI agent to this app from the profile page."
       }
     }
   },
@@ -2138,9 +2138,9 @@
       "errorGeneric": "Couldn't update preference."
     },
     "mcp": {
-      "title": "Claude access",
-      "subtitle": "Connect Claude to this app so it can answer questions and post ticket notes on your behalf — it only ever sees and does what your own account already can.",
-      "serverUrlLabel": "Server address (paste into Claude's connector settings):",
+      "title": "AI agent access",
+      "subtitle": "Connect an AI agent — Claude or any other MCP-compatible tool — to this app so it can answer questions and post ticket notes on your behalf. It only ever sees and does what your own account already can.",
+      "serverUrlLabel": "Server address (paste into your AI agent's MCP connector settings):",
       "generateButton": "Generate access token",
       "generateTitle": "Generate a new access token",
       "generateDescription": "Give it a name so you can tell it apart later.",

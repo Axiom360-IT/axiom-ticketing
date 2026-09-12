@@ -77,7 +77,7 @@ export const PERMISSIONS = [
   "audit.view",
   "audit.export",
 
-  // MCP / Claude connector — self-service: gates whether a user can
+  // MCP connector (AI agent access, not Claude-specific) — self-service: gates whether a user can
   // generate their OWN access token on their profile page at all. A token
   // never grants more than its owner's account already can (every tool
   // call re-runs the normal can() checks), so this is purely "who's

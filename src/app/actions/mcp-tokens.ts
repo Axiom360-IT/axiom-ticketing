@@ -13,7 +13,8 @@ import {
   type McpTokenSummary,
 } from "@/lib/auth/mcp-tokens";
 
-// Self-service — a user manages their OWN Claude/MCP tokens, same as any
+// Self-service — a user manages their OWN MCP access tokens (usable by any
+// MCP-compatible AI agent, not just Claude), same as any
 // personal-access-token page — gated on `mcp.connect` (seeded by default to
 // Super Admin, IT Director, Coordinator only). A token still can never
 // grant more than the account already has (every tool call re-runs the

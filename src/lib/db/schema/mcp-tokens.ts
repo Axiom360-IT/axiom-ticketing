@@ -10,7 +10,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 
-// Personal access tokens for the Claude/MCP connector. A token acts AS the
+// Personal access tokens for the MCP connector — usable by any MCP-compatible
+// AI agent, not just Claude. A token acts AS the
 // user it belongs to — every tool call re-runs the SAME can()/visibility
 // checks that user's normal admin session would, so a token can never see or
 // do more than that user already could. Self-service: a user creates/revokes

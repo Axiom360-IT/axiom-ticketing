@@ -2,11 +2,12 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { resolveMcpToken } from "@/lib/auth/mcp-tokens";
 import { buildMcpServer } from "@/lib/mcp/server";
 
-// Claude/MCP connector endpoint. Stateless: a fresh server + transport is
-// built for every request (no session persistence between calls), which
-// matches Vercel's serverless model and keeps this simple — each tool call
-// re-validates the token and the caller's permissions on its own anyway, so
-// nothing is lost by not carrying state across requests.
+// MCP connector endpoint — any MCP-compatible client, not just Claude.
+// Stateless: a fresh server + transport is built for every request (no
+// session persistence between calls), which matches Vercel's serverless
+// model and keeps this simple — each tool call re-validates the token and
+// the caller's permissions on its own anyway, so nothing is lost by not
+// carrying state across requests.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 

@@ -55,11 +55,15 @@ function errorResult(message: string) {
  *
  * Every tool here is read-only except `add_ticket_note`, which only ever
  * posts an INTERNAL note (staff-only, customer never sees it) — never a
- * customer-facing reply. Claude is instructed (via the tool description) to
- * always show the user the exact text and get their go-ahead in the chat
- * before calling it — that's the "confirm before send" behavior, enforced
- * by instruction rather than a multi-step protocol, since the human is
- * already in the loop for every message in the conversation.
+ * customer-facing reply. The connecting agent is instructed (via the tool
+ * description) to always show the user the exact text and get their
+ * go-ahead in the chat before calling it — that's the "confirm before send"
+ * behavior, enforced by instruction rather than a multi-step protocol,
+ * since the human is already in the loop for every message in the
+ * conversation. This is a client-side norm the tool description asks any
+ * connecting agent to follow, not something this server can itself enforce
+ * — Claude follows it; a differently-built agent's adherence depends on
+ * that agent's own design.
  */
 export function buildMcpServer(user: SessionUser): McpServer {
   const server = new McpServer({ name: "axiom-ticketing", version: "1.0.0" });

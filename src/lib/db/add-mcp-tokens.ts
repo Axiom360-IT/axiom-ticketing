@@ -3,7 +3,8 @@ import { db } from "./client";
 
 /**
  * One-shot, idempotent: create the `mcp_tokens` table (mirrors migration
- * 0030) — personal access tokens for the Claude/MCP connector.
+ * 0030) — personal access tokens for the MCP connector (any MCP-compatible
+ * AI agent, not just Claude).
  *
  * Run via `pnpm db:add-mcp-tokens`.
  */
