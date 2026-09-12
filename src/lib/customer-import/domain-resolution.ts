@@ -48,6 +48,9 @@ export async function resolveDomainsForImport(
       and(
         inArray(organizationDomains.domain, [...distinctDomains]),
         eq(organizations.isActive, true),
+        // Never resolve an imported customer onto the internal org — see
+        // lib/tickets/org.ts for the full rationale.
+        eq(organizations.isInternal, false),
       ),
     );
   const matchByDomain = new Map(matches.map((m) => [m.domain, m]));

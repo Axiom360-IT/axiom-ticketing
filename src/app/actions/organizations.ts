@@ -475,11 +475,23 @@ export async function deleteOrganization(
     throw new ForbiddenError();
   }
   const [org] = await db
-    .select({ id: organizations.id, name: organizations.name })
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      isInternal: organizations.isInternal,
+    })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
   if (!org) throw new NotFoundError();
+
+  if (org.isInternal) {
+    return {
+      ok: false,
+      error:
+        "This is your own organization record and can't be deleted. It's created by a seed script, so removing it can only be undone by re-running that script.",
+    };
+  }
 
   // Refuse to delete while tickets or users still reference the org — the FK
   // would null them out and lose the linkage. Deactivate instead.
@@ -528,6 +540,7 @@ export async function listOrganizationsForAdmin() {
       monthlyMinutesIncluded: organizations.monthlyMinutesIncluded,
       monthlyMinutesBalance: organizations.monthlyMinutesBalance,
       isActive: organizations.isActive,
+      isInternal: organizations.isInternal,
     })
     .from(organizations)
     .orderBy(organizations.name);
@@ -695,7 +708,10 @@ export async function listActiveOrganizations() {
       abbreviation: organizations.abbreviation,
     })
     .from(organizations)
-    .where(eq(organizations.isActive, true))
+    // isInternal orgs (Axiom360 itself) are excluded here so they can never
+    // be picked as a customer's/ticket's org from any of the pickers this
+    // function feeds — see the column's doc comment in the schema.
+    .where(and(eq(organizations.isActive, true), eq(organizations.isInternal, false)))
     .orderBy(organizations.name);
 }
 

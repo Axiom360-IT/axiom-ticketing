@@ -692,6 +692,10 @@ export async function prepareCustomerTicketDraft(): Promise<PrepareCustomerDraft
   const [draft] = await db
     .insert(tickets)
     .values({
+      // Stamped at DRAFT creation, not at promotion: promoting a draft is an
+      // UPDATE, so a stamp on the insert path alone would miss every ticket
+      // that started life as a draft (the attach-files-first flow).
+      createdById: user.id,
       ticketNumber,
       subject: "(draft)",
       description: "",
@@ -844,6 +848,8 @@ export async function customerCreateTicket(
     const [ticket] = await db
       .insert(tickets)
       .values({
+        // The customer who raised it (customerId already governs their access).
+        createdById: user.id,
         ticketNumber,
         organizationId: org.organizationId,
         orgMatchStatus: org.matchStatus,

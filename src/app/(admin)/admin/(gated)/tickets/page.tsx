@@ -398,6 +398,9 @@ export default async function TicketsPage({
     db
       .select({ id: organizations.id, name: organizations.name })
       .from(organizations)
+      // Internal org excluded: it can never own a ticket, so offering it here
+      // is a filter that always returns nothing.
+      .where(eq(organizations.isInternal, false))
       .orderBy(organizations.name),
     db
       .select({

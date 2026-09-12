@@ -108,6 +108,13 @@ export async function resolveTicketOrgForGuest(
         and(
           eq(organizationDomains.domain, domain),
           eq(organizations.isActive, true),
+        // The internal org (Axiom360 itself) must never be auto-matched to a
+        // ticket: doing so mints a permanent AXIOM-YYYYMMDD-NNN ticket number
+        // that is never regenerated. The seed script deliberately registers no
+        // domain for it, but that convention lives in a comment — nothing stops
+        // an admin (or the MCP org tool) adding one later. Enforce it here so
+        // the rule holds regardless of how a domain row appears.
+          eq(organizations.isInternal, false),
         ),
       )
       .limit(1);
@@ -147,7 +154,9 @@ export async function resolveTicketOrgForGuest(
  */
 export async function resolveTicketOrgById(
   organizationId: string | null | undefined,
+  opts?: { allowInternal?: boolean },
 ): Promise<ResolvedOrg> {
+  const allowInternal = opts?.allowInternal === true;
   const timeZone = await businessTimeZone();
   if (!organizationId) {
     return { organizationId: null, prefix: "AX", timeZone, matchStatus: "none" };
@@ -156,7 +165,20 @@ export async function resolveTicketOrgById(
   const [match] = await db
     .select({ id: organizations.id, abbreviation: organizations.abbreviation })
     .from(organizations)
-    .where(eq(organizations.id, organizationId))
+    // Internal org allowed ONLY when the caller opts in (`allowInternal`),
+    // which happens exactly once: a staff member ticking "Internal" on the
+    // create-ticket form. Every other explicit-id caller — org triage linking,
+    // customer-import assigning — leaves it off, so a client ticket can never
+    // be moved onto the internal org by passing the uuid that's visible in the
+    // /admin/organizations/[id] URL.
+    .where(
+      allowInternal
+        ? eq(organizations.id, organizationId)
+        : and(
+            eq(organizations.id, organizationId),
+            eq(organizations.isInternal, false),
+          ),
+    )
     .limit(1);
   if (match) {
     return {
@@ -167,4 +189,22 @@ export async function resolveTicketOrgById(
     };
   }
   return { organizationId: null, prefix: "AX", timeZone, matchStatus: "none" };
+}
+
+
+/**
+ * The single internal organization row (Axiom360 itself), or null if the seed
+ * script hasn't been run. Used by the create-ticket form's "Internal" option,
+ * which attaches it explicitly — it is never matched automatically.
+ */
+export async function loadInternalOrganization(): Promise<{
+  id: string;
+  name: string;
+} | null> {
+  const [row] = await db
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(and(eq(organizations.isInternal, true), eq(organizations.isActive, true)))
+    .limit(1);
+  return row ?? null;
 }

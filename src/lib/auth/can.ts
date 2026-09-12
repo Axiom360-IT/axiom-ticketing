@@ -13,6 +13,9 @@ export type Target =
         /** Additional collaborating technicians (Meeting-2, CR-11). A strict
          *  technician who is a collaborator can act on the ticket too. */
         assigneeIds?: string[];
+      /** Staff member who raised it. Grants the creator READ access only —
+       *  see the tickets.view branch. */
+      createdById?: string | null;
         /** Whether the viewer has logged work on this ticket. Grants a strict
          *  technician READ-ONLY access (tickets.view) to a ticket they worked
          *  on even after it's reassigned away from them — so they keep sight
@@ -137,12 +140,20 @@ export async function can(
         const isAssigneeOrCollaborator =
           target.ticket.assignedToId === user.id ||
           (target.ticket.assigneeIds ?? []).includes(user.id);
-        // Read-only carry-over: a strict tech who logged work on the ticket
-        // keeps VIEW access after it's reassigned away (so their history and
-        // hours stay visible), but no write action — those still require being
-        // the current assignee or a collaborator.
+        // Read-only carry-over: a strict tech who logged work on the ticket,
+        // OR who raised it in the first place, keeps VIEW access after it's
+        // assigned elsewhere (so their history, hours and their own report stay
+        // visible) — but no write action; those still require being the current
+        // assignee or a collaborator. This must stay in step with the matching
+        // legs in ticketsVisibilityCondition, or the queue would list a ticket
+        // whose detail page then 404s.
         if (action === "tickets.view") {
-          return isAssigneeOrCollaborator || !!target.ticket.viewerHasWorklog;
+          return (
+            isAssigneeOrCollaborator ||
+            !!target.ticket.viewerHasWorklog ||
+            (!!target.ticket.createdById &&
+              target.ticket.createdById === user.id)
+          );
         }
         return isAssigneeOrCollaborator;
       }

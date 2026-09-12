@@ -57,6 +57,13 @@ export function ticketsVisibilityCondition(
     const legs: SQL[] = [
       eq(tickets.assignedToId, user.id),
       sql`EXISTS (SELECT 1 FROM ${ticketAssignees} WHERE ${ticketAssignees.ticketId} = ${tickets.id} AND ${ticketAssignees.userId} = ${user.id})`,
+      // A ticket you raised yourself stays visible even when someone else owns
+      // it. Without this, a technician granted `tickets.create` would file a
+      // ticket and watch it vanish from their queue the moment it was assigned
+      // elsewhere — or immediately, if they didn't assign it to themselves.
+      // Unconditional (unlike the worked-on leg): you should never lose sight
+      // of your own report. Read-only — can() still gates every write.
+      eq(tickets.createdById, user.id),
     ];
     if (opts?.includeWorkedOn) {
       legs.push(

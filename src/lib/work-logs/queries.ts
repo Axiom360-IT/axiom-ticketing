@@ -256,5 +256,7 @@ export async function listOrganizationsForFilter(): Promise<
   return db
     .select({ id: organizations.id, name: organizations.name })
     .from(organizations)
+    // Internal org excluded — no ticket can belong to it, so no work log can.
+    .where(eq(organizations.isInternal, false))
     .orderBy(organizations.name);
 }

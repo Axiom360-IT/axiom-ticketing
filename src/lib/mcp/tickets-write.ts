@@ -15,7 +15,11 @@ import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
-import { resolveTicketOrgById, ticketsShareOrg } from "@/lib/tickets/org";
+import {
+  loadInternalOrganization,
+  resolveTicketOrgById,
+  ticketsShareOrg,
+} from "@/lib/tickets/org";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 import { notifyBalanceChanged } from "@/lib/billing/events";
 import { htmlToPlainText, sanitizeMessageHtml } from "@/lib/messages/sanitize";
@@ -95,6 +99,7 @@ export async function createTicketOnBehalfViaMcp(
     type: string;
     priority: (typeof TICKET_PRIORITIES)[number];
     organizationId?: string;
+    scope?: "internal" | "external";
   },
 ): Promise<Result & { ticketNumber?: string }> {
   if (!(await can(user, "tickets.create", { type: "global" }, productionContext))) {
@@ -107,8 +112,44 @@ export async function createTicketOnBehalfViaMcp(
     return { ok: false, error: "Invalid type." };
   }
 
-  const stream = await classifyStream(input.customerEmail);
-  const org = await resolveTicketOrgById(input.organizationId ?? null);
+  // Who the ticket is FOR — the same explicit choice the create-ticket form
+  // makes, kept in step with createTicketOnBehalf (app/actions/tickets.ts).
+  // "internal" attaches Axiom360's own org and picks the org for you, so an
+  // organizationId alongside it is a contradiction rather than a preference.
+  const isInternalTicket = input.scope === "internal";
+  if (isInternalTicket && input.organizationId) {
+    return {
+      ok: false,
+      error:
+        "An internal ticket always belongs to Axiom360's own organization — omit organizationId, or use scope \"external\" to file it for a client.",
+    };
+  }
+
+  // The caller's explicit choice wins over the email-derived guess, which
+  // would otherwise contradict them on, say, a staff member's own address.
+  const stream = isInternalTicket
+    ? ("internal" as const)
+    : await classifyStream(input.customerEmail);
+
+  const internalOrg = isInternalTicket ? await loadInternalOrganization() : null;
+  if (isInternalTicket && !internalOrg) {
+    return {
+      ok: false,
+      error: "No internal organization is set up yet.",
+    };
+  }
+
+  const org = await resolveTicketOrgById(
+    isInternalTicket ? internalOrg!.id : (input.organizationId ?? null),
+    { allowInternal: isInternalTicket },
+  );
+  // An empty result for an org the caller named explicitly is otherwise
+  // indistinguishable from success — it would file an unlinked ticket and
+  // report "created." Say what happened instead.
+  if (input.organizationId && !org.organizationId) {
+    return { ok: false, error: "Unknown or inactive organization." };
+  }
+  // A staff member explicitly picked the org, so it's a confirmed link.
   const orgMatchStatus = org.organizationId ? "staff" : "none";
   const ticketNumber = await generateTicketNumber(org.prefix, org.timeZone);
   const createdAt = new Date();
@@ -121,6 +162,8 @@ export async function createTicketOnBehalfViaMcp(
     const [ticket] = await tx
       .insert(tickets)
       .values({
+        // The connected user acting through MCP — mirrors createTicketOnBehalf.
+        createdById: user.id,
         ticketNumber,
         organizationId: org.organizationId,
         orgMatchStatus,
@@ -1066,7 +1109,7 @@ export function registerTicketWriteTools(server: any, user: SessionUser): void {
     {
       title: "Create a ticket on behalf of a customer",
       description:
-        "Creates a new ticket for a customer who called in or emailed directly (the Coordinator 'create on behalf' flow). The customer gets a confirmation email." +
+        "Creates a new ticket for a customer who called in or emailed directly (the Coordinator 'create on behalf' flow), or an internal ticket for Axiom360 itself via scope. The customer gets a confirmation email." +
         CONFIRM_NOTE,
       inputSchema: {
         customerName: z.string().min(1),
@@ -1076,7 +1119,19 @@ export function registerTicketWriteTools(server: any, user: SessionUser): void {
         category: z.string().min(1),
         type: z.string().min(1),
         priority: z.enum(TICKET_PRIORITIES),
-        organizationId: z.string().uuid().optional(),
+        organizationId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe(
+            "The client organization this ticket is for. Leave unset when scope is \"internal\".",
+          ),
+        scope: z
+          .enum(["internal", "external"])
+          .optional()
+          .describe(
+            "Who the ticket is for. \"external\" (the default) files it for a client. \"internal\" files it against Axiom360's own organization and ignores organizationId.",
+          ),
       },
     },
     async (input: {
@@ -1088,6 +1143,7 @@ export function registerTicketWriteTools(server: any, user: SessionUser): void {
       type: string;
       priority: (typeof TICKET_PRIORITIES)[number];
       organizationId?: string;
+      scope?: "internal" | "external";
     }) => {
       const r = await createTicketOnBehalfViaMcp(user, input);
       return r.ok ? textResult(r) : errorResult(r.error);

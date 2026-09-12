@@ -287,6 +287,37 @@ describe("can() — ticket scope", () => {
     ).toBe(false);
   });
 
+  it("strict Technician keeps READ-ONLY access to a ticket they raised themselves", async () => {
+    // Future-proofing for granting a Technician `tickets.create`: without this
+    // they would file a ticket and lose sight of it the moment it was assigned
+    // to someone else — or immediately, if they never assigned it to
+    // themselves. Mirrors the worked-on carry-over: read, never write.
+    const createdTarget: Target = {
+      type: "ticket",
+      ticket: {
+        id: "t-9",
+        assignedToId: "tech-2",
+        customerId: null,
+        createdById: "tech-1",
+      },
+    };
+    expect(
+      await can(technician("tech-1"), "tickets.view", createdTarget),
+    ).toBe(true);
+    for (const write of [
+      "tickets.update",
+      "tickets.reply",
+      "tickets.assign",
+      "tickets.resolve",
+    ] as const) {
+      expect(await can(technician("tech-1"), write, createdTarget)).toBe(false);
+    }
+    // Another technician who merely happens to be looking gets nothing.
+    expect(
+      await can(technician("tech-3"), "tickets.view", createdTarget),
+    ).toBe(false);
+  });
+
   it("strict Technician keeps READ-ONLY access to a reassigned ticket they worked on", async () => {
     // Ticket now assigned to another tech, but tech-1 logged work on it.
     const workedTarget: Target = {

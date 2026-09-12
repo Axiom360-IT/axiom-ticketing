@@ -36,6 +36,7 @@ import { loadTicketScope } from "@/lib/tickets/load";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
   emailDomain,
+  loadInternalOrganization,
   resolveTicketOrgById,
   resolveTicketOrgForGuest,
   ticketsShareOrg,
@@ -495,6 +496,13 @@ const createOnBehalfSchema = z.object({
   priority: z.enum(TICKET_PRIORITIES),
   // Staff pick the organization from a dropdown of registered orgs (CR-02).
   organizationId: z.string().uuid().optional(),
+  // Who the ticket is FOR. "internal" = our own company: the internal org is
+  // attached automatically and the org dropdown is irrelevant. "external" =
+  // raised on behalf of a client, who is picked from that dropdown. This is an
+  // explicit staff choice, so it also decides `stream` — it must beat
+  // classifyStream(), which infers from the customer's email and would
+  // otherwise contradict the operator on, say, a staff member's own address.
+  scope: z.enum(["internal", "external"]).optional().default("external"),
   description: z
     .string()
     .trim()
@@ -534,8 +542,23 @@ export async function createTicketOnBehalf(
     return { ok: false, error: "Invalid type." };
   }
 
-  const stream = await classifyStream(data.customerEmail);
-  const org = await resolveTicketOrgById(data.organizationId ?? null);
+  const isInternalTicket = data.scope === "internal";
+  // The operator's choice wins over the email-derived guess.
+  const stream = isInternalTicket
+    ? ("internal" as const)
+    : await classifyStream(data.customerEmail);
+  const internalOrg = isInternalTicket ? await loadInternalOrganization() : null;
+  if (isInternalTicket && !internalOrg) {
+    return {
+      ok: false,
+      error:
+        "No internal organization is set up yet. Run `pnpm db:add-organization-internal-column` first.",
+    };
+  }
+  const org = await resolveTicketOrgById(
+    isInternalTicket ? internalOrg!.id : (data.organizationId ?? null),
+    { allowInternal: isInternalTicket },
+  );
   // A staff member explicitly picked the org from the registry, so it's a
   // confirmed link ("staff") rather than the "account" default the resolver
   // returns for the customer-self path.
@@ -552,6 +575,8 @@ export async function createTicketOnBehalf(
     const [ticket] = await tx
       .insert(tickets)
       .values({
+        // Staff who raised it — keeps it visible to them if it's assigned elsewhere.
+        createdById: user.id,
         ticketNumber,
         organizationId: org.organizationId,
         orgMatchStatus,

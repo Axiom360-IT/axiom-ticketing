@@ -52,8 +52,24 @@ export async function GET(request: Request): Promise<Response> {
       : sp.get("status") === "inactive"
         ? "inactive"
         : "";
+  // The organizations page hides internal orgs (Axiom360 itself) by default and
+  // forwards its `orgType` filter here. Parsing it matters in BOTH directions:
+  // without it the default export INCLUDES a row the screen hides (silently
+  // off-by-one on any client roster), and filtering to Type=Axiom360 would
+  // export every organization instead of one. Unlike `plan`/`status` — where
+  // "both options" and "neither" happen to collapse to the same no-op — an
+  // absent orgType means "clients only", not "everything".
+  const orgTypes = (sp.get("orgType") ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v === "internal" || v === "client");
 
   const conditions: SQL[] = [];
+  if (orgTypes.length === 1) {
+    conditions.push(eq(organizations.isInternal, orgTypes[0] === "internal"));
+  } else if (orgTypes.length === 0) {
+    conditions.push(eq(organizations.isInternal, false));
+  }
   if (search) {
     const orClause = or(
       ilike(organizations.name, `%${search}%`),

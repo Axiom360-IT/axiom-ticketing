@@ -109,6 +109,30 @@ async function main() {
     process.exit(1);
   }
 
+  // ── 0. The internal org (Axiom360 itself), idempotent. ────────────
+  // reset-for-production deletes ALL organizations, and this row is created by
+  // a one-shot script (`pnpm db:add-organization-internal-column`) rather than
+  // by a migration — so without this, a reset+seed cycle silently drops it and
+  // nothing errors: the list just looks normal and the Type=Axiom360 filter
+  // comes back empty. Deliberately registers NO organization_domains row; the
+  // internal org must never be auto-matched to a ticket.
+  const internalSeed = await db
+    .insert(organizations)
+    .values({
+      name: "Axiom360",
+      abbreviation: "AXIOM",
+      isMonthlyPlan: false,
+      isActive: true,
+      isInternal: true,
+    })
+    .onConflictDoNothing()
+    .returning({ id: organizations.id });
+  console.log(
+    internalSeed[0]
+      ? "Internal org: created Axiom360."
+      : "Internal org: already present.",
+  );
+
   // ── 1. Organizations + domains (idempotent). ──────────────────────
   let orgsNew = 0;
   let domainsNew = 0;

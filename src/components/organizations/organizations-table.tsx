@@ -15,6 +15,7 @@ export type OrgRow = {
   monthlyMinutesIncluded: number | null;
   monthlyMinutesBalance: number | null;
   isActive: boolean;
+  isInternal: boolean;
 };
 
 function formatHours(minutes: number | null): string | null {
@@ -68,6 +69,32 @@ export function OrganizationsTable({
           cellClassName: "font-mono text-xs",
         },
         cell: ({ row }) => row.original.abbreviation,
+      },
+      {
+        id: "type",
+        meta: {
+          title: t("columns.type"),
+          sortKey: "type",
+          filter: {
+            kind: "enum",
+            param: "orgType",
+            options: [
+              { value: "client", label: t("typeClient") },
+              { value: "internal", label: t("typeInternal") },
+            ],
+          },
+          cellClassName: "text-xs",
+        },
+        cell: ({ row }) =>
+          row.original.isInternal ? (
+            <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-300">
+              {t("typeInternal")}
+            </span>
+          ) : (
+            <span className="text-zinc-500 dark:text-zinc-400">
+              {t("typeClient")}
+            </span>
+          ),
       },
       {
         id: "plan",
@@ -135,7 +162,11 @@ export function OrganizationsTable({
           <OrgRowActions
             organization={{ id: row.original.id, name: row.original.name }}
             canEdit={canEdit}
-            canDelete={canDelete}
+            // The internal org (Axiom360 itself) is created by a seed script,
+            // not by an admin, and deleting it is unrecoverable from the UI —
+            // it would take re-running `pnpm db:add-organization-internal-column`.
+            // Hide the control rather than let someone discover that the hard way.
+            canDelete={canDelete && !row.original.isInternal}
           />
         ),
       },

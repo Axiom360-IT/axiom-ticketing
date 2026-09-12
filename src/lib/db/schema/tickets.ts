@@ -84,6 +84,19 @@ export const tickets = pgTable(
     monthlyPlanDeductedMinutes: integer("monthly_plan_deducted_minutes")
       .notNull()
       .default(0),
+    // Staff member who raised the ticket, when a signed-in user did. NULL for
+    // the public form and inbound email, where there is no authenticated
+    // creator, and on every row that predates this column.
+    //
+    // Exists for VISIBILITY, not attribution: a strict Technician's queue is
+    // scoped to what they're assigned, so without this a technician granted
+    // `tickets.create` would raise a ticket and immediately lose sight of it
+    // unless they also assigned it to themselves. Read-only access, matching
+    // the work-log carry-over leg — creating a ticket doesn't grant rights to
+    // act on it after someone else picks it up.
+    createdById: uuid("created_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     assignedToId: uuid("assigned_to_id").references(() => users.id, {
       onDelete: "restrict",
     }),

@@ -17,6 +17,7 @@ export async function loadTicketScope(ticketId: string) {
       id: tickets.id,
       ticketNumber: tickets.ticketNumber,
       subject: tickets.subject,
+      createdById: tickets.createdById,
       assignedToId: tickets.assignedToId,
       customerId: tickets.customerId,
       customerEmail: tickets.customerEmail,

@@ -242,6 +242,14 @@ export async function deleteOrganizationViaMcp(user: SessionUser, organizationNa
   }
   const org = await findOrgByName(organizationName);
   if (!org) return { ok: false, error: `No organization found named "${organizationName}".` };
+  // Mirrors the same refusal in deleteOrganization: the internal org is
+  // seed-created and its removal isn't recoverable from the app.
+  if (org.isInternal) {
+    return {
+      ok: false,
+      error: "That is the internal organization record and cannot be deleted.",
+    };
+  }
 
   const [{ value: ticketRefs }] = await db.select({ value: count() }).from(tickets).where(eq(tickets.organizationId, org.id));
   const [{ value: userRefs }] = await db.select({ value: count() }).from(users).where(eq(users.organizationId, org.id));

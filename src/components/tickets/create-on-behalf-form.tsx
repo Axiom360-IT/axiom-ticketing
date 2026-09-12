@@ -44,6 +44,9 @@ export function CreateOnBehalfForm({
   const tCommon = useTranslations("common");
 
   const [data, setData] = useState({
+    // Who the ticket is for. Defaults to "external" — raising one on behalf of
+    // a client is by far the common case; internal is the deliberate choice.
+    scope: "external" as "internal" | "external",
     customerName: "",
     customerEmail: "",
     organizationId: NO_ORG,
@@ -75,6 +78,9 @@ export function CreateOnBehalfForm({
     const res = await createTicketOnBehalf({
       customerName: data.customerName,
       customerEmail: data.customerEmail,
+      scope: data.scope,
+      // Ignored by the action when scope is "internal" — the internal org is
+      // attached server-side rather than trusted from the client.
       organizationId:
         data.organizationId === NO_ORG ? undefined : data.organizationId,
       subject: data.subject,
@@ -117,7 +123,34 @@ export function CreateOnBehalfForm({
         </div>
       </div>
 
-      {organizations.length > 0 ? (
+      <div className="space-y-1.5">
+        <Label htmlFor="ticket-scope">{tFields("scopeLabel")}</Label>
+        <Select
+          items={{
+            external: tFields("scopeExternal"),
+            internal: tFields("scopeInternal"),
+          }}
+          value={data.scope}
+          onValueChange={(v) =>
+            update("scope", (v as "internal" | "external") ?? "external")
+          }
+        >
+          <SelectTrigger id="ticket-scope">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="external">{tFields("scopeExternal")}</SelectItem>
+            <SelectItem value="internal">{tFields("scopeInternal")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          {data.scope === "internal"
+            ? tFields("scopeInternalHint")
+            : tFields("scopeExternalHint")}
+        </p>
+      </div>
+
+      {data.scope === "external" && organizations.length > 0 ? (
         <div className="space-y-1.5">
           <Label htmlFor="organization">{tFields("organization")}</Label>
           <Select

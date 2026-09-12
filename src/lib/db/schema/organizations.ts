@@ -52,6 +52,17 @@ export const organizations = pgTable(
     }),
     contractNotes: text("contract_notes"),
     isActive: boolean("is_active").notNull().default(true),
+    // Marks Axiom360 itself (the company running this system), not a real
+    // client — set only by the one-off seed script, never by the admin
+    // create/edit form. Deliberately excluded from listActiveOrganizations()
+    // (every ticket/user/customer-import org picker) so it can never be
+    // accidentally selected as a customer's org; visible only via the
+    // dedicated filter on the admin organizations list. No
+    // organization_domains row is ever registered for it either — staff
+    // (@axiom360.it) are already recognized independently by role
+    // (isStaffUser / classifyStream), so a domain mapping here would be
+    // redundant and risks auto-linking/auto-billing real tickets to it.
+    isInternal: boolean("is_internal").notNull().default(false),
     createdById: uuid("created_by_id").references(() => users.id, {
       onDelete: "set null",
     }),

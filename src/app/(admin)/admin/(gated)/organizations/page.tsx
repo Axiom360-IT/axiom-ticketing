@@ -23,6 +23,7 @@ type SearchParams = Promise<{
   q?: string;
   plan?: string;
   status?: string;
+  orgType?: string;
   sort?: string;
   page?: string;
   pageSize?: string;
@@ -59,16 +60,21 @@ export default async function OrganizationsListPage({
   const q = (sp.q ?? "").trim().toLowerCase();
   const planList = parseCsv(sp.plan);
   const statusList = parseCsv(sp.status);
+  const orgTypeList = parseCsv(sp.orgType);
   const page = parsePage(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const sort = parseSort(sp.sort, [
     "name",
     "abbreviation",
+    "type",
     "plan",
     "balance",
     "status",
   ]);
 
+  // Axiom360's own internal org (isInternal) is excluded from the default,
+  // unfiltered view — it's not a client and would just be noise in the
+  // day-to-day roster — but stays reachable via the Type filter below.
   const filtered = allRows.filter((o) => {
     if (q && !`${o.name} ${o.abbreviation}`.toLowerCase().includes(q)) {
       return false;
@@ -85,11 +91,19 @@ export default async function OrganizationsListPage({
     ) {
       return false;
     }
+    if (orgTypeList.length) {
+      if (!orgTypeList.includes(o.isInternal ? "internal" : "client")) {
+        return false;
+      }
+    } else if (o.isInternal) {
+      return false;
+    }
     return true;
   });
   const sorted = sortRows(filtered, sort, {
     name: (o) => o.name.toLowerCase(),
     abbreviation: (o) => o.abbreviation.toLowerCase(),
+    type: (o) => (o.isInternal ? 1 : 0),
     plan: (o) => (o.isMonthlyPlan ? 1 : 0),
     balance: (o) => o.monthlyMinutesBalance,
     status: (o) => (o.isActive ? 1 : 0),
@@ -99,13 +113,17 @@ export default async function OrganizationsListPage({
   const offset = (page - 1) * pageSize;
   const rows = sorted.slice(offset, offset + pageSize);
   const hasFilters =
-    q !== "" || planList.length > 0 || statusList.length > 0;
+    q !== "" ||
+    planList.length > 0 ||
+    statusList.length > 0 ||
+    orgTypeList.length > 0;
 
   // Carry the active filters so the export matches what's on screen.
   const exportParams: Record<string, string> = {};
   if (sp.q?.trim()) exportParams.q = sp.q.trim();
   if (sp.plan?.trim()) exportParams.plan = sp.plan.trim();
   if (sp.status?.trim()) exportParams.status = sp.status.trim();
+  if (sp.orgType?.trim()) exportParams.orgType = sp.orgType.trim();
 
   return (
     <div className="space-y-4">

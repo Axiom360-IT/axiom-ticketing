@@ -491,12 +491,12 @@
       "assigneeTitle": "Assign to a technician",
       "assigneeHelp": "Choose which technician owns this ticket. Reassigning hands it off to a colleague; you can also add extra technicians who collaborate on it below.",
       "escalationTitle": "Escalation",
-      "streamTitle": "Stream",
+      "streamTitle": "Ticket for",
       "originLabel": "Origin: {origin}",
       "csatLabel": "Customer feedback: {response}",
       "csatLabelWithDate": "Customer feedback: {response} · {date}",
-      "streamInternal": "Internal",
-      "streamExternal": "External",
+      "streamInternal": "Our team",
+      "streamExternal": "Client",
       "originWebForm": "web form",
       "originEmail": "email",
       "originPortal": "portal",
@@ -580,6 +580,11 @@
         "organization": "Organization",
         "organizationPlaceholder": "Name of your organization",
         "organizationHint": "We use your email address to match your organization automatically.",
+        "scopeLabel": "Who is this ticket for?",
+        "scopeExternal": "A client",
+        "scopeInternal": "Axiom360 — our own team",
+        "scopeExternalHint": "Raised on behalf of a client. Pick their organization below.",
+        "scopeInternalHint": "Filed against Axiom360 itself. The organization is set automatically and the ticket number will start with AXIOM-.",
         "organizationNone": "No organization (external)",
         "optional": "(optional)",
         "subject": "Subject",
@@ -771,8 +776,8 @@
       "status": "Status",
       "priority": "Priority",
       "category": "Category",
-      "stream": "Stream",
-      "streamAny": "Any stream",
+      "stream": "Ticket for",
+      "streamAny": "Anyone",
       "assignee": "Assignee",
       "anyAssignee": "Any assignee",
       "unassigned": "Unassigned",
@@ -802,8 +807,8 @@
       "active": "{count, plural, =0 {No filters} =1 {1 filter active} other {# filters active}}"
     },
     "stream": {
-      "internal": "Internal",
-      "external": "External"
+      "internal": "Our team",
+      "external": "Client"
     },
     "rowActions": {
       "openMenuFor": "Actions for {ticket}",
@@ -1179,10 +1184,13 @@
       "oneOff": "One-off",
       "active": "Active",
       "inactive": "Inactive",
+      "typeClient": "Client",
+      "typeInternal": "Axiom360",
       "balanceHours": "{balance}h of {included}h left",
       "columns": {
         "name": "Name",
         "abbreviation": "Code",
+        "type": "Type",
         "plan": "Plan",
         "balance": "Hours balance",
         "status": "Status"
@@ -1952,7 +1960,7 @@
       "allTimeLabel": "All time",
       "periodLabel": "Created (in period)",
       "byStatusTitle": "By status",
-      "byStreamTitle": "By stream",
+      "byStreamTitle": "Client vs our team",
       "averageResolutionTitle": "Average resolution",
       "averageResolutionMinutes": "{minutes} min",
       "averageResolutionEmpty": "No resolved tickets yet.",
@@ -2010,8 +2018,8 @@
       "pendingValue": "{count} requests · {total}"
     },
     "stream": {
-      "internal": "Internal",
-      "external": "External"
+      "internal": "Our team",
+      "external": "Client"
     }
   },
   "timesheet": {
