@@ -75,6 +75,8 @@ export function SignInForm() {
       if (!result.ok) {
         if ("locked" in result && result.locked) {
           setError(result.error);
+        } else if ("deactivated" in result && result.deactivated) {
+          setError(result.error);
         } else if ("unverified" in result && result.unverified) {
           setError(result.error);
         } else {

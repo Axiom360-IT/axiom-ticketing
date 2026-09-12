@@ -9,6 +9,7 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import type { Permission } from "@/lib/auth/permissions";
 import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
+import { revokeAllUserAccess } from "@/lib/auth/revoke";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -409,6 +410,10 @@ export async function deactivateUser(
 
   // 2. Apply cascade option.
   let affected = 0;
+  // Everyone losing access in this call — the target plus, under the
+  // "deactivate" cascade, their whole subtree. Their sessions and MCP
+  // tokens are cut off in the same transaction as the flag flip.
+  const deactivatedIds: string[] = [userId];
   await transactional(async (tx) => {
     if (parsed.data.cascade === "move-up") {
       // Children move up to the deactivated user's own creator.
@@ -430,6 +435,7 @@ export async function deactivateUser(
       // cascade: deactivate every descendant (full tree).
       const descendants = await getDescendants(userId);
       if (descendants.length > 0) {
+        deactivatedIds.push(...descendants.map((d) => d.id));
         await tx
           .update(users)
           .set({
@@ -457,6 +463,8 @@ export async function deactivateUser(
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
+
+    await revokeAllUserAccess(deactivatedIds, tx);
   });
 
   await audit({

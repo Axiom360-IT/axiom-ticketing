@@ -98,7 +98,10 @@ export async function resolveMcpToken(
     .limit(1);
   if (!row) return null;
 
+  // Null when the owner has been deactivated — `loadSessionUserById` is the
+  // single place that check lives, so a token dies with its owner's account.
   const sessionUser = await loadSessionUserById(row.userId);
+  if (!sessionUser) return null;
   if (!(await can(sessionUser, "mcp.connect", { type: "global" }, productionContext))) {
     return null;
   }

@@ -48,11 +48,17 @@ export async function startImpersonation(
       id: users.id,
       createdById: users.createdById,
       name: users.name,
+      isActive: users.isActive,
     })
     .from(users)
     .where(eq(users.id, targetUserId))
     .limit(1);
   if (!target) throw new NotFoundError();
+  // Session resolution refuses a deactivated user, so impersonating one
+  // would just produce a dead session. Say so instead.
+  if (!target.isActive) {
+    return { ok: false, error: "That account is deactivated." };
+  }
 
   if (
     !(await can(

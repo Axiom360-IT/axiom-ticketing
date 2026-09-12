@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
+import { eq } from "drizzle-orm";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
@@ -59,6 +61,10 @@ function resolveBaseURL(): string {
   }
   return "http://localhost:3000";
 }
+
+/** Error code carried by the sign-in refusal for a deactivated account,
+ *  so callers can tell it apart from a wrong password. */
+export const DEACTIVATED_CODE = "ACCOUNT_DEACTIVATED";
 
 export const auth = betterAuth({
   baseURL: resolveBaseURL(),
@@ -190,6 +196,29 @@ export const auth = betterAuth({
         after: async (user) => {
           await assignCustomerRole(user.id);
           await claimTicketsForCustomer(user.id, user.email);
+        },
+      },
+    },
+    session: {
+      // A deactivated account must not be able to obtain a session by ANY
+      // route — password sign-in, magic link, or the auto-sign-in that
+      // follows email verification. Every one of those ends up creating a
+      // session row, so this hook is the single place the check belongs.
+      // It runs AFTER credentials have been verified, which is what keeps
+      // the specific "deactivated" message from leaking which emails exist.
+      create: {
+        before: async (session) => {
+          const [row] = await db
+            .select({ isActive: users.isActive })
+            .from(users)
+            .where(eq(users.id, session.userId))
+            .limit(1);
+          if (row && !row.isActive) {
+            throw APIError.from("FORBIDDEN", {
+              code: DEACTIVATED_CODE,
+              message: "This account has been deactivated.",
+            });
+          }
         },
       },
     },

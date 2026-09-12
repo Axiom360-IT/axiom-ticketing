@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
-import { auth } from "@/lib/auth";
+import { auth, DEACTIVATED_CODE } from "@/lib/auth";
 import {
   clearFailures,
   getLockoutState,
@@ -36,6 +36,7 @@ const schema = z.object({
 
 export type SignInResult =
   | { ok: true }
+  | { ok: false; error: string; deactivated: true }
   | { ok: false; error: string; locked?: false; unverified?: false }
   | { ok: false; error: string; locked: true; retryMinutes: number }
   | { ok: false; error: string; unverified: true };
@@ -118,6 +119,7 @@ export async function signInWithLockout(
   //     `emailVerification.sendOnSignIn`.
   let signInOk = false;
   let unverified = false;
+  let deactivated = false;
   try {
     await auth.api.signInEmail({
       body: { email, password, rememberMe },
@@ -130,7 +132,12 @@ export async function signInWithLockout(
     const code = (err as { body?: { code?: string } } | undefined)?.body
       ?.code;
     const msg = err instanceof Error ? err.message.toLowerCase() : "";
-    if (code === "EMAIL_NOT_VERIFIED" || msg.includes("not verified")) {
+    if (code === DEACTIVATED_CODE) {
+      // Password was correct; the session hook refused to issue a session
+      // because the account is deactivated. Not a credential failure, so it
+      // must not count toward the lockout counter.
+      deactivated = true;
+    } else if (code === "EMAIL_NOT_VERIFIED" || msg.includes("not verified")) {
       unverified = true;
     } else if (
       code === "INVALID_EMAIL_OR_PASSWORD" ||
@@ -148,6 +155,32 @@ export async function signInWithLockout(
         error: "Something went wrong signing you in. Please try again.",
       };
     }
+  }
+
+  if (deactivated) {
+    const [account] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    await clearFailures(email);
+    await audit({
+      actorId: null,
+      action: "user.login_denied",
+      outcome: "denied",
+      targetType: "user",
+      targetId: account?.id,
+      targetLabel: email,
+      after: { email, reason: "deactivated" },
+      ipAddress: reqIp,
+      userAgent: reqUa,
+    });
+    return {
+      ok: false,
+      deactivated: true,
+      error:
+        "This account has been deactivated. Contact your administrator to regain access.",
+    };
   }
 
   if (unverified) {
