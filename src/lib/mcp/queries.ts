@@ -39,8 +39,19 @@ function clampLimit(n: number | undefined): number {
   return Math.min(Math.max(n ?? 10, 1), MAX_LIMIT);
 }
 
-async function requireTicketsView(user: SessionUser): Promise<void> {
-  if (!(await can(user, "tickets.view", { type: "global" }, productionContext))) {
+// A coarse "holds the permission at all" gate — deliberately NOT can()
+// with a ticket-shaped target. can()'s "tickets.view" case is scoped for a
+// SINGLE ticket (used by the ticket detail page) and returns false outright
+// for any non-"ticket" target, so calling it with `{ type: "global" }` here
+// always returned false for every user regardless of role (found + fixed
+// 2026-08-19 — every requireTicketsView-gated MCP tool was unusable for
+// anyone, Claude included). Row-level scoping for list/search/stats queries
+// is handled separately by `ticketsVisibilityCondition(user)` in each SQL
+// WHERE clause below, matching the plain `user.permissions.has(...)` pattern
+// used for this same coarse check everywhere else in the app (layout.tsx,
+// the admin dashboard, global search, the sidebar nav gate).
+function requireTicketsView(user: SessionUser): void {
+  if (!user.permissions.has("tickets.view")) {
     throw new Error("You don't have permission to view tickets.");
   }
 }
@@ -73,7 +84,7 @@ function baseTicketQuery() {
 const NOT_DONE = and(ne(tickets.status, "resolved"), ne(tickets.status, "closed"))!;
 
 export async function getTicketByNumber(user: SessionUser, ticketNumber: string) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   const [row] = await baseTicketQuery()
     .where(
       and(
@@ -90,7 +101,7 @@ export async function listTicketsByStatus(
   statuses: string[],
   limit?: number,
 ) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   return baseTicketQuery()
     .where(and(inArray(tickets.status, statuses), ticketsVisibilityCondition(user)))
     .orderBy(desc(tickets.createdAt))
@@ -98,7 +109,7 @@ export async function listTicketsByStatus(
 }
 
 export async function listOverdueTickets(user: SessionUser, limit?: number) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   return baseTicketQuery()
     .where(
       and(
@@ -112,7 +123,7 @@ export async function listOverdueTickets(user: SessionUser, limit?: number) {
 }
 
 export async function listUnassignedTickets(user: SessionUser, limit?: number) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   return baseTicketQuery()
     .where(and(isNull(tickets.assignedToId), NOT_DONE, ticketsVisibilityCondition(user)))
     .orderBy(desc(tickets.createdAt))
@@ -120,7 +131,7 @@ export async function listUnassignedTickets(user: SessionUser, limit?: number) {
 }
 
 export async function listEscalatedTickets(user: SessionUser, limit?: number) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   return baseTicketQuery()
     .where(and(eq(tickets.isEscalated, true), ticketsVisibilityCondition(user)))
     .orderBy(desc(tickets.createdAt))
@@ -132,7 +143,7 @@ export async function searchCustomerOrOrgHistory(
   query: string,
   limit?: number,
 ) {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   const q = `%${query.trim()}%`;
   return baseTicketQuery()
     .where(
@@ -159,7 +170,7 @@ export type TicketStats = {
 };
 
 export async function getTicketStats(user: SessionUser): Promise<TicketStats> {
-  await requireTicketsView(user);
+  requireTicketsView(user);
   const visible = ticketsVisibilityCondition(user);
   const countWhere = async (extra: SQL) => {
     const [row] = await db
