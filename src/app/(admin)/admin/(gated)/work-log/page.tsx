@@ -20,7 +20,7 @@ import {
 
 // Filter query string contract (all now driven by the column headers):
 //   ?technician=<uuid>  (view_all only)  &organization=<uuid>
-//   &service=onsite|remote  &billable=yes|no|monthly_plan|project|rework
+//   &service=onsite|remote  &billable=hourly_regular|hourly_premium|no|monthly_plan|project|rework
 //   &from=YYYY-MM-DD  &to=YYYY-MM-DD  (inclusive, on entry date)
 //   &sort=<column>:<asc|desc>
 type SearchParams = Promise<{

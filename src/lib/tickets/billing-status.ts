@@ -13,7 +13,7 @@ export type BillingStatus = "billed" | "needs_invoice" | "na";
 // Billable categories that are invoiced separately (so they CAN be "waiting to
 // be billed"). Monthly-plan is drawn from the org's balance; no/rework/unset
 // never get an invoice.
-const INVOICEABLE = new Set(["yes", "project"]);
+const INVOICEABLE = new Set(["hourly_regular", "hourly_premium", "project"]);
 
 export function billingStatus(
   billable: string | null | undefined,
@@ -32,7 +32,8 @@ export function billingStatus(
 export const BILLING_FILTER_VALUES = [
   "needs_invoice",
   "billed",
-  "yes",
+  "hourly_regular",
+  "hourly_premium",
   "monthly_plan",
   "project",
   "rework",

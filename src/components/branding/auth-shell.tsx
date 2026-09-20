@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Wordmark } from "@/components/branding/wordmark";
+import { ThemeToggleServer } from "@/components/shared/theme-toggle-server";
 import { GRADIENT_CSS, type BrandingConfig } from "@/lib/branding/presets";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,12 @@ type Props = {
 export function AuthShell({ branding, children, footerSlot, width = "narrow" }: Props) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+      {/* Anonymous visitors get the theme picker too — this shell wraps every
+          signed-out surface (admin login, portal sign-in/sign-up/setup, and
+          the public submit form). */}
+      <div className="absolute right-4 top-4 z-20">
+        <ThemeToggleServer />
+      </div>
       {/* Soft radial accent — pure CSS so it ships with no asset load. */}
       <div
         aria-hidden="true"

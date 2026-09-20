@@ -70,7 +70,9 @@ export const tickets = pgTable(
     // a Monthly-Plan balance. 'unverified' rows are the triage queue.
     orgMatchStatus: text("org_match_status").notNull().default("none"),
     // Billing categorization (Meeting-2, CR-16). NULL until triaged; one of
-    // yes | no | monthly_plan | project | rework. When 'monthly_plan', logged
+    // hourly_regular | hourly_premium | no | monthly_plan | project | rework.
+    // The two hourly tiers replaced a single 'yes' value — migration:
+    // pnpm db:add-hourly-billable-tiers. When 'monthly_plan', logged
     // work-log minutes are deducted from the org's monthly balance.
     billable: text("billable"),
     // Invoice number keyed in once the ticket has been billed. NULL/empty =
@@ -159,6 +161,13 @@ export const tickets = pgTable(
     customerFollowupSentAt: timestamp("customer_followup_sent_at", {
       withTimezone: true,
     }),
+    // How many reminders have gone out for the CURRENT agent message. Reset to
+    // 1 whenever the stamp above goes stale (a newer agent reply starts a new
+    // series) and capped by `customer_followup.max_reminders`, which is what
+    // creates the deliberate quiet day(s) before the auto-close.
+    customerFollowupCount: integer("customer_followup_count")
+      .notNull()
+      .default(0),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     reopenedCount: integer("reopened_count").notNull().default(0),
@@ -210,7 +219,7 @@ export const tickets = pgTable(
     ),
     check(
       "tickets_billable_check",
-      sql`${t.billable} IS NULL OR ${t.billable} IN ('yes','no','monthly_plan','project','rework')`,
+      sql`${t.billable} IS NULL OR ${t.billable} IN ('hourly_regular','hourly_premium','no','monthly_plan','project','rework')`,
     ),
     check(
       "tickets_org_match_status_check",

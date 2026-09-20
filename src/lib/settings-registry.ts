@@ -107,6 +107,7 @@ export const SETTING_SCHEMAS = {
   "customer_followup.daily": z.boolean(),
   "customer_followup.followup_days": z.number().int().min(1).max(90),
   "customer_followup.close_days": z.number().int().min(1).max(90),
+  "customer_followup.max_reminders": z.number().int().min(1).max(30),
 
   // Customer bulk-import invites. Controls how long a customer's "set your
   // password" link stays valid after being (re)sent. Enforced independently

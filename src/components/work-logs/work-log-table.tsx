@@ -24,7 +24,14 @@ export type WorkLogTableRow = {
   canManage: boolean;
 };
 
-const BILLABLE_VALUES = ["yes", "no", "monthly_plan", "project", "rework"];
+const BILLABLE_VALUES = [
+  "hourly_regular",
+  "hourly_premium",
+  "no",
+  "monthly_plan",
+  "project",
+  "rework",
+];
 
 function formatMinutes(total: number): string {
   const h = Math.floor(total / 60);

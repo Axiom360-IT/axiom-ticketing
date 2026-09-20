@@ -15,12 +15,18 @@ import { inngest } from "../client";
 //
 // When a ticket sits in `awaiting_customer_confirmation` and the customer
 // hasn't replied since the agent's last message, this:
-//   1. after `customer_followup.followup_days`, sends a ONE-TIME nudge email
+//   1. after `customer_followup.followup_days`, sends the first nudge email
 //      ("reply or we'll close it on <date>") and stamps
 //      `tickets.customer_followup_sent_at`; then
-//   2. after `customer_followup.close_days` more with still no reply,
+//   2. in daily mode, repeats that reminder roughly once a day until
+//      `customer_followup.max_reminders` have gone out — after which the
+//      ticket goes deliberately QUIET for the remainder of the window; then
+//   3. after `customer_followup.close_days` more with still no reply,
 //      auto-closes the ticket (reason `customer_no_response`) and sends the
 //      normal ticket-closed notification.
+//
+// With followup_days=1, max_reminders=3, close_days=4 that is: reminders on
+// days 1, 2 and 3, silence on day 4, closed on day 5.
 //
 // The "clock" is the LATEST customer-visible message from the agent (not a
 // status-change timestamp), so a fresh agent reply automatically re-opens the
@@ -32,8 +38,9 @@ import { inngest } from "../client";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TICKET_BATCH_LIMIT = 500;
-const FALLBACK_FOLLOWUP_DAYS = 3;
+const FALLBACK_FOLLOWUP_DAYS = 1;
 const FALLBACK_CLOSE_DAYS = 4;
+const FALLBACK_MAX_REMINDERS = 3;
 
 export const customerFollowupMonitor = inngest.createFunction(
   {
@@ -47,16 +54,19 @@ export const customerFollowupMonitor = inngest.createFunction(
         "customer_followup.daily"?: unknown;
         "customer_followup.followup_days"?: unknown;
         "customer_followup.close_days"?: unknown;
+        "customer_followup.max_reminders"?: unknown;
       }>([
         "customer_followup.enabled",
         "customer_followup.daily",
         "customer_followup.followup_days",
         "customer_followup.close_days",
+        "customer_followup.max_reminders",
       ]);
       const enabled = s["customer_followup.enabled"];
       const daily = s["customer_followup.daily"];
       const fd = s["customer_followup.followup_days"];
       const cd = s["customer_followup.close_days"];
+      const mr = s["customer_followup.max_reminders"];
       return {
         enabled: typeof enabled === "boolean" ? enabled : true,
         daily: typeof daily === "boolean" ? daily : true,
@@ -64,6 +74,8 @@ export const customerFollowupMonitor = inngest.createFunction(
           typeof fd === "number" && fd > 0 ? fd : FALLBACK_FOLLOWUP_DAYS,
         closeDays:
           typeof cd === "number" && cd > 0 ? cd : FALLBACK_CLOSE_DAYS,
+        maxReminders:
+          typeof mr === "number" && mr > 0 ? mr : FALLBACK_MAX_REMINDERS,
       };
     });
 
@@ -99,6 +111,7 @@ export const customerFollowupMonitor = inngest.createFunction(
         customerName: tickets.customerName,
         customerId: tickets.customerId,
         followupSentAt: tickets.customerFollowupSentAt,
+        followupCount: tickets.customerFollowupCount,
         lastAuthor: lastAuthorSql,
         lastAtRaw: lastAtSql,
       })
@@ -174,11 +187,19 @@ export const customerFollowupMonitor = inngest.createFunction(
 
       // ── 2. Nudge (first reminder, or a daily re-nudge) ──────────
       // Fire once the grace window has passed. In DAILY mode, re-fire when the
-      // last reminder is > ~20h old; in single mode, only until the first one.
+      // last reminder is > ~20h old, but only while fewer than
+      // `maxReminders` have gone out for this agent message — the remaining
+      // days before the close are intentionally silent. In single mode, only
+      // the first one is ever sent.
+      // A stale stamp means a new series, so the stored count doesn't apply.
+      const remindersSoFar = nudgedSinceLastAgent ? (t.followupCount ?? 0) : 0;
       const dueForNudge =
         lastAtMs <= followupCutoff &&
         (!nudgedSinceLastAgent ||
-          (cfg.daily && sentMs !== null && sentMs <= now.getTime() - RENUDGE_MS));
+          (cfg.daily &&
+            sentMs !== null &&
+            sentMs <= now.getTime() - RENUDGE_MS &&
+            remindersSoFar < cfg.maxReminders));
       if (!dueForNudge) continue;
 
       // Guards that let the atomic claim succeed: no stamp yet, a stale stamp
@@ -189,18 +210,28 @@ export const customerFollowupMonitor = inngest.createFunction(
         lt(tickets.customerFollowupSentAt, new Date(lastAtMs)),
       ];
       if (cfg.daily) {
-        claimGuards.push(
+        // Re-nudge only while under the cap — checked in the same atomic
+        // claim so two overlapping runs can't push the series past it.
+        const capGuard = and(
           lt(
             tickets.customerFollowupSentAt,
             new Date(now.getTime() - RENUDGE_MS),
           ),
+          lt(tickets.customerFollowupCount, cfg.maxReminders),
         );
+        if (capGuard) claimGuards.push(capGuard);
       }
 
       const claimed = await step.run(`followup-claim-${t.id}`, async () => {
         const rows = await db
           .update(tickets)
-          .set({ customerFollowupSentAt: now, updatedAt: sql`now()` })
+          .set({
+            customerFollowupSentAt: now,
+            // 1 when this starts a new series (no stamp, or one older than the
+            // agent's message), otherwise one more than what's stored.
+            customerFollowupCount: sql`case when ${tickets.customerFollowupSentAt} is null or ${tickets.customerFollowupSentAt} < ${new Date(lastAtMs)} then 1 else ${tickets.customerFollowupCount} + 1 end`,
+            updatedAt: sql`now()`,
+          })
           .where(
             and(
               eq(tickets.id, t.id),
@@ -216,14 +247,23 @@ export const customerFollowupMonitor = inngest.createFunction(
           action: "ticket.customer_followup",
           targetType: "ticket",
           targetId: t.ticketNumber,
-          after: { followupSentAt: now.toISOString() },
+          after: {
+            followupSentAt: now.toISOString(),
+            reminder: `${remindersSoFar + 1}/${cfg.maxReminders}`,
+          },
         });
         return true;
       });
       if (claimed) {
         // Email in its own step so a send failure retries just the email.
+        // The close instant is fixed to the agent's message — NOT to when this
+        // reminder happens to go out. Deriving it from `now` made every
+        // reminder after the first quote a date later than the actual close.
+        const closeAt = new Date(
+          lastAtMs + (cfg.followupDays + cfg.closeDays) * DAY_MS,
+        );
         await step.run(`followup-email-${t.id}`, async () => {
-          await sendFollowupEmail(t, now, cfg.closeDays);
+          await sendFollowupEmail(t, closeAt);
         });
         nudged++;
       }
@@ -242,15 +282,9 @@ type Candidate = {
   customerId: string | null;
 };
 
-async function sendFollowupEmail(
-  t: Candidate,
-  now: Date,
-  closeDays: number,
-): Promise<void> {
+async function sendFollowupEmail(t: Candidate, closeAt: Date): Promise<void> {
   const appUrl = getAppUrl();
-  const closeDate = new Date(
-    now.getTime() + closeDays * DAY_MS,
-  ).toLocaleDateString("en-GB", {
+  const closeDate = closeAt.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",

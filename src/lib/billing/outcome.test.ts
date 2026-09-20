@@ -20,10 +20,22 @@ describe("deriveBillingOutcome", () => {
     ).toEqual({ status: "pending", category: "project", overplanMinutes: 0 });
   });
 
-  it("Billable (yes) → pending", () => {
+  it("Billable per hour — Regular → pending", () => {
     expect(
-      deriveBillingOutcome({ billable: "yes", isMonthlyPlan: true, balanceMinutes: 50 }),
-    ).toEqual({ status: "pending", category: "yes", overplanMinutes: 0 });
+      deriveBillingOutcome({ billable: "hourly_regular", isMonthlyPlan: true, balanceMinutes: 50 }),
+    ).toEqual({ status: "pending", category: "hourly_regular", overplanMinutes: 0 });
+  });
+
+  it("Billable per hour — Premium → pending", () => {
+    expect(
+      deriveBillingOutcome({ billable: "hourly_premium", isMonthlyPlan: true, balanceMinutes: 50 }),
+    ).toEqual({ status: "pending", category: "hourly_premium", overplanMinutes: 0 });
+  });
+
+  it("the retired 'yes' value falls through to review", () => {
+    expect(
+      deriveBillingOutcome({ billable: "yes", isMonthlyPlan: false, balanceMinutes: null }),
+    ).toEqual({ status: "review", category: "uncategorized", overplanMinutes: 0 });
   });
 
   it("Monthly Support within balance → billed (covered)", () => {

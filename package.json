@@ -45,6 +45,8 @@
     "db:add-on-hold-status": "tsx --env-file=.env.local src/lib/db/add-on-hold-status.ts",
     "db:add-ticket-created-by": "tsx --env-file=.env.local src/lib/db/add-ticket-created-by-column.ts",
     "db:add-ticket-service-type": "tsx --env-file=.env.local src/lib/db/add-ticket-service-type-column.ts",
+    "db:add-hourly-billable-tiers": "tsx --env-file=.env.local src/lib/db/add-hourly-billable-tiers.ts",
+    "db:add-followup-rule": "tsx --env-file=.env.local src/lib/db/add-followup-rule.ts",
     "db:add-email-template-overrides": "tsx --env-file=.env.local src/lib/db/add-email-template-overrides.ts",
     "db:add-email-threading": "tsx --env-file=.env.local src/lib/db/add-email-threading.ts",
     "db:harden-audit": "tsx --env-file=.env.local src/lib/db/apply-audit-hardening.ts",

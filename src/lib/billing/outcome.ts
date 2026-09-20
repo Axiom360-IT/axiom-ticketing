@@ -16,7 +16,8 @@ export type BillingCategory =
   | "monthly_plan"
   | "project"
   | "rework"
-  | "yes"
+  | "hourly_regular"
+  | "hourly_premium"
   | "no"
   | "uncategorized";
 
@@ -40,7 +41,8 @@ function toCategory(billable: string | null): BillingCategory {
     case "monthly_plan":
     case "project":
     case "rework":
-    case "yes":
+    case "hourly_regular":
+    case "hourly_premium":
     case "no":
       return billable;
     default:
@@ -59,7 +61,8 @@ export function deriveBillingOutcome(
       return { status: "none", category, overplanMinutes: 0 };
 
     case "project":
-    case "yes":
+    case "hourly_regular":
+    case "hourly_premium":
       return { status: "pending", category, overplanMinutes: 0 };
 
     case "monthly_plan": {

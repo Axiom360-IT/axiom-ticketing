@@ -13,7 +13,8 @@ import {
 import { setTicketBillable } from "@/app/actions/tickets";
 
 const BILLABLE_VALUES = [
-  "yes",
+  "hourly_regular",
+  "hourly_premium",
   "no",
   "monthly_plan",
   "project",

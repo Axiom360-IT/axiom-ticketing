@@ -10,6 +10,8 @@ import { NotificationBell } from "@/components/shared/notification-bell";
 import { authClient } from "@/lib/auth/client";
 import { initials } from "@/lib/format";
 import type { RecentNotificationsResult } from "@/app/actions/notifications";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
+import type { Theme } from "@/lib/theme";
 
 type Props = {
   email: string;
@@ -19,6 +21,9 @@ type Props = {
   /** Server-fetched initial notifications payload so the bell renders
    *  with real data on the first paint instead of flashing empty. */
   initialNotifications: RecentNotificationsResult;
+  /** Read from the cookie by the (server) portal layout — passed in rather
+   *  than read here so the picker renders correct on the first paint. */
+  theme: Theme;
 };
 
 export function CustomerTopbar({
@@ -26,6 +31,7 @@ export function CustomerTopbar({
   name,
   avatarUrl,
   initialNotifications,
+  theme,
 }: Props) {
   const t = useTranslations("portal.shell");
   const tCommon = useTranslations("common");
@@ -55,6 +61,7 @@ export function CustomerTopbar({
           {tCommon("appName")}
         </Link>
         <div className="flex items-center gap-3 sm:gap-4">
+          <ThemeToggle initial={theme} />
           <NotificationBell initial={initialNotifications} />
           <Avatar className="size-7 hidden sm:flex">
             {avatarUrl ? (

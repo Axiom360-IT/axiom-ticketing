@@ -10,7 +10,8 @@ export const USAGE_CATEGORY_ORDER = [
   "monthly_plan",
   "project",
   "rework",
-  "yes",
+  "hourly_regular",
+  "hourly_premium",
   "no",
   "uncategorized",
 ] as const;

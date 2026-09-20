@@ -5,6 +5,8 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { CustomerSidebar } from "@/components/customer/customer-sidebar";
 import { CustomerTopbar } from "@/components/customer/customer-topbar";
+import { cookies } from "next/headers";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { getRecentNotifications } from "@/app/actions/notifications";
 import { loadBranding } from "@/lib/branding/load";
@@ -65,6 +67,7 @@ export default async function PortalAuthedLayout({
           name={profile?.name ?? ""}
           avatarUrl={avatarUrl}
           initialNotifications={initialNotifs}
+          theme={parseTheme((await cookies()).get(THEME_COOKIE)?.value)}
         />
         <main className="flex-1">{children}</main>
       </div>

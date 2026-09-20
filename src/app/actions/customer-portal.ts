@@ -27,6 +27,7 @@ import {
   resolveTicketOrgForGuest,
 } from "@/lib/tickets/org";
 import { loadTicketScope } from "@/lib/tickets/load";
+import { resumeFromAwaitingCustomer } from "@/lib/tickets/awaiting-customer";
 import { classifyStream } from "@/lib/tickets/stream";
 import {
   htmlToPlainText,
@@ -328,6 +329,11 @@ export async function customerReply(
     return { ok: false, error: "Reply cannot be empty" };
   }
 
+  // A reply means the customer is no longer the blocker — hand the ticket
+  // back to the team (and resume its paused SLA clock) if it was parked in
+  // "Awaiting customer". Computed before the write so it joins the same tx.
+  const resumePatch = resumeFromAwaitingCustomer(ticket, new Date());
+
   await transactional(async (tx) => {
     const [inserted] = await tx
       .insert(messages)
@@ -360,7 +366,12 @@ export async function customerReply(
 
     await tx
       .update(tickets)
-      .set({ updatedAt: new Date() })
+      .set({
+        updatedAt: new Date(),
+        // A reply hands the ticket back to the team — see
+        // lib/tickets/awaiting-customer.ts. No-op unless it was parked.
+        ...(resumePatch ?? {}),
+      })
       .where(eq(tickets.id, ticket.id));
   });
 
@@ -496,6 +507,9 @@ export async function guestReply(input: {
       customerName: tickets.customerName,
       status: tickets.status,
       assignedToId: tickets.assignedToId,
+      slaPausedAt: tickets.slaPausedAt,
+      responseDueAt: tickets.responseDueAt,
+      resolutionDueAt: tickets.resolutionDueAt,
     })
     .from(tickets)
     .where(eq(tickets.ticketNumber, ticketNumber))
@@ -517,6 +531,11 @@ export async function guestReply(input: {
   if (htmlToPlainText(cleanBody).length === 0) {
     return { ok: false, error: "Reply cannot be empty." };
   }
+
+  // A reply means the customer is no longer the blocker — hand the ticket
+  // back to the team (and resume its paused SLA clock) if it was parked in
+  // "Awaiting customer". Computed before the write so it joins the same tx.
+  const resumePatch = resumeFromAwaitingCustomer(ticket, new Date());
 
   await transactional(async (tx) => {
     const [inserted] = await tx
@@ -552,7 +571,12 @@ export async function guestReply(input: {
 
     await tx
       .update(tickets)
-      .set({ updatedAt: new Date() })
+      .set({
+        updatedAt: new Date(),
+        // A reply hands the ticket back to the team — see
+        // lib/tickets/awaiting-customer.ts. No-op unless it was parked.
+        ...(resumePatch ?? {}),
+      })
       .where(eq(tickets.id, ticket.id));
   });
 

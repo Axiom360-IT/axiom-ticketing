@@ -6,6 +6,7 @@ import { MobileNav } from "./mobile-nav";
 import { NotificationBell } from "./notification-bell";
 import { ProfileMenu } from "./profile-menu";
 import { SidebarToggle } from "./sidebar-toggle";
+import { ThemeToggleServer } from "./theme-toggle-server";
 
 type TopbarProps = {
   user: {
@@ -40,6 +41,7 @@ export async function Topbar({ user, branding, permissions, ticketTypes }: Topba
           `max-w-md`, so without it the leftover row space would sit to the
           right of the profile menu and leave it stranded mid-row. */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
+        <ThemeToggleServer />
         <NotificationBell initial={initialNotifications} />
         <ProfileMenu
           user={{

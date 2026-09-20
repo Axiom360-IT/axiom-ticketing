@@ -2621,7 +2621,8 @@ export async function searchTicketCustomers(
 // 'monthly_plan' re-syncs the org's Monthly-Plan balance.
 
 const BILLABLE_VALUES = [
-  "yes",
+  "hourly_regular",
+  "hourly_premium",
   "no",
   "monthly_plan",
   "project",

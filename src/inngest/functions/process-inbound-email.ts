@@ -45,6 +45,7 @@ import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { computeDueTimesForNewTicket, type Priority } from "@/lib/sla";
 import { classifyStream } from "@/lib/tickets/stream";
+import { resumeFromAwaitingCustomer } from "@/lib/tickets/awaiting-customer";
 import { resolveTicketOrgForGuest } from "@/lib/tickets/org";
 import {
   attachmentStorageKey,
@@ -711,12 +712,31 @@ export const processInboundEmail = inngest.createFunction(
       }),
     );
 
-    await step.run("touch-ticket", async () =>
-      db
+    await step.run("touch-ticket", async () => {
+      // Re-read the SLA columns HERE rather than widening the memoized
+      // load-ticket step: Inngest JSON-serializes a step's return value, so
+      // Dates would come back as strings and the resume math would break.
+      const [fresh] = await db
+        .select({
+          status: tickets.status,
+          assignedToId: tickets.assignedToId,
+          slaPausedAt: tickets.slaPausedAt,
+          responseDueAt: tickets.responseDueAt,
+          resolutionDueAt: tickets.resolutionDueAt,
+        })
+        .from(tickets)
+        .where(eq(tickets.id, ticket.id))
+        .limit(1);
+      // An emailed reply is still the customer answering — unpark the ticket
+      // exactly like a portal reply does (lib/tickets/awaiting-customer.ts).
+      const resumePatch = fresh
+        ? resumeFromAwaitingCustomer(fresh, new Date())
+        : null;
+      await db
         .update(tickets)
-        .set({ updatedAt: new Date() })
-        .where(eq(tickets.id, ticket.id)),
-    );
+        .set({ updatedAt: new Date(), ...(resumePatch ?? {}) })
+        .where(eq(tickets.id, ticket.id));
+    });
 
     await audit({
       actorId: null,

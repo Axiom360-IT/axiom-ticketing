@@ -186,15 +186,21 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
     },
     {
       key: "customer_followup.followup_days",
-      value: 3,
+      value: 1,
       description:
         "Days a ticket may await the customer's reply before the follow-up nudge email is sent",
+    },
+    {
+      key: "customer_followup.max_reminders",
+      value: 3,
+      description:
+        "How many daily reminders go out before the ticket falls silent for the rest of the window",
     },
     {
       key: "customer_followup.close_days",
       value: 4,
       description:
-        "Days after the follow-up nudge with still no reply before the ticket auto-closes",
+        "Days after the FIRST follow-up nudge with still no reply before the ticket auto-closes",
     },
 
     // Customer bulk-import invites

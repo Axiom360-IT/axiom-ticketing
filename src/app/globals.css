@@ -191,6 +191,24 @@
  * Dark theme — deeper neutrals + the same brand blues, kept legible
  * ───────────────────────────────────────────────────────────────────── */
 
+/* Native UI (form controls, scrollbars, caret) follows the theme too. */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+/* Belt-and-braces for "system": the inline script adds `.dark` before paint,
+ * but painting the page ground from CSS alone means even a delayed script
+ * can't flash a white background at a dark-mode visitor. */
+@media (prefers-color-scheme: dark) {
+  html.theme-system {
+    color-scheme: dark;
+    background-color: #0b1220;
+  }
+}
+
 .dark {
   --background: #0b1220;
   --foreground: #e6edf6;

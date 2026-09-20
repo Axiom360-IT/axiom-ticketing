@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { ThemeToggleServer } from "@/components/shared/theme-toggle-server";
 import type { LucideIcon } from "lucide-react";
 import {
   ACCENT_CLASSES,
@@ -92,7 +93,13 @@ export function AuthSplitShell({
   const year = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-zinc-50 dark:bg-zinc-950">
+      {/* Anonymous visitors get the theme picker too — this shell wraps every
+          signed-out surface (admin login, portal sign-in/sign-up/setup, and
+          the public submit form). */}
+      <div className="absolute right-4 top-4 z-20">
+        <ThemeToggleServer />
+      </div>
       {/* ── Left: brand hero panel ────────────────────────────────── */}
       <aside
         className={cn(

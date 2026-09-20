@@ -21,13 +21,14 @@ export function billingFilterCondition(
         break;
       case "needs_invoice":
         preds.push(
-          sql`${tickets.billable} in ('yes','project') and (${tickets.invoiceNumber} is null or ${tickets.invoiceNumber} = '')`,
+          sql`${tickets.billable} in ('hourly_regular','hourly_premium','project') and (${tickets.invoiceNumber} is null or ${tickets.invoiceNumber} = '')`,
         );
         break;
       case "unset":
         preds.push(isNull(tickets.billable));
         break;
-      case "yes":
+      case "hourly_regular":
+      case "hourly_premium":
       case "no":
       case "monthly_plan":
       case "project":

@@ -369,7 +369,14 @@ export default async function SettingsPage({
                 settingKey="customer_followup.followup_days"
                 label={tCf("followupLabel")}
                 hint={tCf("followupHint")}
-                initial={num(v["customer_followup.followup_days"], 3)}
+                initial={num(v["customer_followup.followup_days"], 1)}
+                min={1}
+              />
+              <NumberSettingForm
+                settingKey="customer_followup.max_reminders"
+                label={tCf("maxRemindersLabel")}
+                hint={tCf("maxRemindersHint")}
+                initial={num(v["customer_followup.max_reminders"], 3)}
                 min={1}
               />
               <NumberSettingForm

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { ThemeToggleServer } from "@/components/shared/theme-toggle-server";
 
 // Minimal chrome for token-authenticated guest views. Deliberately
 // omits the "Signed in as…" topbar since the visitor doesn't have a
@@ -23,12 +24,15 @@ export default async function GuestPortalLayout({
           >
             {t("appName")}
           </Link>
-          <Link
-            href="/portal/sign-in"
-            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            {tGuest("signInLink")}
-          </Link>
+          <div className="flex items-center gap-3">
+            <ThemeToggleServer />
+            <Link
+              href="/portal/sign-in"
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {tGuest("signInLink")}
+            </Link>
+          </div>
         </div>
       </header>
       <main className="flex-1">{children}</main>

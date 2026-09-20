@@ -1,5 +1,11 @@
 {
   "common": {
+    "theme": {
+      "label": "Appearance",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
     "resendInvite": "Resend invite",
     "appName": "Axiom360 Ticketing System",
     "export": {
@@ -664,9 +670,10 @@
     },
     "billable": {
       "title": "Billable",
-      "help": "How this ticket's work is billed. Billable / per hour: charged by the hours logged. Monthly plan: hours are deducted from the organization's included balance. Project basis: billed as part of a project. Rework: redo of earlier work. No: not billable.",
+      "help": "How this ticket's work is billed. Billable / per hour (Regular or Premium): charged by the hours logged, at the standard or premium rate. Monthly plan: hours are deducted from the organization's included balance. Project basis: billed as part of a project. Rework: redo of earlier work. No: not billable.",
       "unset": "Not set",
-      "yes": "Billable / per hour",
+      "hourly_regular": "Billable / per hour — Regular",
+      "hourly_premium": "Billable / per hour — Premium",
       "no": "No (not billable)",
       "monthly_plan": "Monthly plan",
       "project": "Project basis",
@@ -796,7 +803,8 @@
       "billingOptions": {
         "needs_invoice": "Needs invoice",
         "billed": "Billed / invoiced",
-        "yes": "Billable / per hour",
+        "hourly_regular": "Billable / per hour — Regular",
+        "hourly_premium": "Billable / per hour — Premium",
         "monthly_plan": "Monthly plan",
         "project": "Project basis",
         "rework": "Rework",
@@ -1243,7 +1251,8 @@
         "monthly_plan": "Monthly Support",
         "project": "Project-Basis",
         "rework": "Rework",
-        "yes": "Billable",
+        "hourly_regular": "Billable (Regular)",
+        "hourly_premium": "Billable (Premium)",
         "no": "Non-Billable",
         "uncategorized": "Uncategorized"
       }
@@ -1636,11 +1645,13 @@
       "enabledLabel": "Follow up and auto-close on no response",
       "enabledHint": "When on, a ticket left in “Awaiting customer” is emailed a reminder after the follow-up window, then closed if the customer still doesn't reply.",
       "dailyLabel": "Send a reminder every day",
-      "dailyHint": "When on, the customer is reminded once each day (from the follow-up window until auto-close). When off, a single reminder is sent once the follow-up window is reached.",
-      "followupLabel": "Send follow-up after (days)",
-      "followupHint": "Days a ticket may await the customer's reply before the reminder email is sent. Default 3.",
+      "dailyHint": "When on, the customer is reminded once each day until the reminder limit below is reached. When off, a single reminder is sent once the follow-up window is reached.",
+      "followupLabel": "Send first follow-up after (days)",
+      "followupHint": "Days a ticket may await the customer's reply before the first reminder email is sent. Default 1.",
+      "maxRemindersLabel": "Maximum reminders",
+      "maxRemindersHint": "How many daily reminders go out in total. Once they're used up the ticket goes quiet until it auto-closes — with the defaults that's reminders on days 1, 2 and 3, silence on day 4, closed on day 5. Default 3.",
       "closeLabel": "Auto-close after (days)",
-      "closeHint": "Days after the reminder, with still no reply, before the ticket auto-closes. Default 4."
+      "closeHint": "Days after the FIRST reminder, with still no reply, before the ticket auto-closes. Default 4."
     },
     "customerSms": {
       "title": "Customer SMS notifications",
@@ -2888,7 +2899,8 @@
         "monthly_plan": "Monthly Support",
         "project": "Project-Basis",
         "rework": "Rework",
-        "yes": "Billable",
+        "hourly_regular": "Billable / per hour — Regular",
+        "hourly_premium": "Billable / per hour — Premium",
         "no": "Non-Billable",
         "uncategorized": "Uncategorized"
       },

@@ -48,7 +48,8 @@ const STREAMS = ["internal", "external"] as const;
 // Friendly labels for the raw billable category (no code-y underscores in the
 // exported file).
 const BILLABLE_LABEL: Record<string, string> = {
-  yes: "Billable",
+  hourly_regular: "Billable / per hour — Regular",
+  hourly_premium: "Billable / per hour — Premium",
   no: "Non-billable",
   monthly_plan: "Monthly plan",
   project: "Project",

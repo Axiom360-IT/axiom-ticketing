@@ -6,7 +6,8 @@ import {
 } from "@/lib/billing/usage";
 
 // Per-organization, per-category work breakdown (reqs 8.4/8.5). Every work
-// category is shown — Monthly Support, Project-Basis, Rework, Billable,
+// category is shown — Monthly Support, Project-Basis, Rework, the two
+// hourly tiers (Regular / Premium),
 // Non-Billable, and an Uncategorized catch-all — for the current month, all
 // time, and a short monthly history, so it's easy to read how much work was
 // done for an organization and how it splits across categories.
@@ -15,7 +16,8 @@ const CATEGORY_STYLE: Record<UsageCategory, { bar: string; dot: string }> = {
   monthly_plan: { bar: "bg-blue-500", dot: "bg-blue-500" },
   project: { bar: "bg-violet-500", dot: "bg-violet-500" },
   rework: { bar: "bg-amber-500", dot: "bg-amber-500" },
-  yes: { bar: "bg-emerald-500", dot: "bg-emerald-500" },
+  hourly_regular: { bar: "bg-emerald-500", dot: "bg-emerald-500" },
+  hourly_premium: { bar: "bg-teal-600", dot: "bg-teal-600" },
   no: { bar: "bg-zinc-400", dot: "bg-zinc-400" },
   uncategorized: { bar: "bg-zinc-300 dark:bg-zinc-600", dot: "bg-zinc-300 dark:bg-zinc-600" },
 };
