@@ -5,29 +5,10 @@
 // customer bulk import — auto-suggesting one would lump unrelated people
 // under a fake "Gmail Inc." organization. Rows on these domains always fall
 // to "assign to an existing org" or get excluded from the commit.
-const FREE_MAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "yahoo.ca",
-  "yahoo.co.uk",
-  "ymail.com",
-  "outlook.com",
-  "hotmail.com",
-  "hotmail.co.uk",
-  "live.com",
-  "msn.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "protonmail.com",
-  "proton.me",
-]);
-
-export function isFreeMailDomain(domain: string): boolean {
-  return FREE_MAIL_DOMAINS.has(domain.toLowerCase());
-}
+//
+// The list itself lives in lib/email/free-mail.ts — it was duplicated here and
+// in lib/tickets/participants.ts and the two had drifted apart.
+export { isFreeMailDomain } from "@/lib/email/free-mail";
 
 /**
  * A simple, honest starting point for a new organization's name — NOT a real

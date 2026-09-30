@@ -4,12 +4,18 @@ import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
 import { type SessionUser, can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
-import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { messages } from "@/lib/db/schema/messages";
 import { tickets } from "@/lib/db/schema/tickets";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
+import {
+  listPendingParticipants,
+  notifyParticipantAdded,
+  type PendingParticipant,
+} from "@/lib/tickets/participants";
+import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { getAppUrl } from "@/lib/request";
 import { loadTicketScope } from "@/lib/tickets/load";
 import {
@@ -271,5 +277,136 @@ export async function rejectHeldMessage(messageId: string): Promise<Result> {
   });
 
   revalidatePath("/admin/moderation");
+  return { ok: true };
+}
+
+// ── Pending participants (decision 2) ─────────────────────────────────
+//
+// Addresses proposed by a GUEST on the submit form, or harvested from an
+// inbound To/CC where the sender isn't recognized. They sit inert as
+// `status='pending'` until a staff member decides.
+//
+// Gated on `tickets.update` — deliberately NOT `tickets.manage_participants`,
+// which the ticket's own customer holds. Gating approval on that permission
+// would let a guest approve the very strangers they proposed, which is the
+// entire thing the approval step exists to prevent.
+
+export type PendingParticipantResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function listPendingParticipantsForModeration(): Promise<
+  PendingParticipant[]
+> {
+  const user = await requireSessionUser();
+  if (!user.permissions.has("tickets.update")) throw new ForbiddenError();
+  return listPendingParticipants(ticketsVisibilityCondition(user));
+}
+
+/** Shared gate: load the pending row and prove the caller may act on its
+ *  ticket. Mirrors loadHeldForModeration exactly. */
+async function loadPendingForDecision(participantId: string) {
+  const user = await requireSessionUser();
+  const [row] = await db
+    .select({
+      id: ticketParticipants.id,
+      ticketId: ticketParticipants.ticketId,
+      email: ticketParticipants.email,
+      status: ticketParticipants.status,
+    })
+    .from(ticketParticipants)
+    .where(eq(ticketParticipants.id, participantId))
+    .limit(1);
+  if (!row) throw new NotFoundError();
+  const ticket = await loadTicketScope(row.ticketId);
+  if (!ticket) throw new NotFoundError();
+  if (
+    !(await can(
+      user,
+      "tickets.update",
+      { type: "ticket", ticket },
+      productionContext,
+    ))
+  ) {
+    throw new ForbiddenError();
+  }
+  return { user, row, ticket };
+}
+
+export async function approvePendingParticipant(
+  participantId: string,
+): Promise<PendingParticipantResult> {
+  const { user, row, ticket } = await loadPendingForDecision(participantId);
+
+  // Conditional on still being pending so two coordinators clicking at once
+  // can't both apply a decision.
+  const updated = await db
+    .update(ticketParticipants)
+    .set({
+      status: "active",
+      addedVia: "moderation",
+      addedById: user.id,
+    })
+    .where(
+      and(
+        eq(ticketParticipants.id, row.id),
+        eq(ticketParticipants.status, "pending"),
+      ),
+    )
+    .returning({ id: ticketParticipants.id });
+  if (updated.length === 0) {
+    return { ok: false, error: "That request has already been decided." };
+  }
+
+  // A human just vouched for this address — now it's safe to tell them.
+  await notifyParticipantAdded({ ticketId: ticket.id, email: row.email });
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.approve_participant",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { email: row.email, status: "pending" },
+    after: { status: "active" },
+  });
+
+  revalidatePath("/admin/moderation");
+  revalidatePath(`/admin/tickets/${ticket.id}`);
+  revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
+  return { ok: true };
+}
+
+export async function rejectPendingParticipant(
+  participantId: string,
+): Promise<PendingParticipantResult> {
+  const { user, row, ticket } = await loadPendingForDecision(participantId);
+
+  // Rejected and removed are the same operational state — off the thread, and
+  // never silently re-added by an automatic path. The audit carries the intent.
+  const updated = await db
+    .update(ticketParticipants)
+    .set({ status: "removed" })
+    .where(
+      and(
+        eq(ticketParticipants.id, row.id),
+        eq(ticketParticipants.status, "pending"),
+      ),
+    )
+    .returning({ id: ticketParticipants.id });
+  if (updated.length === 0) {
+    return { ok: false, error: "That request has already been decided." };
+  }
+
+  await audit({
+    actorId: user.id,
+    action: "ticket.reject_participant",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    before: { email: row.email, status: "pending" },
+    after: { status: "removed" },
+  });
+
+  revalidatePath("/admin/moderation");
+  revalidatePath(`/admin/tickets/${ticket.id}`);
   return { ok: true };
 }

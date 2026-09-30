@@ -9,6 +9,14 @@ export type NormalizedInboundEmail = {
   fromName?: string;
   /** All recipients on the visible `To:` line — used to extract `ticket+AX-XXXX@…`. */
   toEmails: string[];
+  /** Everyone on the `Cc:` line, for participant harvesting.
+   *
+   *  OPTIONAL on purpose: events queued before this field existed are already
+   *  sitting in Inngest and arrive as plain JSON with no such key, so every
+   *  consumer must read it as `?? []` rather than assume it. BCC is absent by
+   *  design — the sending server strips it, and surfacing it would betray what
+   *  the sender chose to hide. */
+  ccEmails?: string[];
   subject: string | null;
   text: string | null;
   html: string | null;
@@ -20,6 +28,8 @@ export type NormalizedInboundEmail = {
    *  are pulled from the Receiving API by this id at ingest time (req 5.x). */
   providerEmailId?: string;
 };
+
+import { parseAddressList } from "./address-list";
 
 // ── Resend adapter ───────────────────────────────────────────────────
 //
@@ -45,6 +55,10 @@ export type ResendInboundPayload = {
     email_id?: string;
     from?: { email?: string; name?: string } | string;
     to?:
+      | Array<{ email?: string; name?: string } | string>
+      | { email?: string; name?: string }
+      | string;
+    cc?:
       | Array<{ email?: string; name?: string } | string>
       | { email?: string; name?: string }
       | string;
@@ -119,14 +133,35 @@ export function normalizeResendInbound(
     .filter((x): x is { email: string } => x !== null)
     .map((x) => x.email);
 
+  // The raw `Cc:` header is the primary source — the structured `cc` array is
+  // frequently absent from the metadata-only webhook, while the headers
+  // fetched from the Receiving API always carry the real line. Union of both,
+  // so neither shape is missed.
+  const headerMap = headersToMap(data.headers);
+  const ccList = Array.isArray(data.cc)
+    ? data.cc
+    : data.cc !== undefined
+      ? [data.cc]
+      : [];
+  const ccEmails = [
+    ...new Set([
+      ...ccList
+        .map(emailOf)
+        .filter((x): x is { email: string } => x !== null)
+        .map((x) => x.email.toLowerCase()),
+      ...parseAddressList(headerMap["cc"]),
+    ]),
+  ];
+
   return {
     fromEmail: from.email,
     fromName: from.name,
     toEmails,
+    ccEmails,
     subject: data.subject ?? null,
     text: data.text ?? null,
     html: data.html ?? null,
-    headers: headersToMap(data.headers),
+    headers: headerMap,
     raw: data.raw ?? data.raw_mime,
     providerEmailId: data.email_id ?? data.id,
   };

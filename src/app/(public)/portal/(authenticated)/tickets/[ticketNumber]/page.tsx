@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { CustomerCsatPrompt } from "@/components/customer/customer-csat-prompt";
 import { CustomerMessageThread } from "@/components/customer/customer-message-thread";
+import { ParticipantsPanel } from "@/components/tickets/participants-panel";
+import { listTicketParticipantsForPanel } from "@/lib/tickets/participants";
 import { CustomerReplyComposer } from "@/components/customer/customer-reply-composer";
 import { CustomerTicketHeader } from "@/components/customer/customer-ticket-header";
 import { requireSessionUser } from "@/lib/auth/session";
@@ -35,6 +37,11 @@ export default async function PortalTicketDetailPage({
   const ticket = await getMyTicketByNumber(user.id, ticketNumber);
   if (!ticket) notFound();
 
+  const participantRows = await listTicketParticipantsForPanel(
+    ticket.id,
+  );
+  const tParticipants = await getTranslations("tickets.participants");
+
   const [messages, limits] = await Promise.all([
     getMyMessageThread(ticket.id),
     getAttachmentLimits(),
@@ -56,6 +63,22 @@ export default async function PortalTicketDetailPage({
         <p className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words">
           {ticket.description}
         </p>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+        <h2 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          {tParticipants("title")}
+        </h2>
+        <ParticipantsPanel
+          mode="portal"
+          ticketId={ticket.id}
+          canManage
+          requester={{
+            email: ticket.customerEmail,
+            name: ticket.customerName,
+          }}
+          rows={participantRows}
+        />
       </div>
 
       {messages.length > 0 ? (

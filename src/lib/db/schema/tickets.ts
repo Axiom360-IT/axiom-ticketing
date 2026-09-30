@@ -56,6 +56,13 @@ export const tickets = pgTable(
     }),
     customerEmail: text("customer_email").notNull(),
     customerName: text("customer_name").notNull(),
+    // Who RAISED this ticket, lower-cased, stamped once at creation and never
+    // rewritten. Distinct from both `customerId` (null for guests) and
+    // `createdById` (staff-only, and documented as "visibility, not
+    // attribution"), and from `customerEmail`, which setTicketCustomer can
+    // rewrite. This is the anchor for "the creator may manage participants",
+    // which has to work for a guest ticket that has no user row at all.
+    createdByEmail: text("created_by_email"),
     // Raw organization name the submitter typed (guest path). Kept verbatim
     // even when it doesn't match a registered org so a coordinator can
     // reconcile it later from the triage queue — previously this was discarded.

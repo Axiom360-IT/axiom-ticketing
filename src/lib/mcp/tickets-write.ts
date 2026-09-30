@@ -177,6 +177,8 @@ export async function createTicketOnBehalfViaMcp(
         origin: "portal",
         createdVia: "manual",
         customerEmail: input.customerEmail,
+        // Same rule as createTicketOnBehalf: the customer it's FOR owns it.
+        createdByEmail: input.customerEmail.toLowerCase(),
         customerName: input.customerName,
         createdAt,
         responseDueAt,

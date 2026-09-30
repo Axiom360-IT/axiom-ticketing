@@ -41,7 +41,11 @@ import {
   resolveTicketOrgForGuest,
   ticketsShareOrg,
 } from "@/lib/tickets/org";
-import { listActiveParticipants } from "@/lib/tickets/participants";
+import {
+  harvestParticipant,
+  listActiveParticipants,
+  selfAddressFilterFromSettings,
+} from "@/lib/tickets/participants";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
 import { notifyBalanceChanged } from "@/lib/billing/events";
 import {
@@ -88,6 +92,14 @@ const TICKET_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const createTicketSchema = z.object({
   customerName: z.string().trim().min(1, "Name is required").max(120),
   customerEmail: z.string().trim().toLowerCase().email("Enter a valid email"),
+  // Other people the submitter wants on the ticket. Anonymous input, so these
+  // are written as PENDING and reach nobody until staff approve them — the
+  // client's explicit decision for the guest path. No domain restriction:
+  // approval is the gate.
+  participantEmails: z
+    .array(z.string().trim().toLowerCase().email())
+    .max(5)
+    .default([]),
   subject: z
     .string()
     .trim()
@@ -219,6 +231,7 @@ export async function prepareGuestTicketDraft(
       origin: "web_form",
       createdVia: "web_form",
       customerEmail: data.customerEmail,
+      createdByEmail: data.customerEmail,
       customerName: data.customerName,
       createdAt,
       responseDueAt,
@@ -347,6 +360,7 @@ export async function createTicket(
           priority: data.priority,
           status: "open",
           stream,
+          createdByEmail: data.customerEmail,
           createdAt,
           responseDueAt,
           resolutionDueAt,
@@ -399,6 +413,7 @@ export async function createTicket(
           origin: "web_form",
           createdVia: "web_form",
           customerEmail: data.customerEmail,
+          createdByEmail: data.customerEmail,
           customerName: data.customerName,
           createdAt,
           responseDueAt,
@@ -416,6 +431,40 @@ export async function createTicket(
       });
       return ticket.id;
     });
+  }
+
+  // 8b. Requested participants — written AFTER the ticket exists, and always
+  // PENDING: this form is anonymous, so anyone could type any address here.
+  // They reach nobody until a staff member approves them from /admin/moderation.
+  if (data.participantEmails.length > 0) {
+    try {
+      const isSelfAddress = await selfAddressFilterFromSettings();
+      const seen = new Set<string>([data.customerEmail.toLowerCase()]);
+      for (const raw of data.participantEmails) {
+        const email = raw.trim().toLowerCase();
+        if (!email || seen.has(email) || isSelfAddress(email)) continue;
+        seen.add(email);
+        await harvestParticipant({
+          ticketId,
+          email,
+          addedVia: "guest_request",
+          status: "pending",
+        });
+      }
+      await audit({
+        actorId: null,
+        action: "ticket.request_participant",
+        targetType: "ticket",
+        targetId: ticketNumber,
+        after: { requested: [...seen].slice(1) },
+        ipAddress: ip,
+        userAgent,
+      });
+    } catch (err) {
+      // Never fail the ticket over a participant request — the ticket itself
+      // is the thing the customer came here for.
+      console.error("[createTicket] participant request failed:", err);
+    }
   }
 
   // 9. Audit log
@@ -593,6 +642,9 @@ export async function createTicketOnBehalf(
         // But the finer source is a STAFF member manually creating it.
         createdVia: "manual",
         customerEmail: data.customerEmail,
+        // The customer the ticket is FOR owns it — staff attribution is what
+        // `createdById` already records.
+        createdByEmail: data.customerEmail,
         customerName: data.customerName,
         createdAt,
         responseDueAt,

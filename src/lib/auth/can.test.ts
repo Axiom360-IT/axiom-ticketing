@@ -666,3 +666,125 @@ describe("can() — non-scoped actions", () => {
     expect(await can(coordinator(), "settings.update")).toBe(false);
   });
 });
+
+// ── tickets.manage_participants ───────────────────────────────────────
+//
+// The whole point of this permission is that a CUSTOMER holds it without
+// holding tickets.update. The failure mode it guards against is the switch's
+// `default: return true` — a constant added without a matching scoped case
+// grants it on every ticket the caller can see.
+
+describe("can() — tickets.manage_participants scope", () => {
+  const ctx = makeCtx();
+
+  it("lets the requesting customer manage their OWN ticket", async () => {
+    await expect(
+      can(
+        customer("c-1"),
+        "tickets.manage_participants",
+        ticketTarget(null, "c-1"),
+        ctx,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("denies a customer on someone else's ticket", async () => {
+    await expect(
+      can(
+        customer("c-1"),
+        "tickets.manage_participants",
+        ticketTarget(null, "c-2"),
+        ctx,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("denies a NON-STRICT customer (extra custom role) on someone else's ticket", async () => {
+    // isStrictCustomer is false here (two roles), so without the isNonStaff
+    // leg this would fall through to `return true`.
+    const u = makeUser({
+      id: "c-3",
+      permissions: CUSTOMER_PERMISSIONS,
+      roleNames: ["Customer", "Billing contact"],
+    });
+    await expect(
+      can(u, "tickets.manage_participants", ticketTarget(null, "c-9"), ctx),
+    ).resolves.toBe(false);
+  });
+
+  it("still lets a NON-STRICT customer manage their own ticket", async () => {
+    const u = makeUser({
+      id: "c-3",
+      permissions: CUSTOMER_PERMISSIONS,
+      roleNames: ["Customer", "Billing contact"],
+    });
+    await expect(
+      can(u, "tickets.manage_participants", ticketTarget(null, "c-3"), ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("denies a strict technician who is not the assignee", async () => {
+    await expect(
+      can(
+        technician("t-1"),
+        "tickets.manage_participants",
+        ticketTarget("t-2"),
+        ctx,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("allows the assigned technician", async () => {
+    await expect(
+      can(
+        technician("t-1"),
+        "tickets.manage_participants",
+        ticketTarget("t-1"),
+        ctx,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("allows a merge co-assignee", async () => {
+    const target: Target = {
+      type: "ticket",
+      ticket: {
+        id: "t-1",
+        assignedToId: "t-9",
+        customerId: null,
+        assigneeIds: ["t-1"],
+      },
+    };
+    await expect(
+      can(technician("t-1"), "tickets.manage_participants", target, ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("allows staff on any ticket (Coordinator / IT Director)", async () => {
+    await expect(
+      can(coordinator(), "tickets.manage_participants", ticketTarget("x"), ctx),
+    ).resolves.toBe(true);
+    await expect(
+      can(itDirector(), "tickets.manage_participants", ticketTarget("x"), ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("allows a staff member who ALSO holds the Customer role, on any ticket", async () => {
+    // Roles are additive; a Coordinator+Customer is staff and must not be
+    // narrowed to their own tickets.
+    const u = makeUser({
+      id: "s-1",
+      permissions: COORDINATOR_PERMISSIONS,
+      roleNames: ["Coordinator", "Customer"],
+    });
+    await expect(
+      can(u, "tickets.manage_participants", ticketTarget(null, "someone"), ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("rejects a non-ticket target outright", async () => {
+    await expect(
+      can(superAdmin(), "tickets.manage_participants", { type: "global" }, ctx),
+    ).resolves.toBe(false);
+  });
+});

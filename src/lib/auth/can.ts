@@ -69,6 +69,17 @@ export function isStrictCustomer(user: SessionUser): boolean {
   return user.roleNames.has("Customer") && user.roleNames.size === 1;
 }
 
+/** No staff role at all. Distinct from `isStrictCustomer`, which additionally
+ *  requires Customer to be the user's ONLY role — a customer who also holds a
+ *  harmless custom role ("Billing contact") is still a customer, and must not
+ *  fall through to an unscoped `return true`. */
+export function isNonStaff(user: SessionUser): boolean {
+  for (const r of user.roleNames) {
+    if (ELEVATED_ROLES.has(r) || r === "Technician") return false;
+  }
+  return true;
+}
+
 /** A user with no Coordinator/Super Admin role — used for procurement scope. */
 export function isStrictRequester(user: SessionUser): boolean {
   return (
@@ -135,6 +146,11 @@ export async function can(
     // a colleague (no handshake). Scoped so a strict tech can only assign a
     // ticket currently assigned to them; elevated roles assign anything.
     case "tickets.assign":
+    // Who is on the thread. Deliberately NOT folded into tickets.update: the
+    // ticket's own customer holds this one so they can manage their
+    // colleagues, and tickets.update would hand them status, priority,
+    // category, billable and the invoice number along with it.
+    case "tickets.manage_participants":
       if (target.type !== "ticket") return false;
       if (isStrictTechnician(user)) {
         const isAssigneeOrCollaborator =
@@ -158,6 +174,12 @@ export async function can(
         return isAssigneeOrCollaborator;
       }
       if (isStrictCustomer(user)) {
+        return target.ticket.customerId === user.id;
+      }
+      // Any other non-staff account (Customer plus a custom role) is scoped to
+      // its own ticket for participant management — without this leg it would
+      // reach `return true` below and be able to manage any ticket it can see.
+      if (action === "tickets.manage_participants" && isNonStaff(user)) {
         return target.ticket.customerId === user.id;
       }
       return true;

@@ -4,6 +4,7 @@ import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,6 +87,10 @@ export function SubmissionForm({
     subject: "",
     description: "",
   });
+  // Other people to copy in. Anonymous input, so every one of these is
+  // written PENDING and reaches nobody until staff approve it.
+  const [participantEmails, setParticipantEmails] = useState<string[]>([]);
+  const [participantDraft, setParticipantDraft] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string>("");
   const [honeypot, setHoneypot] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -217,6 +222,7 @@ export function SubmissionForm({
       // Priority intentionally omitted — server defaults to `medium`,
       // Coordinator triages on review.
       description: formData.description,
+      participantEmails,
       turnstileToken: turnstileToken || undefined,
       honeypot,
       draftTicketId: draftTicketId ?? undefined,
@@ -346,6 +352,71 @@ export function SubmissionForm({
           <p className="text-xs text-zinc-500 text-right">
             {formData.description.length}/5000
           </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="participant-email">
+            {tSubmit("participantsLabel")}
+            <span className="ml-1 text-xs font-normal text-zinc-500">
+              {tFields("optional")}
+            </span>
+          </Label>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {tSubmit("participantsHint")}
+          </p>
+          {participantEmails.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5 pt-0.5">
+              {participantEmails.map((email) => (
+                <li
+                  key={email}
+                  className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <span className="max-w-[16rem] truncate">{email}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setParticipantEmails((prev) =>
+                        prev.filter((e) => e !== email),
+                      )
+                    }
+                    aria-label={tSubmit("participantRemove", { email })}
+                    className="text-zinc-400 hover:text-red-600"
+                  >
+                    <X className="size-3" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {participantEmails.length < 5 ? (
+            <div className="flex gap-2">
+              <Input
+                id="participant-email"
+                type="email"
+                value={participantDraft}
+                onChange={(e) => setParticipantDraft(e.target.value)}
+                placeholder={tSubmit("participantPlaceholder")}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const email = participantDraft.trim().toLowerCase();
+                  // Client-side shape check only — createTicketSchema is the
+                  // real gate, and staff approval is the real control.
+                  if (!EMAIL_RE.test(email)) return;
+                  if (email === formData.customerEmail.trim().toLowerCase())
+                    return;
+                  setParticipantEmails((prev) =>
+                    prev.includes(email) ? prev : [...prev, email],
+                  );
+                  setParticipantDraft("");
+                }}
+              >
+                {tSubmit("participantAdd")}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">

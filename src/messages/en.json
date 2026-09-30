@@ -490,6 +490,8 @@
       "orgUnverified": "Organization unverified",
       "typeTitle": "Ticket Type",
       "typeHelp": "The type of work (service request, incident, change, …). The type list is managed by an admin under Types.",
+      "participantsTitle": "Participants",
+      "participantsHelp": "Everyone who receives correspondence on this ticket. The requester is always included; colleagues and addresses picked up from email replies appear here too.",
       "categoryTitle": "Ticket Category",
       "categoryHelp": "Classify this ticket. The category list is managed by an admin under Categories.",
       "serviceTypeTitle": "Service Type",
@@ -612,6 +614,11 @@
       "captchaSkipped": "Cloudflare Turnstile is not configured. In dev this is fine; in production it means NEXT_PUBLIC_TURNSTILE_SITE_KEY isn't reaching the browser — submissions will fail captcha verification until it is set.",
       "submitButton": "Submit ticket",
       "submitting": "Submitting…",
+"participantsLabel": "Copy other people in",
+"participantsHint": "Add up to 5 colleagues who should receive updates on this ticket. Our team reviews and approves them before anything is sent.",
+"participantPlaceholder": "colleague@company.com",
+"participantAdd": "Add",
+"participantRemove": "Remove {email}",
       "attachmentsLabel": "Attachments (optional)",
       "attachmentsAddButton": "Attach files",
       "attachmentsHint": "Screenshots and logs help us diagnose faster.",
@@ -661,6 +668,27 @@
       "skipReasonLabel": "Skip reason",
       "skipReasonMinError": "Skip reason must be at least 10 characters.",
       "genericError": "Failed to resolve ticket."
+    },
+    "participants": {
+      "title": "Participants",
+      "requester": "Requester",
+      "pending": "Pending approval",
+      "autoJoined": "Auto-joined",
+      "approved": "Approved",
+      "added": "Added",
+      "addedBy": "Added by {name}",
+      "trusted": "Trusted contact",
+      "trustedForOrg": "Trusted for {org}",
+      "emptyAdmin": "No one else is on this thread yet.",
+      "emptyPortal": "No one else has been added to this ticket yet.",
+      "addPerson": "Add someone",
+      "addButton": "Add",
+      "cancel": "Cancel",
+      "loading": "Loading…",
+      "pickColleague": "Pick a colleague…",
+      "noColleagues": "No one else from your organization is set up yet.",
+      "emailPlaceholder": "name@company.com",
+      "removeLabel": "Remove {email} from this ticket"
     },
     "mergedTechs": {
       "label": "Technicians on this merged ticket",
@@ -1392,6 +1420,7 @@
         "tickets__export": "Export tickets",
         "procurement__view": "View procurement",
         "tickets__merge": "Merge tickets",
+        "tickets__manage_participants": "Manage ticket participants",
         "worklog__view_all": "View all work logs",
         "organizations__view": "View organizations",
         "organizations__create": "Create organizations",
@@ -1438,6 +1467,7 @@
         "tickets__export": "Export tickets to CSV.",
         "procurement__view": "Read procurement requests against tickets.",
         "tickets__merge": "Combine duplicate tickets into one.",
+        "tickets__manage_participants": "Add or remove the people who receive correspondence on a ticket. The requesting customer holds this for their own tickets.",
         "worklog__view_all": "See work-log entries across all technicians, not just your own.",
         "organizations__view": "View client organizations and their details.",
         "organizations__create": "Add new client organizations.",
@@ -1504,10 +1534,26 @@
       "empty": "No accountant phone numbers configured yet."
     },
     "moderation": {
+      "participants": {
+        "heading": "{count, plural, =1 {1 person waiting to be added} other {# people waiting to be added}}",
+        "ticketLabel": "Ticket:",
+        "requestedByLabel": "Requested by:",
+        "domainLabel": "Email domain:",
+        "viaGuest": "the requester ({email}), from the ticket form or their guest link",
+        "viaInbound": "picked up from an inbound email",
+        "domainMatches": "matches this organization",
+        "domainDiffers": "not a registered domain for this organization",
+        "unverifiedWarning": "This ticket's organization was never verified, so there is nothing to check the address against. Approve only if you recognise them.",
+        "grantsAccess": "Approving lets them read the whole customer-visible thread and receive every future update.",
+        "approve": "Approve",
+        "reject": "Reject"
+      },
       "title": "Inbound reply moderation",
       "description": "Controls what happens when someone who isn't the ticket's customer, a participant, or part of its organization replies to a ticket email.",
       "toggle": "Hold unrecognized replies for moderation",
-      "toggleHint": "On (recommended): such replies are held in the Moderation queue for review. Off: every reply posts straight to the conversation thread."
+      "toggleHint": "On (recommended): such replies are held in the Moderation queue for review. Off: every reply posts straight to the conversation thread.",
+      "harvestCcLabel": "Add To/Cc recipients as participants",
+      "harvestCcHint": "When an email arrives, add the other people on its To and Cc lines to the ticket. Addresses on the organization's own registered domain join automatically; everyone else waits for approval here. Bcc is never used — mail servers strip it."
     },
     "branding": {
       "title": "Brand identity",
@@ -2753,6 +2799,16 @@
       "cta": "It only takes a minute — and we'll respond from there.",
       "buttonNewTicket": "Submit a new ticket",
       "subject": "We couldn't match your email to a ticket"
+    },
+    "participantAdded": {
+      "preview": "You've been added to ticket {ticketNumber}",
+      "title": "You've been added to a support ticket",
+      "greeting": "Hello,",
+      "greetingNamed": "Hi {participantName},",
+      "body": "You've been added to ticket {ticketNumber} — “{subject}” — raised by {customerName}. You'll receive updates on it from now on.",
+      "cta": "You can read the full conversation and reply here:",
+      "buttonView": "View the ticket",
+      "replyHint": "You can also just reply to this email — your reply goes straight onto the ticket."
     },
     "inboundClosedTicket": {
       "preview": "Ticket {ticketNumber} is closed — please open a new one",

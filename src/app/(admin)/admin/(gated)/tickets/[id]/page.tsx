@@ -39,11 +39,15 @@ import { listProcurementForTicket } from "@/app/actions/procurement";
 import { listWorkLogsForTicket } from "@/app/actions/work-logs";
 import { listTicketCollaborators } from "@/app/actions/ticket-assignees";
 import { listActiveOrganizations } from "@/app/actions/organizations";
-import { listActiveParticipants } from "@/lib/tickets/participants";
+import {
+  listActiveParticipants,
+  listTicketParticipantsForPanel,
+} from "@/lib/tickets/participants";
 import { getLatestTicketReview } from "@/lib/tickets/reviews";
 import { TicketCategoryControl } from "@/components/tickets/ticket-category-control";
 import { TicketTypeControl } from "@/components/tickets/ticket-type-control";
 import { TicketServiceTypeControl } from "@/components/tickets/ticket-service-type-control";
+import { ParticipantsPanel } from "@/components/tickets/participants-panel";
 import {
   getCategoryLabelMap,
   loadActiveTicketCategories,
@@ -191,6 +195,7 @@ export default async function TicketDetailPage({
     canProcurementCreate,
     canManageOrg,
     canMerge,
+    canManageParticipants,
   ] = await Promise.all([
     can(user, "tickets.reply", ticketScope, productionContext),
     can(user, "tickets.internal_note", ticketScope, productionContext),
@@ -207,6 +212,7 @@ export default async function TicketDetailPage({
     can(user, "procurement.create", { type: "global" }, productionContext),
     can(user, "organizations.update", { type: "global" }, productionContext),
     can(user, "tickets.merge", ticketScope, productionContext),
+    can(user, "tickets.manage_participants", ticketScope, productionContext),
   ]);
 
   const procurementRows = canProcurementView
@@ -222,12 +228,18 @@ export default async function TicketDetailPage({
 
   const latestReview = await getLatestTicketReview(ticket.id);
 
-  const [categoryOptions, categoryLabelMap, typeOptions, typeLabelMap] =
-    await Promise.all([
+  const [
+    categoryOptions,
+    categoryLabelMap,
+    typeOptions,
+    typeLabelMap,
+    participantPanelRows,
+  ] = await Promise.all([
       loadActiveTicketCategories(),
       getCategoryLabelMap(),
       loadActiveTicketTypes(),
       getTypeLabelMap(),
+      listTicketParticipantsForPanel(ticket.id),
     ]);
   const categoryLabel = categoryLabelMap[ticket.category] ?? ticket.category;
   const typeLabel = typeLabelMap[ticket.type] ?? ticket.type;
@@ -686,6 +698,27 @@ export default async function TicketDetailPage({
                   currentEmail={ticket.customerEmail}
                 />
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {t("participantsTitle")}
+                <InfoHint label={t("participantsHelp")} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              <ParticipantsPanel
+                mode="admin"
+                ticketId={ticket.id}
+                canManage={canManageParticipants}
+                requester={{
+                  email: ticket.customerEmail,
+                  name: ticket.customerName,
+                }}
+                rows={participantPanelRows}
+              />
             </CardContent>
           </Card>
 

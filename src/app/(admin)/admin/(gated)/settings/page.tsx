@@ -540,6 +540,12 @@ export default async function SettingsPage({
                 description={tMod("toggleHint")}
                 initial={bool(v["inbound_moderation_enabled"], true)}
               />
+              <BooleanSettingForm
+                settingKey="inbound_harvest_cc"
+                label={tMod("harvestCcLabel")}
+                description={tMod("harvestCcHint")}
+                initial={bool(v["inbound_harvest_cc"], true)}
+              />
             </CardContent>
           </Card>
         </>

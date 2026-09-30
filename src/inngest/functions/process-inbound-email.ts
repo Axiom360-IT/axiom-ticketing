@@ -25,8 +25,10 @@ import {
 } from "@/lib/email/inbound-payload";
 import {
   classifyInboundSender,
+  harvestParticipant,
+  harvestRecipients,
   listActiveParticipants,
-  upsertParticipant,
+  selfAddressFilterFromSettings,
 } from "@/lib/tickets/participants";
 import {
   recordInboundMessageId,
@@ -157,6 +159,61 @@ async function ingestInboundAttachments(opts: {
     } catch (err) {
       console.error("[process-inbound-email] attachment ingest failed:", err);
     }
+  }
+}
+
+/**
+ * Harvest the To/CC recipients of an inbound email into ticket participants.
+ *
+ * Wraps lib/tickets/participants.ts:harvestRecipients with the two things only
+ * this module knows: the operator kill switch (`inbound_harvest_cc`) and the
+ * set of addresses that are OURS (support address, inbound domain, the
+ * `ticket+NUMBER@` reply token) — the To line of every inbound ticket email
+ * contains at least one of those, so without the filter we would CC ourselves.
+ *
+ * Best-effort: a ticket's message must never fail to post because a CC row
+ * could not be written.
+ */
+async function harvestInboundRecipients(args: {
+  ticket: { id: string; customerEmail: string; organizationId: string | null };
+  payload: NormalizedInboundEmail;
+  senderAuthenticated: boolean;
+}): Promise<void> {
+  try {
+    const enabled = (await getSetting<boolean>("inbound_harvest_cc")) ?? true;
+    if (!enabled) return;
+
+    // `ccEmails` is optional — events queued before the field existed arrive
+    // without it.
+    const addresses = [
+      ...(args.payload.toEmails ?? []),
+      ...(args.payload.ccEmails ?? []),
+    ];
+    if (addresses.length === 0) return;
+
+    const isSelfAddress = await selfAddressFilterFromSettings();
+    const outcome = await harvestRecipients({
+      ticket: args.ticket,
+      addresses,
+      senderAuthenticated: args.senderAuthenticated,
+      isSelfAddress,
+    });
+
+    if (outcome.autoJoined.length > 0 || outcome.pending.length > 0) {
+      await audit({
+        actorId: null,
+        action: "ticket.harvest_participants",
+        targetType: "ticket",
+        targetId: args.ticket.id,
+        after: {
+          autoJoined: outcome.autoJoined,
+          pending: outcome.pending,
+          senderAuthenticated: args.senderAuthenticated,
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[process-inbound-email] recipient harvest failed:", err);
   }
 }
 
@@ -691,11 +748,31 @@ export const processInboundEmail = inngest.createFunction(
     // participant so future updates reach them too (req 5.2).
     if (relation === "org-domain") {
       await step.run("add-participant", async () =>
-        upsertParticipant({
+        // harvestParticipant, not upsertParticipant: an automatic path must
+        // never put back someone a human removed from the thread.
+        harvestParticipant({
           ticketId: ticket.id,
           email: fromEmail,
           name: knownUser?.name ?? payload.fromName ?? null,
           addedVia: "domain_auto",
+          status: "active",
+        }),
+      );
+    }
+
+    // 6a-ii. Harvest the OTHER recipients on this email (To + Cc).
+    //
+    // Guarded on `relation !== "foreign"`: a foreign sender only reaches here
+    // when moderation is switched off, and an untrusted stranger must never
+    // get to nominate who else joins the thread.
+    if (relation !== "foreign") {
+      await step.run("harvest-recipients", async () =>
+        harvestInboundRecipients({
+          ticket,
+          payload,
+          // The relation already passed the sender-auth gate above, so the
+          // From is as verified as this deployment requires.
+          senderAuthenticated: true,
         }),
       );
     }
@@ -962,6 +1039,9 @@ async function createTicketFromInbound(
         organizationId: resolvedOrg.organizationId,
         orgMatchStatus: resolvedOrg.matchStatus,
         customerEmail,
+        // The EFFECTIVE customer raised it — on a staff-forwarded email that's
+        // the parsed original sender, not the forwarder.
+        createdByEmail: customerEmail.toLowerCase(),
         customerName: resolvedCustomerName,
         customerId: customerUser?.id ?? null,
         createdAt,
@@ -1033,6 +1113,34 @@ async function createTicketFromInbound(
   } catch (err) {
     console.error(
       "[process-inbound-email] confirmation email failed:",
+      err,
+    );
+  }
+
+  // Harvest the other recipients of the email that opened this ticket.
+  //
+  // This path is the dangerous one: nothing upstream has checked the sender
+  // at all — createTicketFromInbound accepts whatever From it is given, and
+  // that header is trivially forged. So the auth verdict is computed HERE,
+  // and a message that fails it may not auto-join anyone: every harvested
+  // address lands pending for a coordinator, regardless of domain.
+  try {
+    const requireAuth =
+      (await getSetting<boolean>("inbound_require_auth")) ?? true;
+    const senderAuthenticated =
+      !requireAuth || senderAuthVerdict(payload.headers, fromEmail) === "pass";
+    await harvestInboundRecipients({
+      ticket: {
+        id: ticketId,
+        customerEmail,
+        organizationId: resolvedOrg.organizationId,
+      },
+      payload,
+      senderAuthenticated,
+    });
+  } catch (err) {
+    console.error(
+      "[process-inbound-email] new-ticket recipient harvest failed:",
       err,
     );
   }

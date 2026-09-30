@@ -9,6 +9,15 @@ import { auth } from "@/lib/auth";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
+import {
+  listMyOrgColleagues,
+  type OrgColleague,
+} from "@/lib/customer/queries";
+import {
+  harvestParticipant,
+  selfAddressFilterFromSettings,
+} from "@/lib/tickets/participants";
+import { resolveGuestActor } from "@/lib/tickets/guest-actor";
 import { db, transactional } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
@@ -479,10 +488,13 @@ export async function guestReply(input: {
   }
   const { ticketNumber, token, body, attachmentIds = [] } = parsed.data;
 
-  const verifiedEmail = verifyGuestToken(token, ticketNumber);
-  if (!verifiedEmail) {
+  // Creator OR approved participant — one gate, so a participant's own link
+  // works exactly as far as it should and no further.
+  const actor = await resolveGuestActor(ticketNumber, token);
+  if (!actor) {
     return { ok: false, error: "This link is no longer valid." };
   }
+  const verifiedEmail = actor.email;
 
   const h = await headers();
   const ip = clientIp(h);
@@ -514,7 +526,7 @@ export async function guestReply(input: {
     .from(tickets)
     .where(eq(tickets.ticketNumber, ticketNumber))
     .limit(1);
-  if (!ticket || ticket.customerEmail.toLowerCase() !== verifiedEmail.toLowerCase()) {
+  if (!ticket || ticket.id !== actor.ticketId) {
     // Constant-shape response so token-validity vs. ticket-existence
     // can't be distinguished by error message comparison.
     return { ok: false, error: "This link is no longer valid." };
@@ -544,7 +556,10 @@ export async function guestReply(input: {
         ticketId: ticket.id,
         authorId: null, // guest — not yet a registered user
         authorEmail: verifiedEmail,
-        authorName: ticket.customerName,
+        // The actor's OWN name — attributing a participant's reply to the
+        // requester would put words in someone else's mouth in the thread.
+        authorName:
+          actor.name ?? (actor.isCreator ? ticket.customerName : verifiedEmail),
         authorType: "customer",
         body: cleanBody,
         bodyFormat: "html",
@@ -585,7 +600,12 @@ export async function guestReply(input: {
     action: "ticket.customer_reply",
     targetType: "ticket",
     targetId: ticket.ticketNumber,
-    after: { length: body.length, channel: "portal", actor_kind: "guest" },
+    after: {
+      length: body.length,
+      channel: "portal",
+      actor_kind: actor.isCreator ? "guest" : "participant",
+      actor_email: verifiedEmail,
+    },
     ipAddress: ip ?? undefined,
   });
 
@@ -731,6 +751,7 @@ export async function prepareCustomerTicketDraft(): Promise<PrepareCustomerDraft
       createdVia: "portal",
       customerId: user.id,
       customerEmail: profile.email,
+      createdByEmail: profile.email.toLowerCase(),
       customerName: profile.name,
       createdAt,
       responseDueAt,
@@ -833,6 +854,7 @@ export async function customerCreateTicket(
           category: "other",
           priority: data.priority,
           status: "open",
+          createdByEmail: profile.email.toLowerCase(),
           createdAt,
           responseDueAt,
           resolutionDueAt,
@@ -887,6 +909,7 @@ export async function customerCreateTicket(
         createdVia: "portal",
         customerId: user.id,
         customerEmail: profile.email,
+        createdByEmail: profile.email.toLowerCase(),
         customerName: profile.name,
         createdAt,
         responseDueAt,
@@ -1141,4 +1164,138 @@ export async function submitCsatByToken(
   revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
   revalidatePath(`/admin/tickets/${ticket.id}`);
   return { ok: true, newStatus: result.newStatus };
+}
+
+
+// ── Org colleagues for the participants picker ────────────────────────
+
+/**
+ * The caller's own organization's other customers, for the "add people" picker
+ * on the new-ticket form and the ticket's participants panel.
+ *
+ * Takes NO arguments on purpose: every export in a "use server" file is a
+ * public HTTP endpoint, so an `organizationId` parameter would be a
+ * scope-widening hole. The org comes from the caller's own users row.
+ */
+export async function listMyOrgColleaguesAction(): Promise<
+  { ok: true; colleagues: OrgColleague[] } | { ok: false; error: string }
+> {
+  const user = await requireSessionUser();
+  if (!user.roleNames.has("Customer")) {
+    return { ok: false, error: "Not available for this account." };
+  }
+  const colleagues = await listMyOrgColleagues(user.id);
+  return { ok: true, colleagues };
+}
+
+// ── Guest participant requests ────────────────────────────────────────
+//
+// The guest holds only an HMAC link token, so there is no SessionUser and
+// can() cannot be used. Authorization mirrors guestReply exactly: verify the
+// token against the ticket number, then re-check the decoded email against
+// the ticket's own row.
+//
+// Crucially it checks `created_by_email`, NOT `customer_email`: every
+// approved participant is mailed a link token minted for THEIR address, so
+// possession of a valid token proves you're on the thread — not that you
+// created it. Only the creator manages the list.
+
+const guestParticipantSchema = z.object({
+  ticketNumber: z.string().trim().min(3).max(40),
+  token: z.string().trim().min(10).max(500),
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+});
+
+export type GuestParticipantResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+const INVALID_LINK = "This link is no longer valid.";
+
+export async function guestAddParticipant(input: {
+  ticketNumber: string;
+  token: string;
+  email: string;
+}): Promise<GuestParticipantResult> {
+  const parsed = guestParticipantSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request",
+    };
+  }
+  const { ticketNumber, token, email } = parsed.data;
+
+  const verifiedEmail = verifyGuestToken(token, ticketNumber);
+  if (!verifiedEmail) return { ok: false, error: INVALID_LINK };
+
+  const h = await headers();
+  const ip = clientIp(h);
+  const ipLimit = await checkRateLimit(
+    "guestReplyByIp",
+    `guest:participant:ip:${ip}`,
+  );
+  if (!ipLimit.allowed) {
+    return { ok: false, error: "Too many requests from your network. Try again shortly." };
+  }
+  const ticketLimit = await checkRateLimit(
+    "guestReplyByTicket",
+    `guest:participant:ticket:${ticketNumber}`,
+  );
+  if (!ticketLimit.allowed) {
+    return { ok: false, error: "Too many requests on this ticket. Try again shortly." };
+  }
+
+  const [ticket] = await db
+    .select({
+      id: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      customerEmail: tickets.customerEmail,
+      createdByEmail: tickets.createdByEmail,
+      status: tickets.status,
+    })
+    .from(tickets)
+    .where(eq(tickets.ticketNumber, ticketNumber))
+    .limit(1);
+  // Constant-shape response: token validity, ticket existence and
+  // "you're a participant, not the creator" must be indistinguishable.
+  const creator = ticket?.createdByEmail?.toLowerCase();
+  if (!ticket || !creator || creator !== verifiedEmail.toLowerCase()) {
+    return { ok: false, error: INVALID_LINK };
+  }
+  if (ticket.status === "closed") {
+    return { ok: false, error: "Ticket is closed." };
+  }
+
+  const isSelfAddress = await selfAddressFilterFromSettings();
+  if (isSelfAddress(email)) {
+    return { ok: false, error: "That's one of our own addresses." };
+  }
+  if (
+    email === ticket.customerEmail.toLowerCase() ||
+    email === creator
+  ) {
+    return { ok: false, error: "They already receive this ticket." };
+  }
+
+  // Always pending — a guest link is not proof of anything about the address
+  // being added, so staff approve before it reaches anyone.
+  await harvestParticipant({
+    ticketId: ticket.id,
+    email,
+    addedVia: "guest_request",
+    status: "pending",
+  });
+
+  await audit({
+    actorId: null,
+    action: "ticket.request_participant",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { email, via: "guest_request" },
+    ipAddress: ip,
+  });
+
+  revalidatePath(`/portal/guest/tickets/${ticket.ticketNumber}`);
+  return { ok: true };
 }

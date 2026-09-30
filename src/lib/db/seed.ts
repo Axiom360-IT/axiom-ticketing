@@ -133,6 +133,12 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "If true, only accept inbound emails from registered customer accounts",
     },
     {
+      key: "inbound_harvest_cc",
+      value: true,
+      description:
+        "Add the other To/Cc recipients of an inbound email as ticket participants (same-org addresses join automatically; everyone else waits for approval)",
+    },
+    {
       key: "inbound_moderation_enabled",
       value: true,
       description:

@@ -66,6 +66,105 @@ The non-obvious call: **a work-log row's `service_type` is a frozen snapshot**, 
 
 ---
 
+## 2026-09-30 · Multiple people on a ticket (participants)
+
+A ticket is now a thread several people can be on, not just the requester. The
+`ticket_participants` table already existed (external contributors picked up
+from inbound email, CC'd on future updates) but was only reachable from the
+inbound pipeline and the moderation queue — there was no UI anywhere, and no
+way to put someone on a ticket deliberately.
+
+**The four ways someone joins, and what gates each:**
+
+| Source | `added_via` | Lands as | Gate |
+|---|---|---|---|
+| Staff type an address | `agent` | active | staff *are* the approval gate |
+| Requester picks a colleague | `requester` | active | same org only, by id |
+| Guest types an address | `guest_request` | **pending** | staff approval |
+| Inbound To/Cc | `domain_auto` / `recipient` | active if the org's own domain, else **pending** | sender auth + org domain |
+
+**Why `pending` is a status on the existing table**, not a queue of its own:
+every existing read path already filters `status='active'`, so a pending row is
+inert with zero changes to `listActiveParticipants`, the CC loop, or the thread
+badge — and `unique(ticket_id, email)` dedupes repeat requests for free. It was
+tempting to mint a held `messages` row instead (the moderation queue holds
+messages), but that would pollute the loop detector, subject/sender threading
+and the thread view with a message nobody sent.
+
+**`tickets.manage_participants` is a new permission, not `tickets.update`.** The
+requesting customer holds it, scoped in `can()` to their own ticket; handing
+them `tickets.update` instead would also hand them status, priority, category,
+billable and the invoice number. The danger with a new constant here is that
+`can()`'s switch ends in `default: return true` — a constant without a matching
+scoped case grants it on every ticket the caller can see. It is in the
+ticket-scope group, plus a new `isNonStaff` leg, because `isStrictCustomer`
+requires Customer to be the user's ONLY role: a customer holding some harmless
+extra role isn't "strict" and would otherwise have fallen straight through.
+
+**Approval is `tickets.update` — staff only.** Gating it on
+`manage_participants` would have let a guest approve the very strangers they
+proposed, making the approval step decorative. Two independent review lenses
+flagged this; it is the single most important line in the feature.
+
+**`created_by_email` (new column) anchors creator rights.** `created_by_id` is
+NULL on exactly the guest and inbound tickets where it matters and is documented
+as visibility-not-attribution; `customer_email` is rewritable by
+`setTicketCustomer`, which would silently transfer creator rights to whatever
+address it was pointed at. Backfilled from `customer_email` (400 rows) — that
+address has been able to act on the ticket via its guest link since the day it
+was raised, so it grants nothing new. On `createTicketOnBehalf` the creator is
+the CUSTOMER it is for, not the staff member who keyed it in, so the column
+means one thing on every row.
+
+**`harvestParticipant` vs `upsertParticipant` is the removal tombstone.**
+`upsertParticipant` sets `status:'active'` unconditionally — right for a
+deliberate human re-add, catastrophic for an automatic path: one inbound email
+would put back someone a coordinator removed, and would keep doing it on every
+later email. Every non-staff path now goes through `harvestParticipant`
+(`onConflictDoNothing` for pending; `setWhere: status <> 'removed'` for active).
+Only two `upsertParticipant` callers remain, both explicit human acts.
+
+**Guest links prove WHICH address you are, not that you created the ticket** —
+every approved participant gets a token minted for their own address. So
+`resolveGuestActor` (new) is the single gate for all four guest surfaces (view,
+reply, download, upload), and creator-only actions compare against
+`created_by_email`. Bad token, unknown ticket and "not on this thread" return
+one indistinguishable response, or the difference is an oracle. This also fixed
+two latent bugs: a participant's reply would have been attributed to the
+REQUESTER's name, and `resolveUploadAuthorization`'s hand-rolled check would
+have given them a composer whose attach button always failed. `getGuestTicket`
+was deleted once unused — leaving a weaker email-scoped lookup next to the new
+one is how a regression gets written later.
+
+**Inbound harvesting is last and most guarded**, behind `inbound_harvest_cc`
+(default on). Bcc is out of scope permanently: mail servers strip it, so the
+field is effectively always empty, and surfacing it would betray what the sender
+chose to hide. The raw `Cc:` header is the primary source (the structured `cc`
+array is often absent from the metadata-only webhook); `ccEmails` is OPTIONAL on
+`NormalizedInboundEmail` because events queued before it existed are already in
+Inngest and arrive without the key. Four guards, each closing a real hole an
+adversarial review pass found:
+- the new-ticket path computes `senderAuthVerdict` ITSELF — nothing upstream
+  checks the From there, and a failing verdict forces every address to pending;
+- the reply path is guarded `relation !== "foreign"`, or a stranger could
+  nominate recipients whenever moderation is switched off;
+- a shared self-address filter (support address, inbound domain,
+  `ticket+NUMBER@`) runs on every write path, not just this one — the To line of
+  every inbound ticket email contains one of ours;
+- free-mail domains can never auto-join, so one bad `organization_domains` row
+  (someone registering gmail.com) can't turn CC harvesting into an open
+  subscription.
+
+**Notification on joining** is sent when a HUMAN causes the transition to active
+(staff add, requester pick, coordinator approval) — never for a pending row
+(nobody has vouched for it and the subject line alone leaks the topic) and never
+for an inbound auto-join (they just emailed in about it).
+
+Migrations: `pnpm db:add-ticket-created-by-email`,
+`pnpm db:add-participant-permission`, `pnpm db:add-participant-pending`.
+
+---
+
 ## 2026-09-03 · Production bug: inbound emails silently dropped — content fetch moved out of the webhook route
 
 Reported symptom: some inbound emails (both direct and forwarded) never created or threaded a ticket. Resend's own delivery log for the `email.received` webhook showed a 500 response with body **"Enqueue failed"** for the affected deliveries, retried and failing identically every time.

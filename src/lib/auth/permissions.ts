@@ -28,6 +28,10 @@ export const PERMISSIONS = [
   // Superadmin-only: merge a duplicate ticket into another. Distinct from
   // tickets.delete so a custom role granted delete can't merge (req §4).
   "tickets.merge",
+  // Who else is on the ticket's thread. Separate from tickets.update so the
+  // requesting customer can manage their own colleagues without also getting
+  // status/priority/billing control.
+  "tickets.manage_participants",
   "tickets.export",
 
   // Procurement (Meeting-2 CR-24: approval removed; coordinator actions the
@@ -100,6 +104,7 @@ export const IT_DIRECTOR_PERMISSIONS: Permission[] = [
   "tickets.internal_note",
   "tickets.deescalate",
   "tickets.close",
+  "tickets.manage_participants",
   "organizations.view",
   "reports.view",
   "audit.view",
@@ -118,6 +123,7 @@ export const COORDINATOR_PERMISSIONS: Permission[] = [
   "tickets.reopen",
   "tickets.deescalate",
   "tickets.close",
+  "tickets.manage_participants",
   "organizations.view",
   "organizations.create",
   "organizations.update",
@@ -139,6 +145,7 @@ export const TECHNICIAN_PERMISSIONS: Permission[] = [
   "tickets.internal_note",
   "tickets.resolve",
   "tickets.escalate",
+  "tickets.manage_participants",
   "procurement.view",
   "procurement.create",
   "procurement.update",
@@ -152,6 +159,9 @@ export const CUSTOMER_PERMISSIONS: Permission[] = [
   "tickets.view",
   "tickets.create",
   "tickets.reply",
+  // Scoped in can() to the ticket they themselves raised — lets a requester
+  // add/remove their own colleagues without any staff-level ticket control.
+  "tickets.manage_participants",
   "procurement.view",
   "procurement.create",
 ];

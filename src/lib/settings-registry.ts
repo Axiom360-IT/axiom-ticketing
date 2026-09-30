@@ -71,6 +71,7 @@ export const SETTING_SCHEMAS = {
   // ticket's customer/participant/org are HELD for moderation (req 5.2). When
   // false, every reply posts straight to the conversation thread.
   inbound_moderation_enabled: z.boolean(),
+  inbound_harvest_cc: z.boolean(),
   default_sender_name: z.string().trim().min(1).max(120),
   default_sender_email: z.string().trim().toLowerCase().email(),
 

@@ -31,8 +31,9 @@ import { inngest } from "@/inngest/client";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { loadTicketScope } from "@/lib/tickets/load";
 import { tickets } from "@/lib/db/schema/tickets";
-import { verifyDraftUploadToken, verifyGuestToken } from "@/lib/tokens";
-import { getGuestTicket } from "@/lib/customer/queries";
+import { verifyDraftUploadToken } from "@/lib/tokens";
+import { resolveGuestActor } from "@/lib/tickets/guest-actor";
+import { getGuestTicketById } from "@/lib/customer/queries";
 
 // ── generateUploadUrl ───────────────────────────────────────────────
 
@@ -423,9 +424,10 @@ export async function getGuestDownloadUrl(
   if (!parsed.success) return { ok: false, error: "Attachment not found." };
   const { ticketNumber, token, attachmentId } = parsed.data;
 
-  const verifiedEmail = verifyGuestToken(token, ticketNumber);
-  if (!verifiedEmail) return { ok: false, error: "Attachment not found." };
-  const ticket = await getGuestTicket(ticketNumber, verifiedEmail);
+  // Creator or approved participant — same gate as the page they're reading.
+  const actor = await resolveGuestActor(ticketNumber, token);
+  if (!actor) return { ok: false, error: "Attachment not found." };
+  const ticket = await getGuestTicketById(actor.ticketId);
   if (!ticket) return { ok: false, error: "Attachment not found." };
 
   const [att] = await db
@@ -544,31 +546,21 @@ async function authorizeGuestForTicket(
   // ticket number and the email on the ticket matches the token's
   // verified email.
   if (args.guestToken && args.ticketNumber && args.customerEmail) {
-    const verifiedEmail = verifyGuestToken(args.guestToken, args.ticketNumber);
-    if (!verifiedEmail || verifiedEmail !== args.customerEmail) {
+    // An approved participant may attach too — otherwise they'd get a reply
+    // composer whose attach button always fails. Authorization is the same
+    // resolveGuestActor the page and the reply use.
+    const actor = await resolveGuestActor(args.ticketNumber, args.guestToken);
+    if (!actor || actor.email !== args.customerEmail.toLowerCase()) {
       return { ok: false, error: "Guest link is invalid or expired." };
     }
-    const [t] = await db
-      .select({
-        id: tickets.id,
-        status: tickets.status,
-        ticketNumber: tickets.ticketNumber,
-        customerEmail: tickets.customerEmail,
-      })
-      .from(tickets)
-      .where(eq(tickets.id, args.ticketId))
-      .limit(1);
-    if (
-      !t ||
-      t.ticketNumber !== args.ticketNumber ||
-      t.customerEmail !== verifiedEmail
-    ) {
+    if (actor.ticketId !== args.ticketId) {
       return { ok: false, error: "Guest link does not match this ticket." };
     }
-    if (t.status === "closed") {
+    if (actor.status === "closed") {
       return { ok: false, error: "This ticket is closed." };
     }
-    return { ok: true, uploaderEmail: verifiedEmail };
+    // Attribute the upload to whoever actually sent it.
+    return { ok: true, uploaderEmail: actor.email };
   }
 
   return { ok: false, error: "Missing upload authorization." };

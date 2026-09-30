@@ -74,6 +74,10 @@ import {
   type InboundClosedTicketProps,
 } from "./templates/inbound-closed-ticket";
 import {
+  ParticipantAddedEmail,
+  type ParticipantAddedProps,
+} from "./templates/participant-added";
+import {
   NewAssignmentEmail,
   type NewAssignmentProps,
 } from "./templates/new-assignment";
@@ -189,6 +193,10 @@ export type EmailTemplate =
   | {
       template: "inbound_closed_ticket";
       data: Omit<InboundClosedTicketProps, "locale">;
+    }
+  | {
+      template: "participant_added";
+      data: Omit<ParticipantAddedProps, "locale">;
     }
   | {
       template: "procurement_submitted";
@@ -331,6 +339,10 @@ async function renderTemplate(
       return await render(
         <InboundClosedTicketEmail {...t.data} locale={locale} />,
       );
+    case "participant_added":
+      return await render(
+        <ParticipantAddedEmail {...t.data} locale={locale} />,
+      );
     case "procurement_submitted":
       return await render(
         <ProcurementSubmittedEmail {...t.data} locale={locale} />,
@@ -409,6 +421,7 @@ const TEMPLATE_NAMESPACE = {
   customer_replied_staff: "emails.customerRepliedStaff",
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",
+  participant_added: "emails.participantAdded",
   procurement_submitted: "emails.procurementSubmitted",
   procurement_approved: "emails.procurementApproved",
   procurement_rejected: "emails.procurementRejected",

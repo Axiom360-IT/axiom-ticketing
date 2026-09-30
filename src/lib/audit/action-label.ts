@@ -65,6 +65,12 @@ const ACTION_LABELS: Record<string, string> = {
   "ticket_type.delete": "Deleted a ticket type",
   "ticket.set_billable": "Set the billable category",
   "ticket.set_invoice": "Set the invoice number",
+  "ticket.harvest_participants": "Picked up recipients from an email",
+  "ticket.add_participant": "Added a participant",
+  "ticket.remove_participant": "Removed a participant",
+  "ticket.request_participant": "Requested a participant",
+  "ticket.approve_participant": "Approved a participant",
+  "ticket.reject_participant": "Rejected a participant",
   "ticket.log_work": "Logged work",
   "ticket.update_work_log": "Edited a work-log entry",
   "ticket.delete_work_log": "Deleted a work-log entry",
@@ -204,7 +210,7 @@ export function auditActionCategory(code: string): AuditCategory {
 /** Destructive/irreversible actions — surfaced in red regardless of category. */
 export function isDestructiveAction(code: string): boolean {
   return (
-    /\.(delete|delete_work_log|deactivate|remove|remove_collaborator|quarantine|revoke|revoke_others|untrust_contact)$/.test(
+    /\.(delete|delete_work_log|deactivate|remove|remove_collaborator|remove_participant|reject_participant|quarantine|revoke|revoke_others|untrust_contact)$/.test(
       code,
     ) || code === "ticket.delete"
   );
