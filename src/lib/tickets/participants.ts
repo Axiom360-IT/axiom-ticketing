@@ -444,6 +444,64 @@ export async function harvestParticipant(
   return landed.length > 0;
 }
 
+/**
+ * Re-moderate the auto-joined participants of a ticket that has just moved to
+ * a different organization.
+ *
+ * An address that joined by matching the OLD org's domain has no standing on
+ * the new one, and `listActiveParticipants` would keep CC-ing it on every
+ * reply about a ticket that now belongs to someone else.
+ *
+ * Two deliberate narrowings:
+ *   - only `domain_auto` rows, the ones no human ever vouched for. A row added
+ *     by staff, approved by a coordinator, or picked by the requester stays —
+ *     a human put them there and only a human takes them off.
+ *   - demoted to `pending`, not `removed`. This is a re-moderation, not a
+ *     removal: they stop receiving mail immediately, and a coordinator can
+ *     approve them back from the queue. `removed` would be a tombstone that
+ *     an automatic path could never undo.
+ *
+ * Returns the addresses demoted, for the caller's audit entry.
+ */
+export async function demoteForeignAutoJoinedParticipants(
+  args: { ticketId: string; organizationId: string | null },
+  executor: Database | Tx = db,
+): Promise<string[]> {
+  const rows = await executor
+    .select({ id: ticketParticipants.id, email: ticketParticipants.email })
+    .from(ticketParticipants)
+    .where(
+      and(
+        eq(ticketParticipants.ticketId, args.ticketId),
+        eq(ticketParticipants.status, "active"),
+        eq(ticketParticipants.addedVia, "domain_auto"),
+      ),
+    );
+  if (rows.length === 0) return [];
+
+  // The new org's domains, once, rather than a query per participant.
+  const allowed = new Set<string>();
+  if (args.organizationId) {
+    const domains = await executor
+      .select({ domain: organizationDomains.domain })
+      .from(organizationDomains)
+      .where(eq(organizationDomains.organizationId, args.organizationId));
+    for (const d of domains) allowed.add(d.domain.toLowerCase());
+  }
+
+  const demoted: string[] = [];
+  for (const row of rows) {
+    const domain = emailDomain(row.email);
+    if (domain && allowed.has(domain)) continue;
+    await executor
+      .update(ticketParticipants)
+      .set({ status: "pending" })
+      .where(eq(ticketParticipants.id, row.id));
+    demoted.push(row.email);
+  }
+  return demoted;
+}
+
 export type PendingParticipant = {
   id: string;
   email: string;
@@ -626,7 +684,14 @@ export async function harvestRecipients(args: {
     }
 
     const domain = emailDomain(email);
-    const freeMail = !domain || isFreeMailDomain(domain);
+    // No parseable domain means this isn't an address at all, however it got
+    // here. Without this it falls through as "free mail" and lands in the
+    // moderation queue as something a coordinator is asked to approve.
+    if (!domain) {
+      out.skipped++;
+      continue;
+    }
+    const freeMail = isFreeMailDomain(domain);
     const orgMatch =
       !freeMail &&
       args.senderAuthenticated &&

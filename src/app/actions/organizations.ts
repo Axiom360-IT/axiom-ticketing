@@ -25,6 +25,7 @@ import {
   type UsageBucket,
 } from "@/lib/billing/usage";
 import { syncMonthlyPlanDeduction } from "@/lib/tickets/billing";
+import { demoteForeignAutoJoinedParticipants } from "@/lib/tickets/participants";
 import {
   ABBREVIATION_RE,
   abbreviationTaken,
@@ -806,6 +807,7 @@ export async function linkTicketOrganization(
     .limit(1);
   if (!ticket) return { ok: false, error: "Ticket not found." };
 
+  let demotedParticipants: string[] = [];
   const affectedOrgId = await transactional(async (tx) => {
     await tx
       .update(tickets)
@@ -815,6 +817,13 @@ export async function linkTicketOrganization(
         updatedAt: new Date(),
       })
       .where(eq(tickets.id, ticketId));
+    // Participants who auto-joined on the PREVIOUS org's domain have no
+    // standing on this one — they'd keep being CC'd on a ticket that now
+    // belongs to someone else. Back to the moderation queue.
+    demotedParticipants = await demoteForeignAutoJoinedParticipants(
+      { ticketId, organizationId },
+      tx,
+    );
     // Now the ticket has a confirmed org, apply any Monthly-Plan deduction.
     return syncMonthlyPlanDeduction(tx, ticketId);
   });
@@ -828,6 +837,9 @@ export async function linkTicketOrganization(
     after: {
       organizationId,
       organizationName: org.name,
+      ...(demotedParticipants.length > 0
+        ? { demotedParticipants }
+        : {}),
       claimedCompany: ticket.customerCompany,
     },
   });

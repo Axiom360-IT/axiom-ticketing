@@ -11,13 +11,12 @@ import { users } from "@/lib/db/schema/auth";
 import { organizationTrustedEmails } from "@/lib/db/schema/organization-trusted-emails";
 import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import { buildSelfAddressFilter } from "@/lib/email/self-addresses";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
-import { getSettings } from "@/lib/settings";
 import { loadTicketScope } from "@/lib/tickets/load";
 import {
   harvestParticipant,
   notifyParticipantAdded,
+  selfAddressFilterFromSettings,
   upsertParticipant,
 } from "@/lib/tickets/participants";
 
@@ -42,22 +41,6 @@ const addSchema = z
   .refine((v) => Boolean(v.email) !== Boolean(v.colleagueUserId), {
     message: "Provide either an email address or a colleague to add.",
   });
-
-/** Addresses of ours that must never become a participant (mail loop). */
-async function selfAddressFilter(): Promise<(email: string) => boolean> {
-  const s = await getSettings<{
-    support_email?: unknown;
-    default_sender_email?: unknown;
-    inbound_email_domain?: unknown;
-  }>(["support_email", "default_sender_email", "inbound_email_domain"]);
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.trim() ? v : null;
-  return buildSelfAddressFilter({
-    supportEmail: str(s.support_email),
-    senderEmails: [str(s.default_sender_email), process.env.RESEND_FROM_EMAIL],
-    inboundDomain: str(s.inbound_email_domain),
-  });
-}
 
 export async function addTicketParticipant(input: {
   ticketId: string;
@@ -125,7 +108,7 @@ export async function addTicketParticipant(input: {
     email = data.email as string;
   }
 
-  const isSelfAddress = await selfAddressFilter();
+  const isSelfAddress = await selfAddressFilterFromSettings();
   if (isSelfAddress(email)) {
     return { ok: false, error: "That's one of our own addresses." };
   }
@@ -153,6 +136,24 @@ export async function addTicketParticipant(input: {
       };
     }
   }
+
+  // Already on the thread → idempotent success, and crucially NO second email.
+  // Without this, re-adding an active participant mails them another permanent
+  // guest link and writes another audit row for a state that never changed.
+  // Checked here rather than by tightening the writers' `setWhere`, because a
+  // writer that reported "no row changed" could not tell "already active" from
+  // "blocked by the removal tombstone" — and those need opposite answers.
+  const [already] = await db
+    .select({ status: ticketParticipants.status })
+    .from(ticketParticipants)
+    .where(
+      and(
+        eq(ticketParticipants.ticketId, ticket.id),
+        eq(ticketParticipants.email, email),
+      ),
+    )
+    .limit(1);
+  if (already?.status === "active") return { ok: true };
 
   // Staff ARE the approval gate, so a staff add deliberately REACTIVATES a
   // previously removed row. A customer is not: routing them through the same

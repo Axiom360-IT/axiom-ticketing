@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { tickets } from "@/lib/db/schema/tickets";
@@ -63,6 +63,11 @@ export async function resolveGuestActor(
         eq(tickets.ticketNumber, ticketNumber),
         // A draft isn't a ticket yet — the guard the old email-scoped lookup had.
         ne(tickets.status, "draft"),
+        // A deleted ticket is gone for guests too. Tokens never expire, so
+        // this predicate is the only thing that takes a guest link out of
+        // service — and it covers read, reply and attachment download at once,
+        // since all three resolve through here.
+        isNull(tickets.deletedAt),
       ),
     )
     .limit(1);

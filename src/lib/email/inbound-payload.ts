@@ -73,15 +73,27 @@ export type ResendInboundPayload = {
   };
 };
 
+/**
+ * Addresses are normalized here — display name stripped, lower-cased — so a
+ * non-address can never reach a consumer. Case is not load-bearing: the only
+ * two readers are extractTicketNumber, which upper-cases the token it finds,
+ * and participant harvesting, which lower-cases every address it stores.
+ */
 function emailOf(
   v: { email?: string; name?: string } | string | undefined,
 ): { email: string; name?: string } | null {
   if (!v) return null;
+  // Both shapes go through the same parser: a provider may hand us either a
+  // bare "Bob Smith <bob@x.com>" string or {email: "Bob Smith <bob@x.com>"},
+  // and storing either verbatim would write a non-address into
+  // ticket_participants, where nothing downstream re-validates it.
   if (typeof v === "string") {
-    return v.includes("@") ? { email: v } : null;
+    const [email] = parseAddressList(v);
+    return email ? { email } : null;
   }
-  if (typeof v.email !== "string" || !v.email.includes("@")) return null;
-  return { email: v.email, name: v.name };
+  if (typeof v.email !== "string") return null;
+  const [email] = parseAddressList(v.email);
+  return email ? { email, name: v.name } : null;
 }
 
 function headersToMap(

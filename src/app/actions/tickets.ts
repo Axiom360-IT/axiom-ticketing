@@ -44,6 +44,7 @@ import {
 } from "@/lib/tickets/org";
 import {
   type ParticipantAddedVia,
+  demoteForeignAutoJoinedParticipants,
   harvestParticipant,
   listActiveParticipants,
   selfAddressFilterFromSettings,
@@ -2620,6 +2621,7 @@ export async function setTicketCustomer(
   const changeOrg = newOrgId != null && newOrgId !== ticket.organizationId;
 
   const affectedOrgIds: string[] = [];
+  let demotedParticipants: string[] = [];
   await transactional(async (tx) => {
     if (changeOrg) {
       // Refund any Monthly-Plan deduction sitting on the OLD org before the
@@ -2672,6 +2674,12 @@ export async function setTicketCustomer(
       .where(eq(tickets.id, ticket.id));
 
     if (changeOrg) {
+      // Auto-joined participants from the OLD org have no standing on the new
+      // one. Same re-moderation as linkTicketToOrganization.
+      demotedParticipants = await demoteForeignAutoJoinedParticipants(
+        { ticketId: ticket.id, organizationId: newOrgId },
+        tx,
+      );
       // Re-apply the deduction against the NEW org — a no-op unless the ticket
       // is billed Monthly Plan and the new org is on a monthly plan.
       const affected = await syncMonthlyPlanDeduction(tx, ticket.id);
@@ -2691,6 +2699,7 @@ export async function setTicketCustomer(
       email,
       linkedAccount: customerId != null,
       ...(changeOrg ? { organizationId: newOrgId } : {}),
+      ...(demotedParticipants.length > 0 ? { demotedParticipants } : {}),
     },
   });
 

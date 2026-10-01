@@ -175,7 +175,12 @@ async function ingestInboundAttachments(opts: {
  * could not be written.
  */
 async function harvestInboundRecipients(args: {
-  ticket: { id: string; customerEmail: string; organizationId: string | null };
+  ticket: {
+    id: string;
+    ticketNumber: string;
+    customerEmail: string;
+    organizationId: string | null;
+  };
   payload: NormalizedInboundEmail;
   senderAuthenticated: boolean;
   /** Staff replies join who they can place and nominate nobody — see
@@ -208,7 +213,9 @@ async function harvestInboundRecipients(args: {
         actorId: null,
         action: "ticket.harvest_participants",
         targetType: "ticket",
-        targetId: args.ticket.id,
+        // Ticket NUMBER, like every other ticket audit — the audit UI links
+        // on it, and a UUID here renders as an unresolvable row.
+        targetId: args.ticket.ticketNumber,
         after: {
           autoJoined: outcome.autoJoined,
           pending: outcome.pending,
@@ -1155,6 +1162,7 @@ async function createTicketFromInbound(
     await harvestInboundRecipients({
       ticket: {
         id: ticketId,
+        ticketNumber,
         customerEmail,
         organizationId: resolvedOrg.organizationId,
       },

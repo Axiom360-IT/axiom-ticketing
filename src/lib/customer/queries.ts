@@ -1,5 +1,15 @@
 import "server-only";
-import { and, asc, desc, eq, exists, inArray, ne, notExists } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  ne,
+  notExists,
+} from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { organizations } from "@/lib/db/schema/organizations";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
@@ -162,7 +172,15 @@ export async function getGuestTicketById(
       csatRating: tickets.csatRating,
     })
     .from(tickets)
-    .where(and(eq(tickets.id, ticketId), ne(tickets.status, "draft")))
+    // isNull(deletedAt): a soft-deleted ticket is gone for the guest surface
+    // too — guest tokens never expire, so this is what retires the link.
+    .where(
+      and(
+        eq(tickets.id, ticketId),
+        ne(tickets.status, "draft"),
+        isNull(tickets.deletedAt),
+      ),
+    )
     .limit(1);
   return t ?? null;
 }

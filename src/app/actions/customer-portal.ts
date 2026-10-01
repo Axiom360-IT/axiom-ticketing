@@ -1259,7 +1259,11 @@ export async function guestAddParticipant(input: {
     .limit(1);
   // Constant-shape response: token validity, ticket existence and
   // "you're a participant, not the creator" must be indistinguishable.
-  const creator = ticket?.createdByEmail?.toLowerCase();
+  // Fall back to customerEmail exactly as resolveGuestActor does: on tickets
+  // predating created_by_email the column is NULL, and without this the guest
+  // sees an "Add someone" form whose every submission is rejected.
+  const creator =
+    ticket?.createdByEmail?.toLowerCase() ?? ticket?.customerEmail.toLowerCase();
   if (!ticket || !creator || creator !== verifiedEmail.toLowerCase()) {
     return { ok: false, error: INVALID_LINK };
   }
