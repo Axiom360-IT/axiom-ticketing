@@ -26,6 +26,7 @@ import { messages } from "@/lib/db/schema/messages";
 import { organizations } from "@/lib/db/schema/organizations";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
+import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { tickets } from "@/lib/db/schema/tickets";
 import { workLogs } from "@/lib/db/schema/work-logs";
 import { sendEmail } from "@/lib/email/send";
@@ -42,6 +43,7 @@ import {
   ticketsShareOrg,
 } from "@/lib/tickets/org";
 import {
+  type ParticipantAddedVia,
   harvestParticipant,
   listActiveParticipants,
   selfAddressFilterFromSettings,
@@ -1226,6 +1228,59 @@ export async function mergeTickets(
       .update(workLogs)
       .set({ ticketId: target.id })
       .where(eq(workLogs.ticketId, source.id));
+
+    // Carry the source's participants across too. Everything else on the
+    // source MOVES to the target, so leaving these behind silently drops
+    // people off the thread: the survivor's CC loop reads
+    // listActiveParticipants(target), which wouldn't know them, while their
+    // guest links still point at a source ticket whose messages have all gone.
+    //
+    // Can't be a plain UPDATE like the rows above — (ticket_id, email) is
+    // unique, so an address already on the target would collide.
+    const carried = await tx
+      .select({
+        email: ticketParticipants.email,
+        name: ticketParticipants.name,
+        addedVia: ticketParticipants.addedVia,
+        addedById: ticketParticipants.addedById,
+        status: ticketParticipants.status,
+      })
+      .from(ticketParticipants)
+      .where(
+        and(
+          eq(ticketParticipants.ticketId, source.id),
+          ne(ticketParticipants.status, "removed"),
+        ),
+      );
+    for (const p of carried) {
+      // harvestParticipant, not upsertParticipant: a merge is nobody's decision
+      // to re-admit someone a coordinator had removed from the TARGET, so the
+      // target's tombstone still wins.
+      await harvestParticipant(
+        {
+          ticketId: target.id,
+          email: p.email,
+          name: p.name,
+          addedVia: p.addedVia as ParticipantAddedVia,
+          addedById: p.addedById,
+          status: p.status === "active" ? "active" : "pending",
+        },
+        tx,
+      );
+    }
+    // The source is an empty shell now — same as its messages and work logs,
+    // its participants live on the survivor.
+    if (carried.length > 0) {
+      await tx
+        .update(ticketParticipants)
+        .set({ status: "removed" })
+        .where(
+          and(
+            eq(ticketParticipants.ticketId, source.id),
+            ne(ticketParticipants.status, "removed"),
+          ),
+        );
+    }
 
     // System message on the target announcing the merge so the
     // thread reads naturally.
@@ -2597,6 +2652,14 @@ export async function setTicketCustomer(
         customerId,
         // The old "company as entered" belonged to the previous customer.
         customerCompany: null,
+        // Creator rights follow the customer. `created_by_email` is what
+        // `resolveGuestActor` matches to admit someone as the requester, and
+        // guest tokens never expire — so leaving the displaced address here
+        // would keep its original guest link working on a ticket that may now
+        // belong to a different organization entirely. Before participants
+        // existed that link died the moment the customer changed; this keeps
+        // it that way.
+        createdByEmail: email,
         ...(changeOrg
           ? {
               organizationId: newOrgId,
