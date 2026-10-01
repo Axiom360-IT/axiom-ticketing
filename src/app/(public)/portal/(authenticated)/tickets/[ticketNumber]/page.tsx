@@ -39,6 +39,7 @@ export default async function PortalTicketDetailPage({
 
   const participantRows = await listTicketParticipantsForPanel(
     ticket.id,
+    "customer",
   );
   const tParticipants = await getTranslations("tickets.participants");
 

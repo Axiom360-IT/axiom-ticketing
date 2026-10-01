@@ -178,6 +178,9 @@ async function harvestInboundRecipients(args: {
   ticket: { id: string; customerEmail: string; organizationId: string | null };
   payload: NormalizedInboundEmail;
   senderAuthenticated: boolean;
+  /** Staff replies join who they can place and nominate nobody — see
+   *  `harvestRecipients`. */
+  autoJoinOnly?: boolean;
 }): Promise<void> {
   try {
     const enabled = (await getSetting<boolean>("inbound_harvest_cc")) ?? true;
@@ -197,6 +200,7 @@ async function harvestInboundRecipients(args: {
       addresses,
       senderAuthenticated: args.senderAuthenticated,
       isSelfAddress,
+      autoJoinOnly: args.autoJoinOnly,
     });
 
     if (outcome.autoJoined.length > 0 || outcome.pending.length > 0) {
@@ -656,6 +660,25 @@ export const processInboundEmail = inngest.createFunction(
             );
           }
         });
+
+        // Harvest the other recipients here too. This branch returns before
+        // the reply-path harvest below, so without this a technician who Cc's
+        // the customer's colleague to loop them in adds nobody — the colleague
+        // gets that one email and is then dropped from the thread, with no
+        // signal to the technician that it didn't take.
+        //
+        // `autoJoinOnly`: a staff Reply-All carries our own coworkers as well,
+        // and they must not each become a pending row for a coordinator to
+        // adjudicate. Addresses on the ticket's organization join; the rest are
+        // skipped.
+        await step.run("harvest-recipients-staff-reply", async () =>
+          harvestInboundRecipients({
+            ticket,
+            payload,
+            senderAuthenticated: true,
+            autoJoinOnly: true,
+          }),
+        );
 
         return { status: "agent-reply", ticketNumber };
       }

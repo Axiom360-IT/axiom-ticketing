@@ -270,9 +270,30 @@ export type ParticipantPanelRow =
       organizationName: string | null;
     };
 
+/**
+ * Who is looking. The panel shows strictly less the further out you sit:
+ *
+ *   staff    — everything. They are the approval gate, so they need the
+ *              removed rows and the organization's trusted roster to judge
+ *              an address they don't recognise.
+ *   customer — the signed-in requester and their colleagues. Pending rows
+ *              stay, so adding someone visibly does something, but removed
+ *              rows go (that a person was taken off is a staff matter).
+ *   guest    — a token-bearing outsider on one ticket. Same as customer.
+ *
+ * The organization's trusted-contact roster is staff-only for both of the
+ * outer two: it is an admin allowlist spanning OTHER tickets, so rendering
+ * it here would tell anyone holding one guest link which outside firms the
+ * organization deals with.
+ */
+export type ParticipantPanelAudience = "staff" | "customer" | "guest";
+
 export async function listTicketParticipantsForPanel(
   ticketId: string,
+  audience: ParticipantPanelAudience = "staff",
 ): Promise<ParticipantPanelRow[]> {
+  const isStaff = audience === "staff";
+
   const [rows, trusted] = await Promise.all([
     db
       .select({
@@ -286,25 +307,37 @@ export async function listTicketParticipantsForPanel(
       })
       .from(ticketParticipants)
       .leftJoin(users, eq(users.id, ticketParticipants.addedById))
-      .where(eq(ticketParticipants.ticketId, ticketId))
+      .where(
+        isStaff
+          ? eq(ticketParticipants.ticketId, ticketId)
+          : and(
+              eq(ticketParticipants.ticketId, ticketId),
+              ne(ticketParticipants.status, "removed"),
+            ),
+      )
       .orderBy(ticketParticipants.createdAt),
-    db
-      .select({
-        email: organizationTrustedEmails.email,
-        name: organizationTrustedEmails.name,
-        organizationId: organizationTrustedEmails.organizationId,
-        organizationName: organizations.name,
-      })
-      .from(organizationTrustedEmails)
-      .innerJoin(
-        tickets,
-        eq(tickets.organizationId, organizationTrustedEmails.organizationId),
-      )
-      .leftJoin(
-        organizations,
-        eq(organizations.id, organizationTrustedEmails.organizationId),
-      )
-      .where(eq(tickets.id, ticketId)),
+    isStaff
+      ? db
+          .select({
+            email: organizationTrustedEmails.email,
+            name: organizationTrustedEmails.name,
+            organizationId: organizationTrustedEmails.organizationId,
+            organizationName: organizations.name,
+          })
+          .from(organizationTrustedEmails)
+          .innerJoin(
+            tickets,
+            eq(
+              tickets.organizationId,
+              organizationTrustedEmails.organizationId,
+            ),
+          )
+          .leftJoin(
+            organizations,
+            eq(organizations.id, organizationTrustedEmails.organizationId),
+          )
+          .where(eq(tickets.id, ticketId))
+      : [],
   ]);
 
   const out: ParticipantPanelRow[] = rows.map((r) => ({
@@ -344,9 +377,15 @@ export async function listTicketParticipantsForPanel(
  *
  * Differs from `upsertParticipant` in exactly one way that matters: it will
  * never resurrect a `removed` row. `upsertParticipant` sets `status:'active'`
- * unconditionally, which is right for a deliberate human re-add and wrong for
+ * unconditionally, which is right for a deliberate STAFF re-add and wrong for
  * everything here — without this, one inbound email would silently put back
  * someone a coordinator had removed, on every subsequent email, forever.
+ *
+ * Returns whether a row actually landed. `false` means the tombstone blocked
+ * it — or, on the `pending` branch, that some decision already exists for this
+ * address, which is a harmless duplicate request rather than a failure. The
+ * callers that can surface an error to a human check it; the automatic ones
+ * ignore it by design.
  */
 export async function harvestParticipant(
   args: {
@@ -359,14 +398,14 @@ export async function harvestParticipant(
     status: "pending" | "active";
   },
   executor: Database | Tx = db,
-): Promise<void> {
+): Promise<boolean> {
   const email = args.email.trim().toLowerCase();
-  if (!email) return;
+  if (!email) return false;
 
   if (args.status === "pending") {
     // A request never overwrites an existing decision — active stays active,
     // removed stays removed, and a duplicate request is a no-op.
-    await executor
+    const landed = await executor
       .insert(ticketParticipants)
       .values({
         ticketId: args.ticketId,
@@ -376,11 +415,12 @@ export async function harvestParticipant(
         addedById: args.addedById ?? null,
         status: "pending",
       })
-      .onConflictDoNothing();
-    return;
+      .onConflictDoNothing()
+      .returning();
+    return landed.length > 0;
   }
 
-  await executor
+  const landed = await executor
     .insert(ticketParticipants)
     .values({
       ticketId: args.ticketId,
@@ -399,7 +439,9 @@ export async function harvestParticipant(
       // The tombstone: a human took them off, so an automatic path may not
       // put them back.
       setWhere: ne(ticketParticipants.status, "removed"),
-    });
+    })
+    .returning();
+  return landed.length > 0;
 }
 
 export type PendingParticipant = {
@@ -555,6 +597,18 @@ export async function harvestRecipients(args: {
    *  nothing may auto-join off an unverified From. */
   senderAuthenticated: boolean;
   isSelfAddress: (email: string) => boolean;
+  /**
+   * Join the addresses that belong to the ticket's own organization and skip
+   * every other one, instead of holding it as `pending`.
+   *
+   * Used for a STAFF reply. A technician Cc'ing the customer's colleague means
+   * "loop them in", and that colleague should join. But a technician's Reply-All
+   * also carries their own coworkers, and those would each become a `pending`
+   * row — a moderation queue full of our own staff, for a decision no
+   * coordinator should have to make. Skipping is the honest outcome: we add who
+   * we can place, and nominate nobody.
+   */
+  autoJoinOnly?: boolean;
 }): Promise<HarvestOutcome> {
   const out: HarvestOutcome = { autoJoined: [], pending: [], skipped: 0 };
   const seen = new Set<string>([args.ticket.customerEmail.toLowerCase()]);
@@ -583,7 +637,21 @@ export async function harvestRecipients(args: {
       args.ticket.organizationId !== null &&
       (await isOrgTrustedEmail(args.ticket.organizationId, email));
 
-    const status: "active" | "pending" = orgMatch || trusted ? "active" : "pending";
+    // An org-trusted contact gets NO participant row. `listActiveParticipants`
+    // already unions the organization's trusted contacts in, precisely so that
+    // revoking trust drops them from CC everywhere at once — minting a row here
+    // would outlive the revocation and strand them on this ticket forever, and
+    // would also show a Remove button that cannot actually remove them.
+    if (trusted) {
+      out.skipped++;
+      continue;
+    }
+
+    const status: "active" | "pending" = orgMatch ? "active" : "pending";
+    if (status === "pending" && args.autoJoinOnly) {
+      out.skipped++;
+      continue;
+    }
     await harvestParticipant({
       ticketId: args.ticket.id,
       email,

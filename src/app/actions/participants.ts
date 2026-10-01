@@ -16,6 +16,7 @@ import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getSettings } from "@/lib/settings";
 import { loadTicketScope } from "@/lib/tickets/load";
 import {
+  harvestParticipant,
   notifyParticipantAdded,
   upsertParticipant,
 } from "@/lib/tickets/participants";
@@ -153,15 +154,36 @@ export async function addTicketParticipant(input: {
     }
   }
 
-  // A deliberate human add REACTIVATES a previously removed row — unlike the
-  // automatic paths, which must never resurrect someone a human took off.
-  await upsertParticipant({
-    ticketId: ticket.id,
-    email,
-    name,
-    addedVia: isStaff ? "agent" : "requester",
-    addedById: user.id,
-  });
+  // Staff ARE the approval gate, so a staff add deliberately REACTIVATES a
+  // previously removed row. A customer is not: routing them through the same
+  // writer would let the requester overturn a staff rejection, since a
+  // rejection and a removal are the same stored state. They get the
+  // tombstone-respecting writer, and a removed row makes this a no-op we have
+  // to report rather than silently treat as success.
+  if (isStaff) {
+    await upsertParticipant({
+      ticketId: ticket.id,
+      email,
+      name,
+      addedVia: "agent",
+      addedById: user.id,
+    });
+  } else {
+    const landed = await harvestParticipant({
+      ticketId: ticket.id,
+      email,
+      name,
+      addedVia: "requester",
+      addedById: user.id,
+      status: "active",
+    });
+    if (!landed) {
+      return {
+        ok: false,
+        error: "That person was taken off this ticket. Ask us to add them back.",
+      };
+    }
+  }
 
   // They're active immediately, so tell them — with a link for their own
   // address, not the requester's.

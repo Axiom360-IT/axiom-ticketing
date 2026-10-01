@@ -60,6 +60,7 @@ export default async function GuestTicketViewPage({
 
   const participantRows = await listTicketParticipantsForPanel(
     ticket.id,
+    "guest",
   );
   const tParticipants = await getTranslations("tickets.participants");
 

@@ -86,10 +86,16 @@ export function ParticipantsPanel({
   >(null);
 
   // Loaded lazily on open — the picker is a query per ticket page otherwise.
+  //
+  // `!guestToken` matters as much as `mode` here: a guest has no session, so
+  // the colleague action would throw `Unauthenticated`, and a server-action
+  // rejection inside startTransition is rethrown during render — there is no
+  // error boundary on the guest route, so it would take the whole ticket page
+  // down with it. Guests never see the picker anyway; they type an address.
   function openAdd() {
     setAdding(true);
     setError(null);
-    if (mode === "portal" && colleagues === null) {
+    if (mode === "portal" && !guestToken && colleagues === null) {
       startTransition(async () => {
         const res = await listMyOrgColleaguesAction();
         setColleagues(res.ok ? res.colleagues : []);

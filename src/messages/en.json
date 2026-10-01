@@ -205,7 +205,8 @@
       "errors": {
         "invalidPhone": "Phone must be in E.164 format (e.g. +14165550123).",
         "passwordTooShort": "Password must be at least 12 characters.",
-        "passwordMismatch": "Passwords don't match."
+        "passwordMismatch": "Passwords don't match.",
+        "accountExists": "An account already exists for that email. Sign in instead, or reset your password if you've forgotten it."
       },
       "panel": {
         "title": "Your support, in one place.",
@@ -1534,20 +1535,6 @@
       "empty": "No accountant phone numbers configured yet."
     },
     "moderation": {
-      "participants": {
-        "heading": "{count, plural, =1 {1 person waiting to be added} other {# people waiting to be added}}",
-        "ticketLabel": "Ticket:",
-        "requestedByLabel": "Requested by:",
-        "domainLabel": "Email domain:",
-        "viaGuest": "the requester ({email}), from the ticket form or their guest link",
-        "viaInbound": "picked up from an inbound email",
-        "domainMatches": "matches this organization",
-        "domainDiffers": "not a registered domain for this organization",
-        "unverifiedWarning": "This ticket's organization was never verified, so there is nothing to check the address against. Approve only if you recognise them.",
-        "grantsAccess": "Approving lets them read the whole customer-visible thread and receive every future update.",
-        "approve": "Approve",
-        "reject": "Reject"
-      },
       "title": "Inbound reply moderation",
       "description": "Controls what happens when someone who isn't the ticket's customer, a participant, or part of its organization replies to a ticket email.",
       "toggle": "Hold unrecognized replies for moderation",
@@ -1971,6 +1958,20 @@
     "hint": "Vendors in use by procurement requests can be deactivated but not deleted, so those requests keep their label. A requester can still type a one-off vendor that isn't on this list."
   },
   "moderation": {
+    "participants": {
+      "heading": "{count, plural, =1 {1 person waiting to be added} other {# people waiting to be added}}",
+      "ticketLabel": "Ticket:",
+      "requestedByLabel": "Requested by:",
+      "domainLabel": "Email domain:",
+      "viaGuest": "the requester ({email}), from the ticket form or their guest link",
+      "viaInbound": "picked up from an inbound email",
+      "domainMatches": "matches this organization",
+      "domainDiffers": "not a registered domain for this organization",
+      "unverifiedWarning": "This ticket's organization was never verified, so there is nothing to check the address against. Approve only if you recognise them.",
+      "grantsAccess": "Approving lets them read the whole customer-visible thread and receive every future update.",
+      "approve": "Approve",
+      "reject": "Reject"
+    },
     "title": "Inbound moderation",
     "subtitle": "Email replies from senders outside the ticket's organization are held here. Approve & post the reply, optionally trusting the sender so their future replies post automatically, or reject it.",
     "empty": "Nothing to moderate — no held replies.",
@@ -2801,6 +2802,7 @@
       "subject": "We couldn't match your email to a ticket"
     },
     "participantAdded": {
+      "subject": "[{ticketNumber}] You've been added to a ticket: {subject}",
       "preview": "You've been added to ticket {ticketNumber}",
       "title": "You've been added to a support ticket",
       "greeting": "Hello,",
