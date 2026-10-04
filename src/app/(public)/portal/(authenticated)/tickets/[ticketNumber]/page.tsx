@@ -59,6 +59,14 @@ export default async function PortalTicketDetailPage({
       </Link>
       <CustomerTicketHeader ticket={ticket} />
 
+      {/* Say whose ticket this is, so a colleague isn't confused about why
+          they can read it but not change it. */}
+      {ticket.sharedWithMe ? (
+        <p className="mb-4 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-sm text-blue-900 dark:text-blue-200">
+          {t("sharedWithYou", { name: ticket.customerName })}
+        </p>
+      ) : null}
+
       {/* Initial description as the first thread item */}
       <div className="mb-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
         <p className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words">
@@ -73,7 +81,9 @@ export default async function PortalTicketDetailPage({
         <ParticipantsPanel
           mode="portal"
           ticketId={ticket.id}
-          canManage
+          // The requester decides who else is on their ticket. A colleague
+          // who was added to it reads and replies, nothing more.
+          canManage={!ticket.sharedWithMe}
           requester={{
             email: ticket.customerEmail,
             name: ticket.customerName,
@@ -90,7 +100,11 @@ export default async function PortalTicketDetailPage({
           hasn't rated it yet. After they pick an emoji the action revalidates
           and the prompt either becomes a recap banner (csatRating now set) or
           the ticket reopens. */}
-      {ticket.status === "resolved" || ticket.csatRating || ticket.csatResponse ? (
+      {/* Not for participants: rating the service is the requester's call, and
+          the CSAT action is owner-scoped anyway — showing it to a colleague
+          would offer a button that always fails. */}
+      {!ticket.sharedWithMe &&
+      (ticket.status === "resolved" || ticket.csatRating || ticket.csatResponse) ? (
         <CustomerCsatPrompt ticketId={ticket.id} csatRating={ticket.csatRating} />
       ) : null}
 

@@ -77,6 +77,9 @@ export function ParticipantsPanel({
   const router = useRouter();
   const t = useTranslations("tickets.participants");
   const [error, setError] = useState<string | null>(null);
+  // Saved, but something after the save didn't work — e.g. the invitation
+  // email bounced. Not an error: the person IS on the ticket.
+  const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [email, setEmail] = useState("");
@@ -106,6 +109,7 @@ export function ParticipantsPanel({
 
   function submitAdd() {
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       // A guest has no session — their request goes through the token-
       // authorized action and always lands as pending.
@@ -127,6 +131,13 @@ export function ParticipantsPanel({
       setEmail("");
       setColleagueId("");
       setAdding(false);
+      // Only the session-authorized action carries a warning; the guest one
+      // has no such field, hence the typeof rather than a bare `in` check.
+      setWarning(
+        "warning" in res && typeof res.warning === "string"
+          ? res.warning
+          : null,
+      );
       router.refresh();
     });
   }
@@ -310,6 +321,12 @@ export function ParticipantsPanel({
       {error ? (
         <p role="alert" className="text-xs text-red-600 dark:text-red-400">
           {error}
+        </p>
+      ) : null}
+
+      {warning ? (
+        <p role="status" className="text-xs text-amber-700 dark:text-amber-400">
+          {warning}
         </p>
       ) : null}
 

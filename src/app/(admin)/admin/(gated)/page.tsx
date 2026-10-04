@@ -1069,6 +1069,14 @@ function TriagePanel({ data, t }: { data: TriagePanelData; t: LandingT }) {
             hint={t("triage.heldHint")}
           />
         ) : null}
+        {data.pendingParticipants !== null ? (
+          <TriageTile
+            href="/admin/moderation"
+            value={data.pendingParticipants}
+            label={t("triage.pendingParticipants")}
+            hint={t("triage.pendingParticipantsHint")}
+          />
+        ) : null}
         {data.unverified !== null ? (
           <TriageTile
             href="/admin/org-triage"

@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  type SQL,
   and,
   asc,
   desc,
@@ -9,13 +10,17 @@ import {
   isNull,
   ne,
   notExists,
+  or,
+  sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { organizations } from "@/lib/db/schema/organizations";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { attachments } from "@/lib/db/schema/attachments";
 import { users } from "@/lib/db/schema/auth";
 import { messages } from "@/lib/db/schema/messages";
+import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { tickets } from "@/lib/db/schema/tickets";
 import { customerVisibleMessages } from "@/lib/messages/visibility";
 
@@ -32,6 +37,9 @@ export type CustomerTicketSummary = {
   // the customer so they know who's on it.
   assignedToName: string | null;
   assignedToEmail: string | null;
+  /** True when the viewer is a participant rather than the requester — the
+   *  ticket belongs to a colleague and is only shared with them. */
+  sharedWithMe: boolean;
 };
 
 export type CustomerTicket = {
@@ -54,6 +62,9 @@ export type CustomerTicket = {
   closedAt: Date | null;
   csatResponse: string | null;
   csatRating: string | null;
+  /** True when the viewer reached this ticket as a participant, not as its
+   *  requester. Read and reply only — no participant management, no CSAT. */
+  sharedWithMe: boolean;
 };
 
 export type CustomerAttachment = {
@@ -75,10 +86,45 @@ export type CustomerMessage = {
   attachments: CustomerAttachment[];
 };
 
-/** Lists tickets the customer owns, most recently updated first. */
+/**
+ * A ticket the signed-in account can reach: one it owns, OR one a colleague
+ * or staff member added their address to as an active participant.
+ *
+ * Participants are keyed by email and accounts by id, so the two legs join on
+ * the address — lower-cased on both sides, since participant rows are stored
+ * lower-case while an account's address is stored as typed.
+ */
+function myTicketsCondition(userId: string): SQL {
+  const viewer = db
+    .select({ email: sql<string>`lower(${users.email})`.as("email") })
+    .from(users)
+    .where(eq(users.id, userId));
+
+  return and(
+    or(
+      eq(tickets.customerId, userId),
+      exists(
+        db
+          .select({ id: ticketParticipants.id })
+          .from(ticketParticipants)
+          .where(
+            and(
+              eq(ticketParticipants.ticketId, tickets.id),
+              eq(ticketParticipants.status, "active"),
+              inArray(ticketParticipants.email, viewer),
+            ),
+          ),
+      ),
+    ),
+    ne(tickets.status, "draft"),
+  )!;
+}
+
+/** Lists tickets the customer owns or has been added to, newest update first. */
 export async function listMyTickets(
   userId: string,
 ): Promise<CustomerTicketSummary[]> {
+  const assignee = alias(users, "assignee");
   return db
     .select({
       id: tickets.id,
@@ -89,12 +135,14 @@ export async function listMyTickets(
       createdAt: tickets.createdAt,
       updatedAt: tickets.updatedAt,
       resolvedAt: tickets.resolvedAt,
-      assignedToName: users.name,
-      assignedToEmail: users.email,
+      assignedToName: assignee.name,
+      assignedToEmail: assignee.email,
+      // Drives the "Shared with you" badge — these are someone else's tickets.
+      sharedWithMe: sql<boolean>`${tickets.customerId} is distinct from ${userId}`,
     })
     .from(tickets)
-    .leftJoin(users, eq(users.id, tickets.assignedToId))
-    .where(and(eq(tickets.customerId, userId), ne(tickets.status, "draft")))
+    .leftJoin(assignee, eq(assignee.id, tickets.assignedToId))
+    .where(myTicketsCondition(userId))
     .orderBy(desc(tickets.updatedAt));
 }
 
@@ -124,14 +172,11 @@ export async function getMyTicketByNumber(
       closedAt: tickets.closedAt,
       csatResponse: tickets.csatResponse,
       csatRating: tickets.csatRating,
+      sharedWithMe: sql<boolean>`${tickets.customerId} is distinct from ${userId}`,
     })
     .from(tickets)
     .where(
-      and(
-        eq(tickets.ticketNumber, ticketNumber),
-        eq(tickets.customerId, userId),
-        ne(tickets.status, "draft"),
-      ),
+      and(eq(tickets.ticketNumber, ticketNumber), myTicketsCondition(userId)),
     )
     .limit(1);
   return t ?? null;
@@ -170,6 +215,9 @@ export async function getGuestTicketById(
       closedAt: tickets.closedAt,
       csatResponse: tickets.csatResponse,
       csatRating: tickets.csatRating,
+      // Not meaningful on the guest surface: that page already knows who the
+      // holder of the link is, from resolveGuestActor's `isCreator`.
+      sharedWithMe: sql<boolean>`false`,
     })
     .from(tickets)
     // isNull(deletedAt): a soft-deleted ticket is gone for the guest surface

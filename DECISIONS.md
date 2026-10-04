@@ -5,6 +5,57 @@ entries go at the top; date them.
 
 ---
 
+## 2026-10-05 · Participants reach their ticket in the signed-in portal
+
+A participant used to have exactly one way in: the guest link mailed to them.
+Lose the email and the ticket was unreachable — it was not in `/portal/tickets`
+and the direct URL 404'd — with no resend anywhere in the UI for them, the
+requester, or staff.
+
+**Why the one-line fix was wrong.** `ticket_participants` is keyed by EMAIL;
+the portal is keyed by `tickets.customer_id`. Two identity spaces that were
+never joined. Widening the portal query alone would surface the ticket and
+then throw `ForbiddenError` out of `customerReply` the moment they typed a
+reply, because `can()` collapses every customer-side ticket action to
+`ticket.customerId === user.id`.
+
+**How it works now.** `Target.ticket` gained `viewerIsParticipant`, following
+the `viewerHasWorklog` precedent already in that type: a viewer-dependent flag
+computed by the caller, so `can()` stays pure and DB-free. `loadTicketScope`
+takes an optional `viewerUserId` and resolves the flag by joining participant
+email to account email, lower-cased on both sides (participant rows are stored
+lower-case; an account's address is stored as typed). The four customer-
+reachable gates pass it: reply, upload, confirm-upload, download. Staff paths
+omit it and are byte-for-byte unchanged.
+
+**The grant is read + reply, nothing else.** Resolve, reopen, close, CSAT and
+`manage_participants` all stay with the requester and staff. A participant is
+ON the thread, not in charge of it. Seven cases in `can.test.ts` pin this, five
+of them negative — those are what a too-broad grant would quietly hand over.
+
+**The portal query is the part that could leak another customer's tickets**, so
+its generated SQL was inspected driverlessly (`QueryBuilder.toSQL()`) rather
+than trusted: the `exists` correlates on `tickets.id`, filters
+`status = 'active'`, matches only the viewer's own address via a scalar
+subquery, and `(owner OR participant) AND NOT draft` parenthesises correctly.
+
+**Shared tickets are labelled, not blended.** `sharedWithMe` drives a badge in
+the list and a line on the detail page naming whose ticket it is — otherwise a
+colleague has no way to tell why they can read it but not change it. It is
+derived in SQL (`customer_id IS DISTINCT FROM $viewer`) rather than compared in
+the page, so there is one definition of "not mine".
+
+**Also closed here, from the same review:** the pending-participant count now
+appears on the coordinator dashboard (the queue was visible only to whoever
+thought to open `/admin/moderation`); the submit form's colleague "Add" button
+says why it refused instead of silently doing nothing; a failed invitation
+email surfaces as a `warning` on an otherwise-successful result, from both the
+add and the approve path, rather than being swallowed behind a flat success;
+and `harvestRecipients` collects per-address failures so one bad address can
+neither abandon the rest of the line nor erase the audit record of what landed.
+
+---
+
 ## 2026-09-04 · Inngest app had not synced since launch: 7 of 17 functions were never registered
 
 Follow-on from the 2026-09-03 entry below. That investigation concluded `process-customer-import-batch` wasn't registered with Inngest Cloud. Querying the Cloud API directly showed the problem was far wider:

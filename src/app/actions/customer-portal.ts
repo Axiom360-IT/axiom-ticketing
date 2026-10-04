@@ -306,7 +306,9 @@ export async function customerReply(
 
   await enforceUserRateLimit("authReply", user.id);
 
-  const ticket = await loadTicketScope(ticketId);
+  // Viewer id: a participant on someone else's ticket may reply, and that
+  // is decided by viewerIsParticipant on the scope.
+  const ticket = await loadTicketScope(ticketId, user.id);
   if (!ticket) throw new NotFoundError();
 
   if (

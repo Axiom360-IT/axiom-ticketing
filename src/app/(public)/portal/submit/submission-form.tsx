@@ -91,6 +91,7 @@ export function SubmissionForm({
   // written PENDING and reaches nobody until staff approve it.
   const [participantEmails, setParticipantEmails] = useState<string[]>([]);
   const [participantDraft, setParticipantDraft] = useState("");
+  const [participantError, setParticipantError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string>("");
   const [honeypot, setHoneypot] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -394,7 +395,10 @@ export function SubmissionForm({
                 id="participant-email"
                 type="email"
                 value={participantDraft}
-                onChange={(e) => setParticipantDraft(e.target.value)}
+                onChange={(e) => {
+                  setParticipantDraft(e.target.value);
+                  setParticipantError(null);
+                }}
                 placeholder={tSubmit("participantPlaceholder")}
               />
               <Button
@@ -403,19 +407,34 @@ export function SubmissionForm({
                 onClick={() => {
                   const email = participantDraft.trim().toLowerCase();
                   // Client-side shape check only — createTicketSchema is the
-                  // real gate, and staff approval is the real control.
-                  if (!EMAIL_RE.test(email)) return;
-                  if (email === formData.customerEmail.trim().toLowerCase())
+                  // real gate, and staff approval is the real control. But say
+                  // WHY nothing happened: a button that silently does nothing
+                  // reads as broken software.
+                  if (!EMAIL_RE.test(email)) {
+                    setParticipantError(tSubmit("participantInvalid"));
                     return;
-                  setParticipantEmails((prev) =>
-                    prev.includes(email) ? prev : [...prev, email],
-                  );
+                  }
+                  if (email === formData.customerEmail.trim().toLowerCase()) {
+                    setParticipantError(tSubmit("participantIsYou"));
+                    return;
+                  }
+                  if (participantEmails.includes(email)) {
+                    setParticipantError(tSubmit("participantDuplicate"));
+                    return;
+                  }
+                  setParticipantEmails((prev) => [...prev, email]);
                   setParticipantDraft("");
+                  setParticipantError(null);
                 }}
               >
                 {tSubmit("participantAdd")}
               </Button>
             </div>
+          ) : null}
+          {participantError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {participantError}
+            </p>
           ) : null}
         </div>
 

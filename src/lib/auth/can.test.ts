@@ -788,3 +788,78 @@ describe("can() — tickets.manage_participants scope", () => {
     ).resolves.toBe(false);
   });
 });
+
+// ── Participants in the signed-in portal ──────────────────────────────
+//
+// A colleague added to someone else's ticket reaches it in the portal, not
+// just through the guest link they were emailed. The grant is deliberately
+// narrow: read and reply. Resolving, reopening and changing who else is on
+// the thread stay with the requester and staff, so each of those is asserted
+// negatively here — they are what a too-broad grant would quietly hand over.
+
+const participantTarget = (customerId: string | null): Target => ({
+  type: "ticket",
+  ticket: {
+    id: "t-1",
+    assignedToId: null,
+    customerId,
+    viewerIsParticipant: true,
+  },
+});
+
+describe("can() — participant access on someone else's ticket", () => {
+  const ctx = makeCtx();
+
+  it("lets a participant VIEW a ticket they do not own", async () => {
+    await expect(
+      can(customer("c-1"), "tickets.view", participantTarget("c-2"), ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("lets a participant REPLY to a ticket they do not own", async () => {
+    await expect(
+      can(customer("c-1"), "tickets.reply", participantTarget("c-2"), ctx),
+    ).resolves.toBe(true);
+  });
+
+  it("does NOT let a participant manage the participant list", async () => {
+    await expect(
+      can(
+        customer("c-1"),
+        "tickets.manage_participants",
+        participantTarget("c-2"),
+        ctx,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("does NOT let a participant resolve the ticket", async () => {
+    await expect(
+      can(customer("c-1"), "tickets.resolve", participantTarget("c-2"), ctx),
+    ).resolves.toBe(false);
+  });
+
+  it("does NOT let a participant reopen the ticket", async () => {
+    await expect(
+      can(customer("c-1"), "tickets.reopen", participantTarget("c-2"), ctx),
+    ).resolves.toBe(false);
+  });
+
+  it("denies view when the flag is absent — a non-participant stranger", async () => {
+    await expect(
+      can(customer("c-1"), "tickets.view", ticketTarget(null, "c-2"), ctx),
+    ).resolves.toBe(false);
+  });
+
+  it("still gives the requester full rights on their own ticket", async () => {
+    // The participant leg must not have narrowed the owner's access.
+    await expect(
+      can(
+        customer("c-1"),
+        "tickets.manage_participants",
+        participantTarget("c-1"),
+        ctx,
+      ),
+    ).resolves.toBe(true);
+  });
+});

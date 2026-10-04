@@ -229,6 +229,7 @@
         "closed": "Closed"
       },
       "list": {
+      "sharedBadge": "Shared with you",
         "title": "My tickets",
         "subtitle": "Tickets you've submitted to our team.",
         "newTicket": "New ticket",
@@ -245,6 +246,7 @@
         "searchPlaceholder": "Search by subject or number"
       },
       "detail": {
+      "sharedWithYou": "{name} raised this ticket and added you to it. You can read it and reply; only {name} and our team can change who else is on it.",
         "metaTitle": "{ticketNumber} — Axiom360 support",
         "openedAt": "Opened {when}",
         "back": "Back to tickets",
@@ -619,6 +621,9 @@
 "participantsHint": "Add up to 5 colleagues who should receive updates on this ticket. Our team reviews and approves them before anything is sent.",
 "participantPlaceholder": "colleague@company.com",
 "participantAdd": "Add",
+"participantInvalid": "That doesn't look like an email address.",
+"participantIsYou": "That's your own address — you're already on the ticket.",
+"participantDuplicate": "You've already added that address.",
 "participantRemove": "Remove {email}",
       "attachmentsLabel": "Attachments (optional)",
       "attachmentsAddButton": "Attach files",
@@ -2534,6 +2539,8 @@
         "subtitle": "Held customer replies and unverified organizations",
         "held": "Held replies",
         "heldHint": "Awaiting moderation",
+        "pendingParticipants": "People waiting to join",
+        "pendingParticipantsHint": "Someone was proposed for a ticket thread and is waiting on your decision.",
         "unverified": "Unverified orgs",
         "unverifiedHint": "Company typed, not matched"
       },

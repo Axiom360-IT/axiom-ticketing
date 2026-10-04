@@ -208,7 +208,14 @@ async function harvestInboundRecipients(args: {
       autoJoinOnly: args.autoJoinOnly,
     });
 
-    if (outcome.autoJoined.length > 0 || outcome.pending.length > 0) {
+    // Audited whenever anything happened at all, failures included — a write
+    // that threw is exactly the case someone will later need to trace, and
+    // this function is best-effort so Inngest will not retry it.
+    if (
+      outcome.autoJoined.length > 0 ||
+      outcome.pending.length > 0 ||
+      outcome.failed.length > 0
+    ) {
       await audit({
         actorId: null,
         action: "ticket.harvest_participants",
@@ -219,6 +226,7 @@ async function harvestInboundRecipients(args: {
         after: {
           autoJoined: outcome.autoJoined,
           pending: outcome.pending,
+          ...(outcome.failed.length > 0 ? { failed: outcome.failed } : {}),
           senderAuthenticated: args.senderAuthenticated,
         },
       });

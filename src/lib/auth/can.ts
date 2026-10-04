@@ -21,6 +21,13 @@ export type Target =
          *  on even after it's reassigned away from them — so they keep sight
          *  of the history and their logged time. Does NOT grant edit/reply. */
         viewerHasWorklog?: boolean;
+        /** Whether the viewer's own account address is an ACTIVE participant.
+         *  Lets a colleague who was added to someone else's ticket read and
+         *  reply to it in the signed-in portal, instead of being able to reach
+         *  it only through the guest link they were emailed. Read + reply
+         *  only — never resolve, reopen, or manage the participant list.
+         *  Computed by loadTicketScope, which needs the viewer's id. */
+        viewerIsParticipant?: boolean;
       };
     }
   | {
@@ -174,7 +181,15 @@ export async function can(
         return isAssigneeOrCollaborator;
       }
       if (isStrictCustomer(user)) {
-        return target.ticket.customerId === user.id;
+        // The requester: full customer-side rights on their own ticket.
+        if (target.ticket.customerId === user.id) return true;
+        // A participant on someone else's ticket. They are ON the thread, not
+        // in charge of it — read and reply, nothing more. Resolving, reopening
+        // and changing who else is on it stay with the requester and staff.
+        return (
+          !!target.ticket.viewerIsParticipant &&
+          (action === "tickets.view" || action === "tickets.reply")
+        );
       }
       // Any other non-staff account (Customer plus a custom role) is scoped to
       // its own ticket for participant management — without this leg it would

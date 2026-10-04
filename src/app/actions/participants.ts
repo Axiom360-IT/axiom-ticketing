@@ -28,7 +28,11 @@ import {
 // staff-only decision and lives in actions/moderation.ts, or a guest could
 // approve the strangers they themselves proposed.
 
-export type ParticipantResult = { ok: true } | { ok: false; error: string };
+export type ParticipantResult =
+  /** `warning` means the change was saved but the invitation email did not
+   *  send — the caller shows it, because a flat success would be misleading. */
+  | { ok: true; warning?: string }
+  | { ok: false; error: string };
 
 const addSchema = z
   .object({
@@ -188,7 +192,11 @@ export async function addTicketParticipant(input: {
 
   // They're active immediately, so tell them — with a link for their own
   // address, not the requester's.
-  await notifyParticipantAdded({ ticketId: ticket.id, email, name });
+  const notified = await notifyParticipantAdded({
+    ticketId: ticket.id,
+    email,
+    name,
+  });
 
   await audit({
     actorId: user.id,
@@ -200,7 +208,12 @@ export async function addTicketParticipant(input: {
 
   revalidatePath(`/admin/tickets/${ticket.id}`);
   revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
-  return { ok: true };
+  return notified
+    ? { ok: true }
+    : {
+        ok: true,
+        warning: `${email} was added, but we couldn't send their invitation email. They'll still get the next reply.`,
+      };
 }
 
 const removeSchema = z.object({

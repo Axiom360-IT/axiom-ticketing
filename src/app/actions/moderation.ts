@@ -292,7 +292,9 @@ export async function rejectHeldMessage(messageId: string): Promise<Result> {
 // entire thing the approval step exists to prevent.
 
 export type PendingParticipantResult =
-  | { ok: true }
+  /** `warning`: the decision was saved but the invitation email did not send.
+   *  Same contract as ParticipantResult — a flat success would be misleading. */
+  | { ok: true; warning?: string }
   | { ok: false; error: string };
 
 export async function listPendingParticipantsForModeration(): Promise<
@@ -359,7 +361,10 @@ export async function approvePendingParticipant(
   }
 
   // A human just vouched for this address — now it's safe to tell them.
-  await notifyParticipantAdded({ ticketId: ticket.id, email: row.email });
+  const notified = await notifyParticipantAdded({
+    ticketId: ticket.id,
+    email: row.email,
+  });
 
   await audit({
     actorId: user.id,
@@ -373,7 +378,12 @@ export async function approvePendingParticipant(
   revalidatePath("/admin/moderation");
   revalidatePath(`/admin/tickets/${ticket.id}`);
   revalidatePath(`/portal/tickets/${ticket.ticketNumber}`);
-  return { ok: true };
+  return notified
+    ? { ok: true }
+    : {
+        ok: true,
+        warning: `${row.email} was approved, but we couldn't send their invitation email. They'll still get the next reply.`,
+      };
 }
 
 export async function rejectPendingParticipant(

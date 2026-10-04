@@ -48,6 +48,13 @@ export function CustomerTicketList({ items }: Props) {
                     }
                   />
                   <PriorityBadge priority={ticket.priority} />
+                  {/* Someone else's ticket that this account was added to —
+                      without this the list silently mixes the two. */}
+                  {ticket.sharedWithMe ? (
+                    <span className="shrink-0 rounded bg-blue-100 px-1.5 py-px text-[10px] font-medium text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                      {t("sharedBadge")}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-50 truncate">
                   {ticket.subject}

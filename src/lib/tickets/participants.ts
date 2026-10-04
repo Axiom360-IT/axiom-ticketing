@@ -577,14 +577,16 @@ export async function selfAddressFilterFromSettings(): Promise<
  * and the subject line alone would leak what the ticket is about) and never
  * for an inbound auto-join (they just emailed in about it — they know).
  *
- * Best-effort: a ticket's participant list must not fail to change because
- * Resend hiccuped.
+ * Best-effort by design: the participant row is already committed, and a
+ * Resend hiccup must not roll that back. Returns whether the mail actually
+ * went out, so the caller can tell the person "added, but the invitation
+ * didn't send" instead of a flat success they'd have no reason to doubt.
  */
 export async function notifyParticipantAdded(args: {
   ticketId: string;
   email: string;
   name?: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const [t] = await db
       .select({
@@ -595,7 +597,7 @@ export async function notifyParticipantAdded(args: {
       .from(tickets)
       .where(eq(tickets.id, args.ticketId))
       .limit(1);
-    if (!t) return;
+    if (!t) return false;
 
     const appUrl = getAppUrl();
     await sendEmail({
@@ -613,8 +615,10 @@ export async function notifyParticipantAdded(args: {
       ticketNumber: t.ticketNumber,
       replyToTicket: true,
     });
+    return true;
   } catch (err) {
     console.error("[participants] added-notification failed:", err);
+    return false;
   }
 }
 
@@ -624,6 +628,10 @@ export type HarvestOutcome = {
   autoJoined: string[];
   pending: string[];
   skipped: number;
+  /** Addresses whose write threw. The loop carries on past them so one bad
+   *  address can't cost the others their row, and the caller audits these
+   *  alongside what landed. */
+  failed: string[];
 };
 
 /**
@@ -668,7 +676,12 @@ export async function harvestRecipients(args: {
    */
   autoJoinOnly?: boolean;
 }): Promise<HarvestOutcome> {
-  const out: HarvestOutcome = { autoJoined: [], pending: [], skipped: 0 };
+  const out: HarvestOutcome = {
+    autoJoined: [],
+    pending: [],
+    skipped: 0,
+    failed: [],
+  };
   const seen = new Set<string>([args.ticket.customerEmail.toLowerCase()]);
 
   for (const raw of args.addresses) {
@@ -717,12 +730,20 @@ export async function harvestRecipients(args: {
       out.skipped++;
       continue;
     }
-    await harvestParticipant({
-      ticketId: args.ticket.id,
-      email,
-      addedVia: status === "active" ? "domain_auto" : "recipient",
-      status,
-    });
+    // One address failing must not abandon the rest of the line, and must not
+    // throw away the record of the ones that did land.
+    try {
+      await harvestParticipant({
+        ticketId: args.ticket.id,
+        email,
+        addedVia: status === "active" ? "domain_auto" : "recipient",
+        status,
+      });
+    } catch (err) {
+      console.error(`[participants] harvest failed for ${email}:`, err);
+      out.failed.push(email);
+      continue;
+    }
     if (status === "active") out.autoJoined.push(email);
     else out.pending.push(email);
   }

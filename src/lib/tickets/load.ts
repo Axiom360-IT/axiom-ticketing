@@ -1,8 +1,9 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
 import { ticketAssignees } from "@/lib/db/schema/ticket-assignees";
+import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { tickets } from "@/lib/db/schema/tickets";
 
 /**
@@ -10,8 +11,16 @@ import { tickets } from "@/lib/db/schema/tickets";
  * actions for permission checks, audit context, and notification fan-out.
  * Returns the superset of fields needed by all current callers; consumers
  * pick what they need.
+ *
+ * `viewerUserId` is for the customer-portal callers: pass it and the scope
+ * carries `viewerIsParticipant`, which is what lets a colleague added to
+ * someone else's ticket read and reply to it while signed in. Staff paths
+ * omit it — their access never depends on the participant list.
  */
-export async function loadTicketScope(ticketId: string) {
+export async function loadTicketScope(
+  ticketId: string,
+  viewerUserId?: string,
+) {
   const [t] = await db
     .select({
       id: tickets.id,
@@ -48,7 +57,34 @@ export async function loadTicketScope(ticketId: string) {
     .from(ticketAssignees)
     .where(eq(ticketAssignees.ticketId, ticketId));
 
-  return { ...t, assigneeIds: collaborators.map((c) => c.userId) };
+  // Participants are keyed by EMAIL, the portal by account — so the join is
+  // on the address, lower-cased on both sides because participant rows are
+  // always stored lower-case while an account's address is stored as typed.
+  let viewerIsParticipant = false;
+  if (viewerUserId) {
+    const [row] = await db
+      .select({ id: ticketParticipants.id })
+      .from(ticketParticipants)
+      .innerJoin(
+        users,
+        eq(sql`lower(${users.email})`, ticketParticipants.email),
+      )
+      .where(
+        and(
+          eq(ticketParticipants.ticketId, ticketId),
+          eq(ticketParticipants.status, "active"),
+          eq(users.id, viewerUserId),
+        ),
+      )
+      .limit(1);
+    viewerIsParticipant = Boolean(row);
+  }
+
+  return {
+    ...t,
+    assigneeIds: collaborators.map((c) => c.userId),
+    viewerIsParticipant,
+  };
 }
 
 export type AssignableTechnician = {

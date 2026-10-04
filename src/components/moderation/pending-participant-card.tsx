@@ -41,16 +41,26 @@ export function PendingParticipantCard({
   const router = useRouter();
   const t = useTranslations("moderation.participants");
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function decide(approve: boolean) {
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       const res = approve
         ? await approvePendingParticipant(participant.id)
         : await rejectPendingParticipant(participant.id);
       if (!res.ok) {
         setError(res.error);
+        return;
+      }
+      // A refresh drops this card off the queue, taking any message with it.
+      // So when the decision stuck but the invitation email didn't send, hold
+      // the card and say so — the next page load clears it either way.
+      const w = "warning" in res ? res.warning : undefined;
+      if (w) {
+        setWarning(w);
         return;
       }
       router.refresh();
@@ -124,6 +134,12 @@ export function PendingParticipantCard({
         {error ? (
           <p role="alert" className="text-xs text-red-600 dark:text-red-400">
             {error}
+          </p>
+        ) : null}
+
+        {warning ? (
+          <p role="status" className="text-xs text-amber-700 dark:text-amber-400">
+            {warning}
           </p>
         ) : null}
 

@@ -83,7 +83,7 @@ export async function generateUploadUrl(
   }
 
   const user = await requireSessionUser();
-  const ticket = await loadTicketScope(ticketId);
+  const ticket = await loadTicketScope(ticketId, user.id);
   if (!ticket) return { ok: false, error: "Ticket not found." };
 
   // Enforce the per-message attachment count cap by counting pending
@@ -216,7 +216,7 @@ export async function confirmUpload(
 
   // Only the uploader (or a privileged user with reply on the ticket) can
   // confirm. We check ticket-level reply permission to keep this simple.
-  const ticket = await loadTicketScope(att.ticketId);
+  const ticket = await loadTicketScope(att.ticketId, user.id);
   if (!ticket) return { ok: false, error: "Ticket not found." };
   if (
     !(await can(
@@ -362,7 +362,7 @@ export async function getDownloadUrl(
     .limit(1);
   if (!att) return { ok: false, error: "Attachment not found." };
 
-  const ticket = await loadTicketScope(att.ticketId);
+  const ticket = await loadTicketScope(att.ticketId, user.id);
   if (!ticket) throw new NotFoundError();
   if (
     !(await can(
