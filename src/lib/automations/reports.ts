@@ -124,10 +124,14 @@ export async function resolveRecipients(
   return [...out];
 }
 
+export type ReportFailure = { email: string; reason: string };
+
 export type ReportSendOutcome = {
   recipients: number;
   delivered: number;
-  failed: string[];
+  /** Why each one failed, not just who. "Failed: a@b, c@d" tells the operator
+   *  nothing they can act on; Resend's rejection message does. */
+  failed: ReportFailure[];
   filename: string;
   skipped?: "no-recipients";
 };
@@ -187,7 +191,7 @@ export async function runScheduledReport(args: {
 
   const rendered = await renderExport(dataset, format, "report", now);
 
-  const failed: string[] = [];
+  const failed: ReportFailure[] = [];
   let delivered = 0;
   for (const to of recipients) {
     try {
@@ -207,7 +211,10 @@ export async function runScheduledReport(args: {
       delivered++;
     } catch (err) {
       console.error(`[scheduled-report] send to ${to} failed:`, err);
-      failed.push(to);
+      failed.push({
+        email: to,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

@@ -48,7 +48,11 @@ export function ReauthModal({
         return;
       }
       setPassword("");
-      onOpenChange(false);
+      // ONLY onVerified. Calling onOpenChange(false) here too was the bug:
+      // the gate reads that as "user cancelled" and settles its promise with
+      // false, so the caller got back the original "re-authentication
+      // required" result even though the password was accepted. The gate
+      // closes the dialog itself when it clears its pending state.
       onVerified();
     });
   }

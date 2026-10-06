@@ -29,7 +29,16 @@ export function useReauthGate() {
     if (first.ok || !first.reauthRequired) return first;
 
     const verified = await new Promise<boolean>((resolve) => {
-      setPending({ resolve, reasonKey });
+      // Settle once. The modal signals success and dismissal through two
+      // different callbacks, and a stray dismissal after a successful verify
+      // would otherwise overwrite the answer with `false`.
+      let settled = false;
+      const once = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+      setPending({ resolve: once, reasonKey });
     });
     if (!verified) return first;
     return await action();

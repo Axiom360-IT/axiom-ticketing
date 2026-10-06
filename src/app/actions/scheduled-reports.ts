@@ -8,7 +8,10 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { isReauthFresh, reauthRequiredResult } from "@/lib/auth/reauth";
 import { requireSessionUser } from "@/lib/auth/session";
-import { runScheduledReport } from "@/lib/automations/reports";
+import {
+  type ReportFailure,
+  runScheduledReport,
+} from "@/lib/automations/reports";
 import { REPORT_KINDS } from "@/lib/automations/reports";
 import { safeLocalMoment, WEEKDAYS } from "@/lib/automations/schedule";
 import { db } from "@/lib/db/client";
@@ -226,7 +229,12 @@ export async function deleteScheduledReport(
 }
 
 export type SendNowResult =
-  | { ok: true; delivered: number; recipients: number; failed: string[] }
+  | {
+      ok: true;
+      delivered: number;
+      recipients: number;
+      failed: ReportFailure[];
+    }
   | { ok: false; error: string };
 
 /**

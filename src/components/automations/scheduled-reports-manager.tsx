@@ -171,15 +171,21 @@ export function ScheduledReportsManager({
         setError(res.error);
         return;
       }
-      setNotice(
-        res.failed.length > 0
-          ? t("sentPartial", {
-              delivered: res.delivered,
-              recipients: res.recipients,
-              failed: res.failed.join(", "),
-            })
-          : t("sentOk", { delivered: res.delivered }),
-      );
+      if (res.failed.length > 0) {
+        // Show WHY. A list of addresses with no reason is not actionable —
+        // this is the Resend rejection text, verbatim.
+        setError(
+          t("sentPartial", {
+            delivered: res.delivered,
+            recipients: res.recipients,
+            failed: res.failed
+              .map((f) => `${f.email} — ${f.reason}`)
+              .join("; "),
+          }),
+        );
+      } else {
+        setNotice(t("sentOk", { delivered: res.delivered }));
+      }
       router.refresh();
     });
   }

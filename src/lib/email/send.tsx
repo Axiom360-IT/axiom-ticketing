@@ -558,10 +558,13 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       ? {
           attachments: attachments.map((a) => ({
             filename: a.filename,
-            content:
-              typeof a.content === "string"
-                ? a.content
-                : a.content.toString("base64"),
+            // Resend reads a string `content` as base64, so a text payload
+            // (CSV) has to be encoded too — passing it through raw produced a
+            // corrupt attachment. Buffer.from handles both shapes.
+            content: (Buffer.isBuffer(a.content)
+              ? a.content
+              : Buffer.from(a.content, "utf8")
+            ).toString("base64"),
           })),
         }
       : {}),
