@@ -19,6 +19,7 @@ import { monthlyPlanReset } from "./monthly-plan-reset";
 import { notifyAccountantResolved } from "./notify-accountant-resolved";
 import { processCustomerImportBatch } from "./process-customer-import-batch";
 import { processInboundEmail } from "./process-inbound-email";
+import { scheduledReportDispatcher } from "./scheduled-report-dispatcher";
 import { scanAttachment } from "./scan-attachment";
 import { sendEmailNotification } from "./send-email-notification";
 import { sendInAppNotification } from "./send-in-app-notification";
@@ -41,6 +42,8 @@ export const functions = [
   cleanupOldNotifications,
   cleanupStaleDrafts,
   cleanupStaleLockouts,
+  // Automations panel: user-created scheduled reports
+  scheduledReportDispatcher,
   // Billing / support plans (reqs 8.2/8.6/8.9)
   monthlyPlanReset,
   billingBalanceMonitor,

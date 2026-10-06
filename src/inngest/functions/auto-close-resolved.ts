@@ -5,6 +5,8 @@ import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { getAppUrl } from "@/lib/request";
+import { withAutomationRun } from "@/lib/automations/runs";
+import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
 import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-closed-staff";
 
@@ -19,7 +21,11 @@ export const autoCloseResolvedTickets = inngest.createFunction(
     id: "auto-close-resolved-tickets",
     triggers: cron("0 * * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("auto-close-resolved-tickets", async () => {
+      const on = await getSetting<boolean>("auto_close.enabled");
+      if (on === false) return { skipped: "disabled" as const };
+
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const stale = await step.run("find-stale-resolved", async () => {
@@ -171,5 +177,5 @@ export const autoCloseResolvedTickets = inngest.createFunction(
     }
 
     return { closed: stale.length };
-  },
+    }),
 );

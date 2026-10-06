@@ -4,6 +4,8 @@ import { db } from "@/lib/db/client";
 import { attachments } from "@/lib/db/schema/attachments";
 import { tickets } from "@/lib/db/schema/tickets";
 import { deleteObject } from "@/lib/storage/signed-urls";
+import { withAutomationRun } from "@/lib/automations/runs";
+import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
 
 // Daily at 4:15am UTC. Removes ticket rows that were created as
@@ -23,7 +25,11 @@ export const cleanupStaleDrafts = inngest.createFunction(
     id: "cleanup-stale-drafts",
     triggers: cron("15 4 * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("cleanup-stale-drafts", async () => {
+      const on = await getSetting<boolean>("housekeeping.enabled");
+      if (on === false) return { skipped: "disabled" as const };
+
     const cutoff = new Date(Date.now() - STALE_DRAFT_MS);
 
     const stale = await step.run("find-stale-drafts", async () => {
@@ -78,5 +84,5 @@ export const cleanupStaleDrafts = inngest.createFunction(
     });
 
     return { drafts: stale.length, attachments: result };
-  },
+    }),
 );

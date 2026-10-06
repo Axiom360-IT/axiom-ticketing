@@ -86,6 +86,21 @@ export const SETTING_SCHEMAS = {
   // 20-minute cron: a smaller value can't be honored (the check only runs
   // every 20 min), so we reject it rather than silently round it up.
   "unassigned_alert.enabled": z.boolean(),
+
+  // ── Automation switches ──────────────────────────────────────────────
+  // Jobs that had no switch of their own. Where a job already had one
+  // (customer_followup.enabled, unassigned_alert.enabled, virus_scan.enabled,
+  // customer_sms.enabled) that key is reused — two switches for one job is how
+  // you end up with a thing that is both on and off.
+  "auto_close.enabled": z.boolean(),
+  "monthly_plan_reset.enabled": z.boolean(),
+  "scheduled_reports.enabled": z.boolean(),
+  // One switch for all three nightly cleanups: they are the same decision, and
+  // nobody wants to disable draft pruning but keep lockout pruning.
+  "housekeeping.enabled": z.boolean(),
+  // How long automation_runs rows are kept. The monitors run every 20 minutes,
+  // so this table grows ~2k rows/day and needs a ceiling.
+  "housekeeping.run_history_days": z.number().int().min(1).max(365),
   "unassigned_alert.threshold_minutes": z
     .number()
     .int()

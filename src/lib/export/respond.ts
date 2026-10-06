@@ -14,16 +14,26 @@ const CONTENT_TYPES: Record<ExportFormat, string> = {
   pdf: "application/pdf",
 };
 
+export type RenderedExport = {
+  body: Buffer | string;
+  filename: string;
+  contentType: string;
+};
+
 /**
- * Render a dataset in the requested format and return it as a downloadable
- * `Response`. CSV is built inline; XLSX/PDF pull the branding (name, accent,
- * logo bytes) so both carry the company's identity.
+ * Render a dataset to bytes. CSV is built inline; XLSX/PDF pull the branding
+ * (name, accent, logo) so both carry the company's identity.
+ *
+ * Split out from `exportResponse` so a scheduled report can attach exactly
+ * the same bytes to an email that a download would produce. One renderer, so
+ * the emailed file and the downloaded file can't drift apart.
  */
-export async function exportResponse(
+export async function renderExport(
   dataset: ExportDataset,
   format: ExportFormat,
   filenameBase: string,
-): Promise<Response> {
+  at: Date = new Date(),
+): Promise<RenderedExport> {
   let body: Buffer | string;
   if (format === "csv") {
     body = buildCsv(dataset);
@@ -34,8 +44,23 @@ export async function exportResponse(
         ? await buildXlsx(dataset, branding)
         : await buildPdf(dataset, branding);
   }
+  return {
+    body,
+    filename: exportFilename(filenameBase, format, at),
+    contentType: CONTENT_TYPES[format],
+  };
+}
 
-  const filename = exportFilename(filenameBase, format, new Date());
+/**
+ * Render a dataset in the requested format and return it as a downloadable
+ * `Response`.
+ */
+export async function exportResponse(
+  dataset: ExportDataset,
+  format: ExportFormat,
+  filenameBase: string,
+): Promise<Response> {
+  const { body, filename } = await renderExport(dataset, format, filenameBase);
   // A Node Buffer is a valid response body at runtime; TS's BodyInit type
   // doesn't model `Buffer<ArrayBufferLike>`, hence the cast.
   return new Response(body as BodyInit, {

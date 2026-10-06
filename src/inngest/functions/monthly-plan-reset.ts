@@ -2,6 +2,8 @@ import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { db } from "@/lib/db/client";
 import { organizations } from "@/lib/db/schema/organizations";
+import { withAutomationRun } from "@/lib/automations/runs";
+import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
 
 // Monthly support-plan reset (req 8.2). Runs DAILY (06:00 UTC) and resets every
@@ -16,7 +18,11 @@ export const monthlyPlanReset = inngest.createFunction(
     id: "monthly-plan-reset",
     triggers: cron("0 6 * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("monthly-plan-reset", async () => {
+      const on = await getSetting<boolean>("monthly_plan_reset.enabled");
+      if (on === false) return { skipped: "disabled" as const };
+
     return step.run("reset", async () => {
       const rows = await db
         .update(organizations)
@@ -48,5 +54,5 @@ export const monthlyPlanReset = inngest.createFunction(
         .returning({ id: organizations.id });
       return { reset: rows.length };
     });
-  },
+    }),
 );

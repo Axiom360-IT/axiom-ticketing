@@ -5,6 +5,86 @@ entries go at the top; date them.
 
 ---
 
+## 2026-10-06 · Automations panel, and scheduled reports
+
+Seventeen background jobs were already running. Their only trace was the
+Inngest dashboard, so "did the follow-up monitor fire last night?" could not be
+answered from inside the app, and the answer to "what does this system do on
+its own?" lived only in `src/inngest/functions/`.
+
+**What was actually wrong, after looking rather than assuming.** The settings
+registry is comprehensive — 61 keys, including every automation knob
+(`customer_followup.*`, `unassigned_alert.*`, `sla.*`), with the constants in
+each job file being *fallbacks*, not the source of truth. Two real gaps:
+
+  1. No run history and no inventory. Nothing recorded that a job ran.
+  2. `src/components/settings/sla-form.tsx` existed, was complete, and was
+     rendered **nowhere**. The twelve SLA target keys drive every due date in
+     the product and had no reachable UI. It is now mounted on this page,
+     beside the monitor that measures against it.
+
+**Scheduled reports are NOT one Inngest cron each.** A cron expression lives in
+code and ships in a deploy; a report someone creates at 16:05 for 19:00 the
+same day cannot wait for a release. One dispatcher runs every five minutes and
+asks a pure function what is due. Five minutes is therefore the resolution of
+the feature, and the UI says so rather than implying to-the-minute delivery.
+
+**All eight pre-existing crons run in UTC** — not one carries a `TZ=` prefix,
+so `monthly-plan-reset` at "0 6 * * *" is mid-morning in Dubai, not 06:00.
+Rather than rewrite them, the panel renders each schedule's local equivalent
+beside the raw expression, and the dispatcher interprets a report's "19:00"
+against `business_hours.timezone` in `isReportDue` rather than delegating it to
+the scheduler. `Intl.DateTimeFormat` does that conversion because it carries
+the IANA database, including the DST transitions a fixed UTC offset gets wrong
+twice a year.
+
+**The double-send guard is a stored local date**, `last_run_on`. The due check
+is deliberately "at or after the scheduled minute", not "equals" — a
+five-minute dispatcher would otherwise miss a report set for 19:02 forever —
+and without the date it would then send twelve times an hour until midnight.
+The slot is claimed BEFORE sending, so a crash half way through a twelve-person
+list loses the remainder rather than re-sending to the people already served.
+
+**A toggle is a settings write.** The switches go through the existing
+`updateSetting`, inheriting its zod validation, rate limit, audit entry and
+password re-confirmation. Switching off the job that chases customers deserves
+to feel like a settings change. The page gates read on `settings.view` and
+every write on `settings.update`, rather than introducing a permission that
+would need a migration to grant and a scoped `can()` case to avoid the
+switch's `default: return true`.
+
+**Only scheduled jobs record runs.** The nine reactive ones fire per
+notification; a row each would duplicate the notifications table and bury the
+signal. They are listed with their trigger so the inventory is complete, and
+the page says plainly that they have no history and no switch — switching off
+inbound email or the notification senders would silently break the product.
+
+**Run history is pruned by the existing nightly cleanup** rather than a new
+cron. The monitors fire every twenty minutes, so the table grows ~2k rows a
+day; `housekeeping.run_history_days` caps it. One fewer job to explain.
+
+**Recipients resolve from roles, named accounts and literal addresses**, in
+that order of preference, and the UI says why: a role keeps working after a
+handover, a named person does not. Deactivated accounts are dropped at send
+time, so revoking someone's access stops their copy of company reporting
+immediately rather than whenever someone remembers to edit the schedule.
+
+**`buildReportDataset` moved out of the export route** into
+`lib/reports/dataset.ts`, and `renderExport` out of `exportResponse`. Both are
+now shared, so what arrives in the IT Director's inbox at 19:00 is the same
+document someone else gets by clicking Export. When those two drift, people
+stop trusting both.
+
+**The registry is hand-maintained description of code elsewhere**, which is
+the kind of thing that rots, so nine tests pin it against the actual function
+files: no orphan ids, no unlisted function, triggers and `kind` matching the
+real `cron()`/`eventType()` call, every setting key still in the registry,
+every job having a name and description, and every tracked job actually wrapped
+in `withAutomationRun` under its own id. Each check maps to a specific way the
+panel could start lying to an operator.
+
+---
+
 ## 2026-10-05 · Participants reach their ticket in the signed-in portal
 
 A participant used to have exactly one way in: the guest link mailed to them.

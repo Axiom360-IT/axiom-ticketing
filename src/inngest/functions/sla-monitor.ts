@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
+import { withAutomationRun } from "@/lib/automations/runs";
 import { inngest } from "../client";
 
 // Fallback breach recipients when the setting isn't configured (req 6.3).
@@ -42,7 +43,8 @@ export const slaMonitor = inngest.createFunction(
     id: "sla-monitor",
     triggers: cron("*/20 * * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("sla-monitor", async () => {
     const now = new Date();
     const t50 = now;
     const t80 = now;
@@ -194,7 +196,7 @@ export const slaMonitor = inngest.createFunction(
     }
 
     return summary;
-  },
+    }),
 );
 
 async function dispatch(

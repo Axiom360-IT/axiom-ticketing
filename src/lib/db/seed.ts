@@ -133,6 +133,32 @@ const DEFAULT_SETTINGS: { key: string; value: unknown; description: string }[] =
         "If true, only accept inbound emails from registered customer accounts",
     },
     {
+      key: "auto_close.enabled",
+      value: true,
+      description: "Automatically close tickets a customer never confirmed",
+    },
+    {
+      key: "monthly_plan_reset.enabled",
+      value: true,
+      description: "Reset support-plan hours at the start of each month",
+    },
+    {
+      key: "scheduled_reports.enabled",
+      value: true,
+      description: "Send scheduled reports at their configured times",
+    },
+    {
+      key: "housekeeping.enabled",
+      value: true,
+      description:
+        "Nightly cleanups: archive old notifications, clear expired lockouts, delete abandoned drafts, prune automation run history",
+    },
+    {
+      key: "housekeeping.run_history_days",
+      value: 30,
+      description: "How many days of automation run history to keep",
+    },
+    {
       key: "inbound_harvest_cc",
       value: true,
       description:

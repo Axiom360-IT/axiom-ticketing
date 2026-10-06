@@ -9,6 +9,7 @@ import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-c
 import { getAppUrl } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
 import { ticketTrackingUrl } from "@/lib/tokens";
+import { withAutomationRun } from "@/lib/automations/runs";
 import { inngest } from "../client";
 
 // Customer follow-up + auto-close monitor — runs every 6 hours.
@@ -47,7 +48,8 @@ export const customerFollowupMonitor = inngest.createFunction(
     id: "customer-followup-monitor",
     triggers: cron("0 */6 * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("customer-followup-monitor", async () => {
     const cfg = await step.run("load-config", async () => {
       const s = await getSettings<{
         "customer_followup.enabled"?: unknown;
@@ -270,7 +272,7 @@ export const customerFollowupMonitor = inngest.createFunction(
     }
 
     return { candidates: candidates.length, nudged, closed };
-  },
+    }),
 );
 
 type Candidate = {

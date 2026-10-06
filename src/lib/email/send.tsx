@@ -78,6 +78,10 @@ import {
   type ParticipantAddedProps,
 } from "./templates/participant-added";
 import {
+  ScheduledReportEmail,
+  type ScheduledReportProps,
+} from "./templates/scheduled-report";
+import {
   NewAssignmentEmail,
   type NewAssignmentProps,
 } from "./templates/new-assignment";
@@ -199,6 +203,10 @@ export type EmailTemplate =
       data: Omit<ParticipantAddedProps, "locale">;
     }
   | {
+      template: "scheduled_report";
+      data: Omit<ScheduledReportProps, "locale">;
+    }
+  | {
       template: "procurement_submitted";
       data: Omit<ProcurementSubmittedProps, "locale">;
     }
@@ -276,6 +284,15 @@ type SendEmailOptions = {
    * only the display label.
    */
   fromActorName?: string;
+  /**
+   * Files to attach. Used by scheduled reports, which mail a spreadsheet
+   * rather than a link — the recipient should not need to be signed in, or
+   * even at a desk, to read the number they asked for.
+   *
+   * Resend takes base64 content, so the caller hands over bytes and the
+   * encoding happens here, once.
+   */
+  attachments?: { filename: string; content: Buffer | string }[];
 };
 
 async function renderTemplate(
@@ -343,6 +360,8 @@ async function renderTemplate(
       return await render(
         <ParticipantAddedEmail {...t.data} locale={locale} />,
       );
+    case "scheduled_report":
+      return await render(<ScheduledReportEmail {...t.data} locale={locale} />);
     case "procurement_submitted":
       return await render(
         <ProcurementSubmittedEmail {...t.data} locale={locale} />,
@@ -422,6 +441,7 @@ const TEMPLATE_NAMESPACE = {
   inbound_bounce: "emails.inboundBounce",
   inbound_closed_ticket: "emails.inboundClosedTicket",
   participant_added: "emails.participantAdded",
+  scheduled_report: "emails.scheduledReport",
   procurement_submitted: "emails.procurementSubmitted",
   procurement_approved: "emails.procurementApproved",
   procurement_rejected: "emails.procurementRejected",
@@ -478,6 +498,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     subject,
     locale,
     fromActorName,
+    attachments,
   } = options;
 
   const resolvedLocale = pickLocale(locale) ?? DEFAULT_LOCALE;
@@ -533,6 +554,17 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     subject: finalSubject,
     html,
     replyTo,
+    ...(attachments && attachments.length > 0
+      ? {
+          attachments: attachments.map((a) => ({
+            filename: a.filename,
+            content:
+              typeof a.content === "string"
+                ? a.content
+                : a.content.toString("base64"),
+          })),
+        }
+      : {}),
     headers: {
       // These are system-generated notifications. Per RFC 3834, this tells
       // remote auto-responders (out-of-office, etc.) NOT to auto-reply to us,

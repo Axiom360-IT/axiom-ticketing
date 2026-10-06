@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
 import { getAppUrl } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
+import { withAutomationRun } from "@/lib/automations/runs";
 import { inngest } from "../client";
 
 // Unassigned-ticket monitor — runs every 20 minutes. (Matches the SLA
@@ -34,7 +35,8 @@ export const unassignedMonitor = inngest.createFunction(
     id: "unassigned-ticket-monitor",
     triggers: cron("*/20 * * * *"),
   },
-  async ({ step }) => {
+  async ({ step }) =>
+    withAutomationRun("unassigned-ticket-monitor", async () => {
     const cfg = await step.run("load-config", async () => {
       const s = await getSettings<{
         "unassigned_alert.enabled"?: unknown;
@@ -125,7 +127,7 @@ export const unassignedMonitor = inngest.createFunction(
     }
 
     return { candidates: candidates.length, alerted };
-  },
+    }),
 );
 
 async function dispatch(t: {

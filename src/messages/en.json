@@ -229,7 +229,7 @@
         "closed": "Closed"
       },
       "list": {
-      "sharedBadge": "Shared with you",
+        "sharedBadge": "Shared with you",
         "title": "My tickets",
         "subtitle": "Tickets you've submitted to our team.",
         "newTicket": "New ticket",
@@ -246,7 +246,7 @@
         "searchPlaceholder": "Search by subject or number"
       },
       "detail": {
-      "sharedWithYou": "{name} raised this ticket and added you to it. You can read it and reply; only {name} and our team can change who else is on it.",
+        "sharedWithYou": "{name} raised this ticket and added you to it. You can read it and reply; only {name} and our team can change who else is on it.",
         "metaTitle": "{ticketNumber} — Axiom360 support",
         "openedAt": "Opened {when}",
         "back": "Back to tickets",
@@ -617,14 +617,14 @@
       "captchaSkipped": "Cloudflare Turnstile is not configured. In dev this is fine; in production it means NEXT_PUBLIC_TURNSTILE_SITE_KEY isn't reaching the browser — submissions will fail captcha verification until it is set.",
       "submitButton": "Submit ticket",
       "submitting": "Submitting…",
-"participantsLabel": "Copy other people in",
-"participantsHint": "Add up to 5 colleagues who should receive updates on this ticket. Our team reviews and approves them before anything is sent.",
-"participantPlaceholder": "colleague@company.com",
-"participantAdd": "Add",
-"participantInvalid": "That doesn't look like an email address.",
-"participantIsYou": "That's your own address — you're already on the ticket.",
-"participantDuplicate": "You've already added that address.",
-"participantRemove": "Remove {email}",
+      "participantsLabel": "Copy other people in",
+      "participantsHint": "Add up to 5 colleagues who should receive updates on this ticket. Our team reviews and approves them before anything is sent.",
+      "participantPlaceholder": "colleague@company.com",
+      "participantAdd": "Add",
+      "participantInvalid": "That doesn't look like an email address.",
+      "participantIsYou": "That's your own address — you're already on the ticket.",
+      "participantDuplicate": "You've already added that address.",
+      "participantRemove": "Remove {email}",
       "attachmentsLabel": "Attachments (optional)",
       "attachmentsAddButton": "Attach files",
       "attachmentsHint": "Screenshots and logs help us diagnose faster.",
@@ -2431,6 +2431,7 @@
       "navRoles": "Roles",
       "navReports": "Reports",
       "navAudit": "Audit log",
+      "navAutomations": "Automations",
       "navSettings": "Settings",
       "navCategories": "Categories",
       "navTypes": "Types",
@@ -2808,6 +2809,15 @@
       "buttonNewTicket": "Submit a new ticket",
       "subject": "We couldn't match your email to a ticket"
     },
+    "scheduledReport": {
+      "subject": "[{reportName}] {forDate}",
+      "preview": "Your {reportName} is attached",
+      "title": "{reportName}",
+      "greeting": "Hello,",
+      "body": "Here is your report for {forDate}, covering the last {rangeDays, plural, =1 {24 hours} other {# days}}.",
+      "attached": "The full figures are attached as {fileName}.",
+      "manageHint": "This report is sent automatically. To change the schedule or who receives it, ask your Axiom360 administrator."
+    },
     "participantAdded": {
       "subject": "[{ticketNumber}] You've been added to a ticket: {subject}",
       "preview": "You've been added to ticket {ticketNumber}",
@@ -2975,6 +2985,157 @@
         "none": "Nothing to bill for this ticket.",
         "review": "Needs review — this ticket isn't categorized for billing yet."
       }
+    }
+  },
+  "automations": {
+    "metaTitle": "Automations",
+    "title": "Automations",
+    "subtitle": "Everything this system does on its own — what it is, when it runs, and whether it is working.",
+    "clock": "Times are shown in {timezone}, where it is currently {localNow}.",
+    "scheduledHeading": "Runs on a schedule",
+    "scheduledHint": "These can be switched off safely — nothing else waits on them. Each one records every run below.",
+    "reactiveHeading": "Runs when something happens",
+    "reactiveHint": "These react to an event rather than a clock. They have no switch because turning one off would silently break part of the product.",
+    "activityHeading": "Recent activity",
+    "activityEmpty": "No runs recorded yet. Scheduled jobs start appearing here as they fire.",
+    "slaHeading": "SLA targets",
+    "slaHint": "What the SLA monitor measures against. Changing a target affects tickets created from now on.",
+    "scheduleDaily": "Daily at {localTime} · {cron} UTC",
+    "scheduleInterval": "{cron} UTC",
+    "lastRan": "last ran {when}",
+    "neverRun": "Has not run since this panel was added — expected within its normal interval.",
+    "failures24h": "{count, plural, =1 {1 failure in 24h} other {# failures in 24h}}",
+    "statusOk": "OK",
+    "statusError": "Failed",
+    "statusSkipped": "Nothing to do",
+    "statusRunning": "Running",
+    "colAutomation": "Automation",
+    "colStarted": "Started",
+    "colStatus": "Status",
+    "colResult": "Result",
+    "on": "On",
+    "off": "Off",
+    "alwaysOn": "Always on",
+    "readOnly": "View only",
+    "settingLabel": "{key}:",
+    "valueDefault": "default",
+    "valueNone": "none",
+    "jobs": {
+      "sla-monitor": {
+        "name": "SLA monitor",
+        "description": "Checks every open ticket against its response and resolution targets, warns before a breach and alerts the chosen roles after one."
+      },
+      "unassigned-ticket-monitor": {
+        "name": "Unassigned ticket alerts",
+        "description": "Nags the team when a new ticket has sat with nobody assigned to it for longer than the threshold."
+      },
+      "customer-followup-monitor": {
+        "name": "Customer follow-up chase",
+        "description": "When a ticket is waiting on the customer, reminds them daily for a few days, then closes the ticket if they never reply."
+      },
+      "auto-close-resolved-tickets": {
+        "name": "Auto-close resolved tickets",
+        "description": "Closes tickets that were marked resolved and that the customer never came back to confirm or reopen."
+      },
+      "monthly-plan-reset": {
+        "name": "Monthly plan reset",
+        "description": "At the start of each month, restores every support plan's included hours so billing starts from a clean balance."
+      },
+      "cleanup-old-notifications": {
+        "name": "Nightly cleanup: notifications and run history",
+        "description": "Archives notifications older than 90 days and prunes this page's own run history, so neither table grows without limit."
+      },
+      "cleanup-stale-lockouts": {
+        "name": "Nightly cleanup: expired lockouts",
+        "description": "Clears sign-in lockouts whose cooling-off period has passed, so a locked-out user isn't locked out forever."
+      },
+      "cleanup-stale-drafts": {
+        "name": "Nightly cleanup: abandoned drafts",
+        "description": "Deletes half-finished ticket submissions older than 24 hours, along with any files uploaded to them."
+      },
+      "scheduled-report-dispatcher": {
+        "name": "Scheduled report sender",
+        "description": "Wakes every five minutes and sends any report whose time has come. This is the job that delivers the reports below."
+      },
+      "process-inbound-email": {
+        "name": "Inbound email to ticket",
+        "description": "Turns a received email into a new ticket or a reply on an existing one, and picks up the other people copied in."
+      },
+      "process-customer-import-batch": {
+        "name": "Customer import",
+        "description": "Creates the accounts from a customer import and sends each person their invitation."
+      },
+      "scan-attachment": {
+        "name": "Attachment virus scan",
+        "description": "Scans each uploaded file and quarantines anything that fails."
+      },
+      "dispatch-notification": {
+        "name": "Notification router",
+        "description": "Decides who should hear about an event and by which channel, then hands off to the senders below."
+      },
+      "send-email-notification": {
+        "name": "Email sender",
+        "description": "Sends one notification email."
+      },
+      "send-sms-notification": {
+        "name": "SMS sender",
+        "description": "Sends one notification by text message."
+      },
+      "send-in-app-notification": {
+        "name": "In-app notification sender",
+        "description": "Puts one notification in the bell menu."
+      },
+      "billing-balance-monitor": {
+        "name": "Support plan balance alerts",
+        "description": "Warns the accountants when an organization goes over its included hours."
+      },
+      "notify-accountant-resolved": {
+        "name": "Billable work notice",
+        "description": "Tells the accountants when a billable ticket is resolved, so it can be invoiced."
+      }
+    },
+    "reports": {
+      "heading": "Scheduled reports",
+      "subtitle": "Email a report to the people you choose, at a time you choose. Times are in {timezone}.",
+      "add": "New scheduled report",
+      "addHeading": "New scheduled report",
+      "editHeading": "Edit scheduled report",
+      "empty": "No scheduled reports yet. Create one to have it emailed automatically.",
+      "summary": "{time} on {days} · {recipients, plural, =1 {1 recipient} other {# recipients}}",
+      "lastSent": "Last sent {date}",
+      "neverSent": "Not sent yet",
+      "paused": "Paused",
+      "lastFailed": "Last run failed",
+      "sendNow": "Send test",
+      "pause": "Pause",
+      "resume": "Resume",
+      "edit": "Edit",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "fieldName": "Name",
+      "namePlaceholder": "Daily operations report",
+      "fieldTime": "Send at ({timezone})",
+      "timeHint": "Sent within five minutes of this time — the sender wakes every five minutes.",
+      "fieldRange": "Days of data to include",
+      "fieldFormat": "File format",
+      "formatXlsx": "Excel (.xlsx)",
+      "formatPdf": "PDF",
+      "formatCsv": "CSV",
+      "fieldDays": "Days to send",
+      "fieldRoles": "Send to roles",
+      "rolesHint": "Preferred: a role keeps working after someone changes job. A named person does not.",
+      "fieldPeople": "Send to specific people",
+      "peoplePlaceholder": "Add a person…",
+      "fieldEmails": "Send to other addresses",
+      "emailPlaceholder": "accountant@example.com",
+      "addEmail": "Add",
+      "emailInvalid": "That doesn't look like an email address.",
+      "emailDuplicate": "You've already added that address.",
+      "removeRecipient": "Remove recipient",
+      "sentOk": "Sent to {delivered, plural, =1 {1 recipient} other {# recipients}}.",
+      "sentPartial": "Sent to {delivered} of {recipients}. Failed: {failed}"
     }
   }
 }

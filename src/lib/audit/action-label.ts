@@ -6,6 +6,14 @@
 const ACTION_LABELS: Record<string, string> = {
   // Audit
   "audit.export": "Exported the audit log",
+  // Automations
+  "automation.scheduled_report_create": "Created a scheduled report",
+  "automation.scheduled_report_update": "Changed a scheduled report",
+  "automation.scheduled_report_delete": "Deleted a scheduled report",
+  "automation.scheduled_report_enable": "Resumed a scheduled report",
+  "automation.scheduled_report_disable": "Paused a scheduled report",
+  "automation.scheduled_report_test": "Sent a scheduled report as a test",
+  "automation.scheduled_report_sent": "Sent a scheduled report",
   // Attachments
   "attachment.confirm": "Attachment confirmed",
   "attachment.scan": "Attachment scanned",

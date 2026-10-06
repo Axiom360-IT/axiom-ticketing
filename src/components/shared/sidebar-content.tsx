@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   MailWarning,
   Settings,
+  Workflow,
   Shield,
   Store,
   Tags,
@@ -50,7 +51,8 @@ type NavLabelKey =
   | "navCategories"
   | "navTypes"
   | "navVendors"
-  | "navAudit";
+  | "navAudit"
+  | "navAutomations";
 
 type GroupLabelKey =
   | "groupServiceDesk"
@@ -126,6 +128,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/categories", labelKey: "navCategories", icon: Tags, color: "text-pink-400", requires: "settings.update" },
       { href: "/admin/types", labelKey: "navTypes", icon: Layers, color: "text-sky-400", requires: "settings.update" },
       { href: "/admin/vendors", labelKey: "navVendors", icon: Store, color: "text-lime-400", requires: "settings.update" },
+      { href: "/admin/automations", labelKey: "navAutomations", icon: Workflow, color: "text-amber-400", requires: "settings.view" },
       { href: "/admin/settings", labelKey: "navSettings", icon: Settings, color: "text-indigo-400", requires: "settings.view" },
     ],
   },
