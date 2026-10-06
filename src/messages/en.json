@@ -3147,7 +3147,20 @@
       "emailDuplicate": "You've already added that address.",
       "removeRecipient": "Remove recipient",
       "sentOk": "Sent to {delivered, plural, =1 {1 recipient} other {# recipients}}.",
-      "sentPartial": "Sent to {delivered} of {recipients}. Failed: {failed}"
+      "sentNone": "Nothing sent to any of the {recipients, plural, =1 {1 recipient} other {# recipients}}.",
+      "sentSome": "Sent to {delivered} of {recipients}.",
+      "failureFor": "{who}: {cause}",
+      "failure": {
+        "daily_quota_exceeded": "The daily email limit has been reached. It resets tomorrow — or upgrade the email plan to send more.",
+        "rate_limit_exceeded": "Too many emails at once. Try again in a moment.",
+        "invalid_api_key": "The email service key is not valid. An administrator needs to update it.",
+        "restricted_api_key": "The email service key does not allow sending. An administrator needs to update it.",
+        "missing_api_key": "No email service key is configured. An administrator needs to set one.",
+        "invalid_to_address": "That address was rejected as invalid.",
+        "invalid_from_address": "Our sending address was rejected. Check the sender settings and that the domain is verified.",
+        "validation_error": "The email service rejected the message as malformed.",
+        "not_found": "The email service could not find that address."
+      }
     },
     "statScheduled": "scheduled",
     "statReactive": "event-driven",

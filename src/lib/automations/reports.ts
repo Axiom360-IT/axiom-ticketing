@@ -7,6 +7,7 @@ import { scheduledReports } from "@/lib/db/schema/automations";
 import { isExportFormat, type ExportFormat } from "@/lib/export/dataset";
 import { renderExport } from "@/lib/export/respond";
 import { sendEmail } from "@/lib/email/send";
+import { EmailSendError } from "@/lib/email/send-error";
 import { buildReportDataset } from "@/lib/reports/dataset";
 import {
   loadCsatStats,
@@ -124,7 +125,16 @@ export async function resolveRecipients(
   return [...out];
 }
 
-export type ReportFailure = { email: string; reason: string };
+export type ReportFailure = {
+  email: string;
+  /** The provider's machine-readable error name, when it gave one — e.g.
+   *  `daily_quota_exceeded`. The UI turns this into a sentence an operator can
+   *  act on; it is NOT shown raw. */
+  code: string | null;
+  /** The underlying message, kept as a last resort for an error we have no
+   *  wording for. */
+  reason: string;
+};
 
 export type ReportSendOutcome = {
   recipients: number;
@@ -213,6 +223,7 @@ export async function runScheduledReport(args: {
       console.error(`[scheduled-report] send to ${to} failed:`, err);
       failed.push({
         email: to,
+        code: err instanceof EmailSendError ? (err.resendErrorName ?? null) : null,
         reason: err instanceof Error ? err.message : String(err),
       });
     }

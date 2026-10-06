@@ -24,6 +24,8 @@ import {
   setScheduledReportEnabled,
   updateScheduledReport,
 } from "@/app/actions/scheduled-reports";
+import type { ReportFailure } from "@/lib/automations/reports";
+import { isDescribedSendFailure } from "@/lib/email/send-failure-causes";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -172,17 +174,7 @@ export function ScheduledReportsManager({
         return;
       }
       if (res.failed.length > 0) {
-        // Show WHY. A list of addresses with no reason is not actionable —
-        // this is the Resend rejection text, verbatim.
-        setError(
-          t("sentPartial", {
-            delivered: res.delivered,
-            recipients: res.recipients,
-            failed: res.failed
-              .map((f) => `${f.email} — ${f.reason}`)
-              .join("; "),
-          }),
-        );
+        setError(describeFailures(res, t));
       } else {
         setNotice(t("sentOk", { delivered: res.delivered }));
       }
@@ -583,4 +575,47 @@ export function ScheduledReportsManager({
       {gate}
     </section>
   );
+}
+
+/**
+ * One sentence an operator can act on, instead of a wall of provider text.
+ *
+ * Every recipient usually fails for the SAME reason — a quota, a bad key — so
+ * the reason is said once and the addresses are summarised. The previous
+ * version repeated each address twice and pasted the vendor's raw message per
+ * recipient, which buried the one fact that mattered.
+ */
+function describeFailures(
+  res: { delivered: number; recipients: number; failed: ReportFailure[] },
+  t: ReturnType<typeof useTranslations<"automations.reports">>,
+): string {
+  // Group by cause, preferring the provider's error code over message text.
+  const byCause = new Map<string, ReportFailure[]>();
+  for (const f of res.failed) {
+    const key = f.code ?? f.reason;
+    const list = byCause.get(key);
+    if (list) list.push(f);
+    else byCause.set(key, [f]);
+  }
+
+  const parts = [...byCause.entries()].map(([key, group]) => {
+    const cause = isDescribedSendFailure(key)
+      ? t(`failure.${key}` as never)
+      : // No wording for this one — fall back to the provider's text rather
+        // than inventing a reassuring sentence.
+        group[0].reason;
+    return group.length === res.recipients
+      ? cause
+      : t("failureFor", { who: group.map((f) => f.email).join(", "), cause });
+  });
+
+  const headline =
+    res.delivered === 0
+      ? t("sentNone", { recipients: res.recipients })
+      : t("sentSome", {
+          delivered: res.delivered,
+          recipients: res.recipients,
+        });
+
+  return `${headline} ${parts.join(" ")}`;
 }
