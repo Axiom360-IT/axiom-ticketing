@@ -118,6 +118,16 @@ describe("automation registry", () => {
     expect(missing).toEqual([]);
   });
 
+  it("has a label for every category in use", () => {
+    // The page builds these keys dynamically (`category.${c}`), so the
+    // literal-key scanner in message-keys.test.ts cannot see them. Without
+    // this, a new category renders as "automations.category.whatever".
+    const missing = [...new Set(AUTOMATIONS.map((a) => a.category))]
+      .map((c) => `automations.category.${c}`)
+      .filter((path) => typeof lookup(path) !== "string");
+    expect(missing).toEqual([]);
+  });
+
   it("tracks runs for every scheduled job and none of the reactive ones", () => {
     // Reactive jobs fire per-notification; recording those would bury the
     // signal and duplicate the notifications table.

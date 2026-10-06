@@ -134,42 +134,71 @@ export function formatLocalTime(hour: number, minute: number): string {
 }
 
 /**
- * What a UTC cron expression means in `timeZone`, for the handful of shapes
- * this app actually uses. Returns null for anything it cannot describe
- * honestly — the UI then shows the raw expression rather than a guess.
+ * A cron expression, described the way an operator would say it.
  *
- *   "0 6 * * *"      → daily at a fixed hour → local time
- *   "30 3 * * *"     → same
- *   "0 * * * *"      → hourly                → no local time to show
- *   every-N-minutes  → same
+ * Nobody reading an admin page should have to parse `*​/20 * * * *`. Each
+ * shape this app actually uses gets its own answer, and a daily job gets a
+ * real LOCAL time — the raw expression is UTC, so showing "0 6" to someone in
+ * Dubai is not merely terse, it is wrong by four hours.
+ *
+ * Anything unrecognised comes back as `raw`, and the UI prints the expression
+ * rather than inventing a description for it.
  */
-export function describeCronLocally(
+export type CronDescription =
+  | { kind: "everyNMinutes"; n: number }
+  | { kind: "hourly" }
+  | { kind: "everyNHours"; n: number }
+  | { kind: "dailyAt"; localTime: string }
+  | { kind: "raw" };
+
+export function describeCron(
   cron: string,
   timeZone: string,
   reference: Date,
-): { kind: "daily"; localTime: string } | { kind: "interval" } | null {
+): CronDescription {
   const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return null;
+  if (parts.length !== 5) return { kind: "raw" };
   const [min, hour, dom, mon, dow] = parts;
-  if (dom !== "*" || mon !== "*" || dow !== "*") return null;
+  // Only plain every-day schedules are described; a day-of-month or weekday
+  // restriction would need wording this app has no use for yet.
+  if (dom !== "*" || mon !== "*" || dow !== "*") return { kind: "raw" };
 
-  // Fixed minute AND hour → a once-a-day job with a real local time.
-  if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
-    const utcMidnight = new Date(
-      Date.UTC(
-        reference.getUTCFullYear(),
-        reference.getUTCMonth(),
-        reference.getUTCDate(),
-        Number(hour),
-        Number(min),
-      ),
-    );
-    const local = safeLocalMoment(utcMidnight, timeZone);
-    return {
-      kind: "daily",
-      localTime: formatLocalTime(local.hour, local.minute),
-    };
+  const stepMinutes = min.match(/^\*\/(\d+)$/);
+  if (stepMinutes && hour === "*") {
+    const n = Number(stepMinutes[1]);
+    if (n > 0 && n < 60) return { kind: "everyNMinutes", n };
+    return { kind: "raw" };
   }
 
-  return { kind: "interval" };
+  if (/^\d+$/.test(min)) {
+    // Fixed minute, every hour.
+    if (hour === "*") return { kind: "hourly" };
+
+    const stepHours = hour.match(/^\*\/(\d+)$/);
+    if (stepHours) {
+      const n = Number(stepHours[1]);
+      if (n > 0 && n < 24) return { kind: "everyNHours", n };
+      return { kind: "raw" };
+    }
+
+    // Fixed minute AND hour → once a day, so there is a local time to give.
+    if (/^\d+$/.test(hour)) {
+      const utcInstant = new Date(
+        Date.UTC(
+          reference.getUTCFullYear(),
+          reference.getUTCMonth(),
+          reference.getUTCDate(),
+          Number(hour),
+          Number(min),
+        ),
+      );
+      const local = safeLocalMoment(utcInstant, timeZone);
+      return {
+        kind: "dailyAt",
+        localTime: formatLocalTime(local.hour, local.minute),
+      };
+    }
+  }
+
+  return { kind: "raw" };
 }

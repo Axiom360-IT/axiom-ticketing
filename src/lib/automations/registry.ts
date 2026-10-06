@@ -235,3 +235,60 @@ export const AUTOMATION_ENABLED_KEYS = [
     ),
   ),
 ];
+
+// ── Human labels for the knobs shown on each card ─────────────────────
+//
+// Plain strings rather than i18n keys, for two reasons: the app ships
+// English-only from a single messages file, and a next-intl key cannot contain
+// a dot without being read as a path — which every setting key does. Same
+// reasoning and shape as `lib/audit/action-label.ts`.
+//
+// A key with no entry falls back to the raw key, which is ugly but honest; the
+// registry test does not require coverage here because a missing label is
+// cosmetic, not a lie.
+const SETTING_LABELS: Record<string, string> = {
+  "sla.breach_notify_roles": "Alert on breach",
+  "sla.warning_notify_roles": "Warn before breach",
+  "sla.breach_repeat_hours": "Repeat breach alert every",
+  "unassigned_alert.threshold_minutes": "Alert after",
+  "unassigned_alert.repeat_minutes": "Then repeat every",
+  "customer_followup.followup_days": "Start chasing after",
+  "customer_followup.max_reminders": "Maximum reminders",
+  "customer_followup.close_days": "Close after a further",
+  "customer_followup.daily": "Remind daily",
+  "customer_response_window_hours": "Close resolved tickets after",
+  "housekeeping.run_history_days": "Keep run history for",
+  "inbound_moderation_enabled": "Hold replies from strangers",
+  "inbound_harvest_cc": "Add people copied in",
+  "inbound_sender_allowlist_only": "Known senders only",
+  "customer_invite.expiry_hours": "Invitation valid for",
+  "virus_scan.provider": "Scanner",
+  "virus_scan.endpoint": "Scanner endpoint",
+  "default_sender_name": "From name",
+  "default_sender_email": "From address",
+  "billing.accountant_emails": "Accountants",
+  "billing.accountant_phones": "Accountant phones",
+  "billing.superadmin_receive_copy": "Copy super admins",
+};
+
+/** Units, so "120" reads as "120 minutes". Keyed the same way. */
+const SETTING_UNITS: Record<string, "minutes" | "hours" | "days"> = {
+  "sla.breach_repeat_hours": "hours",
+  "unassigned_alert.threshold_minutes": "minutes",
+  "unassigned_alert.repeat_minutes": "minutes",
+  "customer_followup.followup_days": "days",
+  "customer_followup.close_days": "days",
+  "customer_response_window_hours": "hours",
+  "housekeeping.run_history_days": "days",
+  "customer_invite.expiry_hours": "hours",
+};
+
+export function settingLabel(key: string): string {
+  return SETTING_LABELS[key] ?? key;
+}
+
+export function settingUnit(
+  key: string,
+): "minutes" | "hours" | "days" | null {
+  return SETTING_UNITS[key] ?? null;
+}

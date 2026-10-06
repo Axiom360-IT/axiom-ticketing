@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  describeCronLocally,
+  describeCron,
   formatLocalTime,
   isReportDue,
   localMoment,
@@ -142,37 +142,65 @@ describe("isReportDue", () => {
   });
 });
 
-describe("describeCronLocally", () => {
+describe("describeCron", () => {
   const ref = new Date("2026-03-10T00:00:00Z");
+  const d = (cron: string) => describeCron(cron, "Asia/Dubai", ref);
 
-  it("translates a daily UTC cron into local time", () => {
-    // monthly-plan-reset really is "0 6 * * *" — 10:00 in Dubai, not 06:00.
-    expect(describeCronLocally("0 6 * * *", "Asia/Dubai", ref)).toEqual({
-      kind: "daily",
-      localTime: "10:00",
-    });
-    expect(describeCronLocally("30 3 * * *", "Asia/Dubai", ref)).toEqual({
-      kind: "daily",
-      localTime: "07:30",
+  it("describes every-N-minutes in words, not cron", () => {
+    // This is the one the operator complained about: "*/5 * * * * UTC".
+    expect(d("*/5 * * * *")).toEqual({ kind: "everyNMinutes", n: 5 });
+    expect(d("*/20 * * * *")).toEqual({ kind: "everyNMinutes", n: 20 });
+  });
+
+  it("describes hourly", () => {
+    expect(d("0 * * * *")).toEqual({ kind: "hourly" });
+    expect(d("30 * * * *")).toEqual({ kind: "hourly" });
+  });
+
+  it("describes every-N-hours", () => {
+    expect(d("0 */6 * * *")).toEqual({ kind: "everyNHours", n: 6 });
+  });
+
+  it("gives a daily job its LOCAL time, not the UTC one", () => {
+    // monthly-plan-reset is "0 6 * * *" — 10:00 in Dubai. Showing "06:00"
+    // would be wrong by four hours, which is worse than terse.
+    expect(d("0 6 * * *")).toEqual({ kind: "dailyAt", localTime: "10:00" });
+    expect(d("30 3 * * *")).toEqual({ kind: "dailyAt", localTime: "07:30" });
+    expect(d("45 3 * * *")).toEqual({ kind: "dailyAt", localTime: "07:45" });
+    expect(d("15 4 * * *")).toEqual({ kind: "dailyAt", localTime: "08:15" });
+  });
+
+  it("gives the same daily job a different local time in another zone", () => {
+    // 06:00Z is 02:00 in Toronto on this date — EDT, UTC-4, DST already begun.
+    expect(describeCron("0 6 * * *", "America/Toronto", ref)).toEqual({
+      kind: "dailyAt",
+      localTime: "02:00",
     });
   });
 
-  it("calls an every-N-minutes or hourly cron an interval, with no local time", () => {
-    expect(describeCronLocally("*/20 * * * *", "Asia/Dubai", ref)).toEqual({
-      kind: "interval",
-    });
-    expect(describeCronLocally("0 * * * *", "Asia/Dubai", ref)).toEqual({
-      kind: "interval",
-    });
-    expect(describeCronLocally("0 */6 * * *", "Asia/Dubai", ref)).toEqual({
-      kind: "interval",
-    });
+  it("falls back to raw rather than inventing a description", () => {
+    expect(d("0 6 1 * *")).toEqual({ kind: "raw" });
+    expect(d("0 6 * * MON")).toEqual({ kind: "raw" });
+    expect(d("nonsense")).toEqual({ kind: "raw" });
+    expect(d("*/0 * * * *")).toEqual({ kind: "raw" });
+    expect(d("*/90 * * * *")).toEqual({ kind: "raw" });
   });
 
-  it("returns null for a shape it cannot describe honestly", () => {
-    expect(describeCronLocally("0 6 1 * *", "Asia/Dubai", ref)).toBeNull();
-    expect(describeCronLocally("0 6 * * MON", "Asia/Dubai", ref)).toBeNull();
-    expect(describeCronLocally("nonsense", "Asia/Dubai", ref)).toBeNull();
+  it("covers every cron this app actually declares", () => {
+    // If a new automation lands with a shape nothing here describes, it would
+    // silently render as a raw expression. This is the tripwire.
+    const declared = [
+      "*/5 * * * *",
+      "*/20 * * * *",
+      "0 * * * *",
+      "0 */6 * * *",
+      "0 6 * * *",
+      "30 3 * * *",
+      "45 3 * * *",
+      "15 4 * * *",
+    ];
+    const undescribed = declared.filter((c) => d(c).kind === "raw");
+    expect(undescribed).toEqual([]);
   });
 });
 

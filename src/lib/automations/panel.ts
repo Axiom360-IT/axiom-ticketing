@@ -10,6 +10,8 @@ import {
   AUTOMATIONS,
   AUTOMATION_ENABLED_KEYS,
   type AutomationDef,
+  settingLabel,
+  settingUnit,
   TRACKED_AUTOMATION_IDS,
 } from "./registry";
 import {
@@ -18,7 +20,11 @@ import {
   latestRunByAutomation,
   listRecentRuns,
 } from "./runs";
-import { describeCronLocally, safeLocalMoment } from "./schedule";
+import {
+  type CronDescription,
+  describeCron,
+  safeLocalMoment,
+} from "./schedule";
 
 // ── Everything the Automations page renders, in one load ──────────────
 
@@ -30,13 +36,15 @@ export type AutomationCard = {
   enabledKey: string | null;
   lastRun: AutomationRunRow | null;
   failures24h: number;
-  /** What the UTC cron means locally, when that can be said honestly. */
-  localSchedule:
-    | { kind: "daily"; localTime: string }
-    | { kind: "interval" }
-    | null;
-  /** Current values of this job's knobs, for inline display. */
-  settings: { key: string; value: unknown }[];
+  /** The schedule in words: "Every 5 minutes", "Daily at 10:00". */
+  schedule: CronDescription | null;
+  /** This job's knobs, pre-labelled so the card never prints a raw key. */
+  settings: {
+    key: string;
+    label: string;
+    unit: "minutes" | "hours" | "days" | null;
+    value: unknown;
+  }[];
 };
 
 export type AutomationPanel = {
@@ -121,11 +129,11 @@ export async function loadAutomationPanel(): Promise<AutomationPanel> {
       enabledKey,
       lastRun: latest.get(def.id) ?? null,
       failures24h: failures.get(def.id) ?? 0,
-      localSchedule: def.cron
-        ? describeCronLocally(def.cron, timezone, now)
-        : null,
+      schedule: def.cron ? describeCron(def.cron, timezone, now) : null,
       settings: (def.settingKeys ?? []).map((key) => ({
         key,
+        label: settingLabel(key),
+        unit: settingUnit(key),
         value: settingValues[key],
       })),
     };
