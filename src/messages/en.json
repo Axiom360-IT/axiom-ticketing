@@ -299,6 +299,26 @@
           "tooMany": "You've reached today's ticket limit. Try again tomorrow.",
           "chooseCategory": "Please choose a category.",
           "describeOther": "Please describe what 'Other' refers to."
+        },
+        "participants": {
+          "label": "Add other people",
+          "optional": "(optional)",
+          "hint": "They'll see this ticket and get every update on it.",
+          "choose": "Choose from your organization",
+          "chosenCount": "{count, plural, =1 {1 person chosen} other {# people chosen}}",
+          "openList": "Open",
+          "close": "Close",
+          "search": "Search by name…",
+          "noMatches": "Nobody matches that.",
+          "noColleagues": "Nobody else from your organization has an account yet — add them by email below.",
+          "emailPlaceholder": "someone@company.com",
+          "addEmail": "Add",
+          "emailHint": "Someone without an account? Add their address — our team approves it before anything is sent.",
+          "needsApproval": "needs approval",
+          "emailInvalid": "That doesn't look like an email address.",
+          "emailDuplicate": "You've already added that address.",
+          "tooMany": "You can add up to {max} people.",
+          "remove": "Remove {who}"
         }
       },
       "reply": {

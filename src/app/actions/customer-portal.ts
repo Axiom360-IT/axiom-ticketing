@@ -15,6 +15,7 @@ import {
 } from "@/lib/customer/queries";
 import {
   harvestParticipant,
+  notifyParticipantAdded,
   selfAddressFilterFromSettings,
 } from "@/lib/tickets/participants";
 import { resolveGuestActor } from "@/lib/tickets/guest-actor";
@@ -687,6 +688,21 @@ const customerCreateSchema = z.object({
     .max(5000, "Description must be at most 5000 characters")
     .optional()
     .default(""),
+  // Other people to put on the ticket, from the two routes a signed-in
+  // customer has. They are NOT equivalent and are not treated as such:
+  //
+  //   colleagueUserIds — picked from the org dropdown. Re-resolved server-side
+  //     against the submitter's own organization, so a tampered id cannot
+  //     reach another org's users, and joined ACTIVE: these are verified
+  //     accounts in the same organization as the ticket.
+  //   participantEmails — typed by hand. The submitter is authenticated but
+  //     the ADDRESS is arbitrary, so these land PENDING and reach nobody until
+  //     a coordinator approves them. Same rule as the guest form.
+  colleagueUserIds: z.array(z.string().uuid()).max(10).default([]),
+  participantEmails: z
+    .array(z.string().trim().toLowerCase().email())
+    .max(10)
+    .default([]),
   // Optional ID of a draft ticket created via `prepareCustomerTicketDraft`.
   // When present, the action UPDATES the draft to `open` instead of
   // inserting a new ticket — so pre-uploaded attachments already linked
@@ -929,6 +945,92 @@ export async function customerCreateTicket(
       body: data.description,
       channel: "portal",
     });
+  }
+
+  // ── Participants ────────────────────────────────────────────────
+  //
+  // Written AFTER the ticket exists, and never allowed to fail it: the ticket
+  // is what the customer came here for. Two routes, two outcomes — see the
+  // schema comment.
+  if (data.colleagueUserIds.length > 0 || data.participantEmails.length > 0) {
+    try {
+      const isSelfAddress = await selfAddressFilterFromSettings();
+      // The requester is already on their own ticket.
+      const seen = new Set<string>([profile.email.toLowerCase()]);
+      const joined: string[] = [];
+      const requested: string[] = [];
+
+      if (data.colleagueUserIds.length > 0) {
+        const [me] = await db
+          .select({ organizationId: users.organizationId })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        // Re-resolved against the submitter's OWN organization. The ids come
+        // from the browser, so a tampered one must not reach another org.
+        const colleagues = await db
+          .select({
+            email: users.email,
+            name: users.name,
+            organizationId: users.organizationId,
+            isActive: users.isActive,
+          })
+          .from(users)
+          .where(inArray(users.id, data.colleagueUserIds));
+
+        for (const c of colleagues) {
+          if (!c.isActive) continue;
+          if (!me?.organizationId || c.organizationId !== me.organizationId) {
+            continue;
+          }
+          const email = c.email.toLowerCase();
+          if (seen.has(email) || isSelfAddress(email)) continue;
+          seen.add(email);
+          await harvestParticipant({
+            ticketId,
+            email,
+            name: c.name,
+            addedVia: "requester",
+            addedById: user.id,
+            status: "active",
+          });
+          joined.push(email);
+        }
+      }
+
+      for (const raw of data.participantEmails) {
+        const email = raw.trim().toLowerCase();
+        if (!email || seen.has(email) || isSelfAddress(email)) continue;
+        seen.add(email);
+        await harvestParticipant({
+          ticketId,
+          email,
+          addedVia: "guest_request",
+          addedById: user.id,
+          status: "pending",
+        });
+        requested.push(email);
+      }
+
+      // Only the people who actually joined are told; a pending address has
+      // not been vouched for yet, and the subject line alone would leak what
+      // the ticket is about.
+      for (const email of joined) {
+        await notifyParticipantAdded({ ticketId, email });
+      }
+
+      if (joined.length > 0 || requested.length > 0) {
+        await audit({
+          actorId: user.id,
+          action: "ticket.add_participant",
+          targetType: "ticket",
+          targetId: ticketNumber,
+          after: { joined, requested, via: "portal_form" },
+        });
+      }
+    } catch (err) {
+      console.error("[customerCreateTicket] participants failed:", err);
+    }
   }
 
   await audit({

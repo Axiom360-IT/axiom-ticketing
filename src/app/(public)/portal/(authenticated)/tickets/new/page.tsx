@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { CustomerNewTicketForm } from "@/components/customer/customer-new-ticket-form";
+import { requireSessionUser } from "@/lib/auth/session";
+import { listMyOrgColleagues } from "@/lib/customer/queries";
 import { getAttachmentLimits } from "@/lib/storage/limits";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -9,9 +11,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function PortalNewTicketPage() {
-  const [t, limits] = await Promise.all([
+  const user = await requireSessionUser();
+  const [t, limits, colleagues] = await Promise.all([
     getTranslations("portal.tickets.new"),
     getAttachmentLimits(),
+    // Resolved server-side against the viewer's own organization, so no other
+    // organization's people are ever sent to the browser.
+    listMyOrgColleagues(user.id),
   ]);
   return (
     <section className="max-w-2xl mx-auto py-10 px-4">
@@ -24,6 +30,7 @@ export default async function PortalNewTicketPage() {
       <CustomerNewTicketForm
         maxFiles={limits.maxFilesPerMessage}
         maxFileBytes={limits.maxFileBytes}
+        colleagues={colleagues}
       />
     </section>
   );

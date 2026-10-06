@@ -8,6 +8,8 @@ import {
   prepareCustomerTicketDraft,
 } from "@/app/actions/customer-portal";
 import { AttachmentPicker } from "./attachment-picker";
+import { ParticipantPicker } from "./participant-picker";
+import type { OrgColleague } from "@/lib/customer/queries";
 
 // Category was removed from the customer form (Meeting-2, CR-03); the server
 // defaults it to "other". The organization comes from the customer's account,
@@ -24,9 +26,16 @@ import { AttachmentPicker } from "./attachment-picker";
 type Props = {
   maxFiles: number;
   maxFileBytes: number;
+  /** The submitter's OWN organization, resolved server-side. Names and ids
+   *  only — never addresses. */
+  colleagues: OrgColleague[];
 };
 
-export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
+export function CustomerNewTicketForm({
+  maxFiles,
+  maxFileBytes,
+  colleagues,
+}: Props) {
   const router = useRouter();
   const t = useTranslations("portal.tickets.new");
   const tAtt = useTranslations("tickets.attachments");
@@ -36,6 +45,9 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
   const [subjectError, setSubjectError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [colleagueUserIds, setColleagueUserIds] = useState<string[]>([]);
+  const [participantEmails, setParticipantEmails] = useState<string[]>([]);
 
   const [draftTicketId, setDraftTicketId] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -68,6 +80,8 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
     const result = await customerCreateTicket({
       subject: subject.trim(),
       description: description.trim(),
+      colleagueUserIds,
+      participantEmails,
       draftTicketId: draftTicketId ?? undefined,
     });
     setSubmitting(false);
@@ -140,6 +154,15 @@ export function CustomerNewTicketForm({ maxFiles, maxFileBytes }: Props) {
           className="w-full px-3 py-2.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
+
+      <ParticipantPicker
+        colleagues={colleagues}
+        selectedIds={colleagueUserIds}
+        onSelectedIdsChange={setColleagueUserIds}
+        emails={participantEmails}
+        onEmailsChange={setParticipantEmails}
+        disabled={submitting}
+      />
 
       <div>
         <p className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
