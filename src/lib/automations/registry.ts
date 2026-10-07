@@ -28,7 +28,8 @@ export type AutomationCategory =
   | "billing"
   | "notifications"
   | "housekeeping"
-  | "reports";
+  | "reports"
+  | "rules";
 
 export type AutomationDef = {
   id: string;
@@ -141,6 +142,32 @@ export const AUTOMATIONS: AutomationDef[] = [
     cron: "*/5 * * * *",
     tracked: true,
     enabledKey: "scheduled_reports.enabled",
+  },
+
+  {
+    id: "rule-event-dispatcher",
+    kind: "scheduled",
+    category: "rules",
+    cron: "*/2 * * * *",
+    tracked: true,
+    enabledKey: "rules.enabled",
+    settingKeys: ["rules.drain_batch"],
+  },
+  {
+    id: "rule-state-scanner",
+    kind: "scheduled",
+    category: "rules",
+    cron: "*/10 * * * *",
+    tracked: true,
+    enabledKey: "rules.enabled",
+  },
+  {
+    id: "rule-schedule-dispatcher",
+    kind: "scheduled",
+    category: "rules",
+    cron: "*/5 * * * *",
+    tracked: true,
+    enabledKey: "rules.enabled",
   },
 
   // ── Reactive ─────────────────────────────────────────────────────────
@@ -258,6 +285,7 @@ const SETTING_LABELS: Record<string, string> = {
   "customer_followup.daily": "Remind daily",
   "customer_response_window_hours": "Close resolved tickets after",
   "housekeeping.run_history_days": "Keep run history for",
+  "rules.drain_batch": "Changes handled per run",
   "inbound_moderation_enabled": "Hold replies from strangers",
   "inbound_harvest_cc": "Add people copied in",
   "inbound_sender_allowlist_only": "Known senders only",

@@ -78,6 +78,10 @@ import {
   type ParticipantAddedProps,
 } from "./templates/participant-added";
 import {
+  AutomationRuleEmail,
+  type AutomationRuleProps,
+} from "./templates/automation-rule";
+import {
   ScheduledReportEmail,
   type ScheduledReportProps,
 } from "./templates/scheduled-report";
@@ -150,6 +154,10 @@ import {
 // injected by `sendEmail` from the recipient's preference (or default), so
 // callers don't need to plumb it through.
 export type EmailTemplate =
+  | {
+      template: "automation_rule";
+      data: Omit<AutomationRuleProps, "locale">;
+    }
   | { template: "ticket_created"; data: Omit<TicketCreatedProps, "locale"> }
   | {
       template: "ticket_created_staff";
@@ -360,6 +368,8 @@ async function renderTemplate(
       return await render(
         <ParticipantAddedEmail {...t.data} locale={locale} />,
       );
+    case "automation_rule":
+      return await render(<AutomationRuleEmail {...t.data} locale={locale} />);
     case "scheduled_report":
       return await render(<ScheduledReportEmail {...t.data} locale={locale} />);
     case "procurement_submitted":
@@ -442,6 +452,7 @@ const TEMPLATE_NAMESPACE = {
   inbound_closed_ticket: "emails.inboundClosedTicket",
   participant_added: "emails.participantAdded",
   scheduled_report: "emails.scheduledReport",
+  automation_rule: "emails.automationRule",
   procurement_submitted: "emails.procurementSubmitted",
   procurement_approved: "emails.procurementApproved",
   procurement_rejected: "emails.procurementRejected",

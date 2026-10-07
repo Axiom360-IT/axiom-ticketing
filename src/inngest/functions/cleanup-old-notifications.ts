@@ -3,6 +3,8 @@ import { cron } from "inngest";
 import { db } from "@/lib/db/client";
 import { notifications } from "@/lib/db/schema/notifications";
 import { pruneRunHistory, withAutomationRun } from "@/lib/automations/runs";
+import { pruneChangeFeed } from "@/lib/rules/changefeed";
+import { pruneRuleHistory } from "@/lib/rules/store";
 import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
 
@@ -49,6 +51,26 @@ export const cleanupOldNotifications = inngest.createFunction(
         ),
       );
 
-      return { archived, prunedRuns };
+      // The rule engine's own tables. Three different retentions, because
+      // they answer three different questions:
+      //   change events — "why did that fire?", short-lived, and UNPROCESSED
+      //                   rows are never touched (that would lose work)
+      //   action log    — a record that something happened; kept longest
+      //   miss log      — purely diagnostic, so pruned hardest (3 days)
+      const eventDays = await getSetting<number>("rules.event_retention_days");
+      const logDays = await getSetting<number>("rules.log_retention_days");
+
+      const prunedEvents = await step.run("prune-change-feed", async () =>
+        pruneChangeFeed(
+          typeof eventDays === "number" && eventDays > 0 ? eventDays : 7,
+        ),
+      );
+      const prunedRules = await step.run("prune-rule-history", async () =>
+        pruneRuleHistory(
+          typeof logDays === "number" && logDays > 0 ? logDays : 30,
+        ),
+      );
+
+      return { archived, prunedRuns, prunedEvents, prunedRules };
     }),
 );

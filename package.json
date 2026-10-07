@@ -51,6 +51,7 @@
     "db:add-participant-permission": "tsx --env-file=.env.local src/lib/db/add-participant-permission.ts",
     "db:add-participant-pending": "tsx --env-file=.env.local src/lib/db/add-participant-pending.ts",
     "db:add-automations": "tsx --env-file=.env.local src/lib/db/add-automations.ts",
+    "db:add-automation-rules": "tsx --env-file=.env.local src/lib/db/add-automation-rules.ts",
     "db:add-email-template-overrides": "tsx --env-file=.env.local src/lib/db/add-email-template-overrides.ts",
     "db:add-email-threading": "tsx --env-file=.env.local src/lib/db/add-email-threading.ts",
     "db:harden-audit": "tsx --env-file=.env.local src/lib/db/apply-audit-hardening.ts",

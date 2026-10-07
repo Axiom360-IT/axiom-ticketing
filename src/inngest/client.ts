@@ -133,7 +133,19 @@ export type NotificationEventType =
   | "procurement.approved"
   | "procurement.rejected"
   | "procurement.delivered"
-  | "attachment.quarantined";
+  | "attachment.quarantined"
+  // An automation RULE firing. One event type covers every rule, because the
+  // wording comes from the rule itself rather than from our registry.
+  //
+  // Deliberately absent from STAFF_EVENT_TYPES / CUSTOMER_EVENT_TYPES in
+  // lib/notifications/audience.ts, so it is NOT a per-person preference
+  // toggle. A rule is an operator's explicit instruction about who to tell;
+  // a single "automation" switch in someone's profile would silence every
+  // rule aimed at them at once, which is both too coarse to be useful and
+  // too quiet to notice. The off switch is the rule's own, which is where an
+  // operator would look for it. Same precedent as a scheduled report, which
+  // is not preference-gated either.
+  | "automation.rule";
 
 export type NotificationDispatchPayload = {
   /** Domain event being announced. */

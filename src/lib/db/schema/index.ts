@@ -26,3 +26,10 @@ export * from "./settings";
 export * from "./webhooks";
 export * from "./failed-notifications";
 export * from "./holidays";
+// NOTE: everything the app has must be listed here, not just what the app
+// imports. `drizzle.config.ts` points drizzle-kit at THIS file, so a table
+// that is missing looks to `db:push` like a table that should be dropped.
+// `automations` was absent until the rule engine landed; nobody had run
+// `db:push` since, which is the only reason it went unnoticed.
+export * from "./automations";
+export * from "./automation-rules";

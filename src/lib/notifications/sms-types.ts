@@ -48,4 +48,13 @@ export type SmsTemplate =
   | { template: "agent_replied"; data: SmsTemplateData }
   | { template: "ticket_resolved"; data: SmsTemplateData }
   | { template: "ticket_reopened"; data: SmsTemplateData }
-  | { template: "ticket_closed"; data: SmsTemplateData };
+  | { template: "ticket_closed"; data: SmsTemplateData }
+  // An automation rule's own message. `message` is operator-written, so the
+  // i18n string is a thin wrapper and the 160-character budget is spent on
+  // their words — lib/rules/render.ts truncates to fit before we get here.
+  | { template: "automation_rule"; data: AutomationRuleSmsData };
+
+export type AutomationRuleSmsData = {
+  message: string;
+  ticketUrl?: string;
+};

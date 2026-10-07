@@ -37,6 +37,7 @@ export const EMAIL_TEMPLATE_CATALOG: EmailTemplateEntry[] = [
   { key: "inboundClosedTicket", group: "customer" },
   { key: "participantAdded", group: "customer" },
   { key: "scheduledReport", group: "staff" },
+  { key: "automationRule", group: "staff" },
   { key: "attachmentRemovedCustomer", group: "customer" },
   { key: "customerMagicLink", group: "customer" },
   { key: "customerEmailVerification", group: "customer" },

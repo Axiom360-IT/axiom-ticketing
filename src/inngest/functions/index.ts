@@ -19,6 +19,9 @@ import { monthlyPlanReset } from "./monthly-plan-reset";
 import { notifyAccountantResolved } from "./notify-accountant-resolved";
 import { processCustomerImportBatch } from "./process-customer-import-batch";
 import { processInboundEmail } from "./process-inbound-email";
+import { ruleEventDispatcher } from "./rule-event-dispatcher";
+import { ruleScheduleDispatcher } from "./rule-schedule-dispatcher";
+import { ruleStateScanner } from "./rule-state-scanner";
 import { scheduledReportDispatcher } from "./scheduled-report-dispatcher";
 import { scanAttachment } from "./scan-attachment";
 import { sendEmailNotification } from "./send-email-notification";
@@ -44,6 +47,10 @@ export const functions = [
   cleanupStaleLockouts,
   // Automations panel: user-created scheduled reports
   scheduledReportDispatcher,
+  // The rule engine: three dispatchers, one per trigger family
+  ruleEventDispatcher,
+  ruleStateScanner,
+  ruleScheduleDispatcher,
   // Billing / support plans (reqs 8.2/8.6/8.9)
   monthlyPlanReset,
   billingBalanceMonitor,

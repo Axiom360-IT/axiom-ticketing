@@ -14,6 +14,12 @@ const ACTION_LABELS: Record<string, string> = {
   "automation.scheduled_report_disable": "Paused a scheduled report",
   "automation.scheduled_report_test": "Sent a scheduled report as a test",
   "automation.scheduled_report_sent": "Sent a scheduled report",
+  "automation.rule_create": "Created an automation rule",
+  "automation.rule_update": "Changed an automation rule",
+  "automation.rule_delete": "Deleted an automation rule",
+  "automation.rule_enable": "Switched on an automation rule",
+  "automation.rule_disable": "Switched off an automation rule",
+  "automation.rule_flagged": "An automation rule flagged a ticket",
   // Attachments
   "attachment.confirm": "Attachment confirmed",
   "attachment.scan": "Attachment scanned",

@@ -15,9 +15,11 @@ import {
   Sparkles,
   Timer,
   Trash2,
+  Workflow,
   Zap,
 } from "lucide-react";
 import { AutomationToggle } from "@/components/automations/automation-toggle";
+import { RulesManager } from "@/components/automations/rules-manager";
 import { ScheduledReportsManager } from "@/components/automations/scheduled-reports-manager";
 import { SlaTargetsForm } from "@/components/settings/sla-form";
 import { can } from "@/lib/auth/can";
@@ -27,6 +29,7 @@ import {
   type AutomationCard,
   loadAutomationPanel,
 } from "@/lib/automations/panel";
+import { loadRulesPanel } from "@/lib/rules/panel";
 import { AUTOMATION_BY_ID, type AutomationCategory } from "@/lib/automations/registry";
 import { cn } from "@/lib/utils";
 
@@ -45,10 +48,12 @@ const CATEGORY_ICON: Record<AutomationCategory, typeof Clock> = {
   reports: Mail,
   intake: Mail,
   notifications: Zap,
+  rules: Workflow,
 };
 
 /** Order the groups appear in: the ones that affect customers first. */
 const CATEGORY_ORDER: AutomationCategory[] = [
+  "rules",
   "sla",
   "lifecycle",
   "reports",
@@ -75,10 +80,18 @@ export default async function AutomationsPage() {
     productionContext,
   );
 
-  const panel = await loadAutomationPanel();
+  const [panel, rulesPanel] = await Promise.all([
+    loadAutomationPanel(),
+    loadRulesPanel(),
+  ]);
   const t = await getTranslations("automations");
   const tJobs = await getTranslations("automations.jobs");
   const format = await getFormatter();
+
+  // Same source the rule dispatchers' own cards read, so the two agree.
+  const rulesEngineOn =
+    panel.scheduled.find((c) => c.def.id === "rule-event-dispatcher")?.enabled ??
+    true;
 
   const failing = panel.scheduled.filter((c) => c.failures24h > 0).length;
   const paused = panel.scheduled.filter(
@@ -138,6 +151,20 @@ export default async function AutomationsPage() {
           </span>
         </div>
       </header>
+
+      {/* ── Your rules ──────────────────────────────────────────────
+          First on the page: the built-in jobs below are configuration an
+          operator reads, these are the ones they came here to write. */}
+      {canEdit ? (
+        <RulesManager
+          rules={rulesPanel.rules}
+          refs={rulesPanel.refs}
+          catalog={rulesPanel.catalog}
+          backlog={rulesPanel.backlog}
+          engineEnabled={rulesEngineOn}
+          timezone={panel.timezone}
+        />
+      ) : null}
 
       {/* ── Scheduled, grouped ──────────────────────────────────────── */}
       <section className="space-y-5">

@@ -95,6 +95,23 @@ export const SETTING_SCHEMAS = {
   "auto_close.enabled": z.boolean(),
   "monthly_plan_reset.enabled": z.boolean(),
   "scheduled_reports.enabled": z.boolean(),
+
+  // ── Automation rules ───────────────────────────────────────────────
+  // The master switch for the rule engine. Off stops all three dispatchers;
+  // the database trigger keeps filling the outbox harmlessly and housekeeping
+  // prunes it, so switching back on resumes rather than replays.
+  "rules.enabled": z.boolean(),
+  // How many outbox rows one drain handles. Low enough that a backlog is
+  // worked through over several passes rather than in one long transaction —
+  // the same reasoning that widened the SLA monitor to 20 minutes.
+  "rules.drain_batch": z.number().int().min(10).max(2000),
+  // How long a processed change event is kept before housekeeping drops it.
+  // Only useful for answering "why did that rule fire?", so it is short.
+  "rules.event_retention_days": z.number().int().min(1).max(30),
+  // How long per-rule activity is kept. Misses are pruned harder (3 days,
+  // fixed) because they are diagnostic rather than a record of anything
+  // having happened.
+  "rules.log_retention_days": z.number().int().min(1).max(365),
   // One switch for all three nightly cleanups: they are the same decision, and
   // nobody wants to disable draft pruning but keep lockout pruning.
   "housekeeping.enabled": z.boolean(),

@@ -35,6 +35,8 @@ const TEMPLATE_NAMESPACE = {
   ticket_resolved: "sms.ticketResolved",
   ticket_reopened: "sms.ticketReopened",
   ticket_closed: "sms.ticketClosed",
+  // Operator-written; see AutomationRuleSmsData.
+  automation_rule: "sms.automationRule",
 } as const;
 
 type SendSmsOptions = {

@@ -96,6 +96,13 @@ const REGISTRY: Record<NotificationEventType, InAppDescriptor> = {
     titleKey: "notifications.sla.warning_80.title",
     bodyKey: "notifications.sla.warning_80.body",
   },
+  // An automation rule. Title and body are generic wrappers; the operator's
+  // own sentence arrives through bodyArgs.message, so one entry serves every
+  // rule anyone ever writes.
+  "automation.rule": {
+    titleKey: "notifications.automation.rule.title",
+    bodyKey: "notifications.automation.rule.body",
+  },
   "sla.breached": {
     titleKey: "notifications.sla.breached.title",
     bodyKey: "notifications.sla.breached.body",

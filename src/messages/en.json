@@ -2362,6 +2362,12 @@
         "title": "Customer import finished",
         "body": "{created, plural, =1 {1 customer} other {# customers}} imported{failed, plural, =0 {} other {, # failed}}."
       }
+    },
+    "automation": {
+      "rule": {
+        "title": "{title}",
+        "body": "{message}"
+      }
     }
   },
   "sms": {
@@ -2424,6 +2430,9 @@
     },
     "accountantNegativeBalance": {
       "body": "{orgName} is {overHours} over its monthly support plan. Over-plan hours are billable."
+    },
+    "automationRule": {
+      "body": "{message}"
     }
   },
   "admin": {
@@ -3005,6 +3014,12 @@
         "none": "Nothing to bill for this ticket.",
         "review": "Needs review — this ticket isn't categorized for billing yet."
       }
+    },
+    "automationRule": {
+      "subject": "{subjectLine}",
+      "ticketLine": "This is about {ticketNumber} — {subject}",
+      "openLine": "Open it here: {adminUrl}",
+      "sentBy": "Sent automatically by the rule “{ruleName}”. To change it or stop it, open Automations in the admin area."
     }
   },
   "automations": {
@@ -3104,6 +3119,18 @@
       "notify-accountant-resolved": {
         "name": "Billable work notice",
         "description": "Tells the accountants when a billable ticket is resolved, so it can be invoiced."
+      },
+      "rule-event-dispatcher": {
+        "name": "Rules that react to changes",
+        "description": "Watches every change to a ticket and runs the rules that care — a new ticket, a handover, a customer reply. This is what makes a rule feel instant."
+      },
+      "rule-state-scanner": {
+        "name": "Rules that watch for waiting",
+        "description": "Looks for tickets that have been sitting too long — no owner, no answer, nobody waiting on anything — and runs the rules you wrote about them."
+      },
+      "rule-schedule-dispatcher": {
+        "name": "Rules that run at a set time",
+        "description": "Wakes every five minutes and runs any rule whose time has come, checking it against every open ticket."
       }
     },
     "reports": {
@@ -3182,7 +3209,121 @@
       "housekeeping": "Housekeeping",
       "reports": "Reports",
       "intake": "Intake",
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "rules": "Your rules"
+    },
+    "rules": {
+      "heading": "Your rules",
+      "subheading": "Rules you write yourself: when something happens, check a few things, then act.",
+      "browseTemplates": "Start from an example",
+      "newRule": "New rule",
+      "statLive": "running",
+      "statBroken": "need a look",
+      "statBacklog": "{count, plural, =1 {1 change waiting to be read} other {# changes waiting to be read}}",
+      "engineOff": "All rules are switched off",
+      "emptyTitle": "No rules yet",
+      "emptyBlurb": "The quickest way to start is an example. Pick one, change a number or two, and it only records what it finds until you tell it to alert someone.",
+      "emptyBrowse": "See the examples",
+      "emptyBlank": "Start from scratch",
+      "paused": "off",
+      "quiet": "nothing in the last day",
+      "unreadable": "This rule can no longer be read. Open it to fix it.",
+      "firedCount": "{count, plural, =1 {acted once today} other {acted # times today}}",
+      "errorCount": "{count, plural, =1 {1 problem} other {# problems}}",
+      "enabledLabel": "Switch {name} on or off",
+      "viewActivity": "See what it has done",
+      "edit": "Edit",
+      "duplicate": "Make a copy",
+      "delete": "Delete",
+      "newTitle": "New rule",
+      "newBlurb": "It will be saved switched off, so you can read it back before it does anything. Times are in {timezone}.",
+      "editTitle": "Edit rule",
+      "editBlurb": "Changing a rule clears any problem it reported and lets it run again.",
+      "sentenceHeading": "This rule says",
+      "andWord": "and",
+      "nameLabel": "Name",
+      "namePlaceholder": "What is this rule for?",
+      "cancel": "Cancel",
+      "createPaused": "Save (switched off)",
+      "saveChanges": "Save changes",
+      "whenHeading": "When",
+      "whenHint": "What sets this rule off.",
+      "kindEvent": "Something happens",
+      "kindEventHint": "A ticket arrives, changes hands, gets a reply.",
+      "kindState": "Something is waiting",
+      "kindStateHint": "A ticket has been sitting too long.",
+      "kindSchedule": "At a set time",
+      "kindScheduleHint": "Every morning, every Monday, and so on.",
+      "localTimeHint": "local time",
+      "scheduleActsPerTicket": "This looks at every open ticket when its time comes and acts on each one that matches — it is not a single summary email. For that, use a scheduled report.",
+      "ifHeading": "Only if",
+      "ifHint": "Leave this empty to act every time. Add conditions to narrow it down.",
+      "match": "Match",
+      "matchAll": "all of these",
+      "matchAny": "any of these",
+      "noConditions": "No conditions — this acts every time.",
+      "addCondition": "Add a condition",
+      "addGroup": "Add an either/or group",
+      "removeCondition": "Remove this condition",
+      "removeGroup": "Remove this group",
+      "unknownField": "“{field}” no longer exists. Remove this line.",
+      "fieldGroup": {
+        "ticket": "The ticket",
+        "people": "People",
+        "organization": "The client",
+        "sla": "SLA and escalation",
+        "timing": "Timing",
+        "work": "Work and files"
+      },
+      "thenHeading": "Then",
+      "thenHint": "What to do. For now a rule can tell people, post a note, record it, or call a webhook.",
+      "addAction": "Add another thing to do",
+      "removeAction": "Remove this action",
+      "notYet": "not available yet",
+      "channels": "How to tell them",
+      "audiences": "Who to tell",
+      "messageLabel": "Message",
+      "noteLabel": "The note to post",
+      "flagLabel": "What to record",
+      "subjectPlaceholder": "Subject line (optional)",
+      "emailsPlaceholder": "Addresses, separated by commas",
+      "webhookSecret": "Signing secret (optional)",
+      "showPlaceholders": "Show what you can drop in",
+      "hidePlaceholders": "Hide",
+      "unknownPlaceholders": "{names} is not something we can fill in — check the spelling.",
+      "howOftenHeading": "How often",
+      "howOftenHint": "How many times this rule may act on the same ticket.",
+      "policyNotAllowed": "“{policy}” does not work with this kind of trigger. Pick another.",
+      "stopOnMatch": "Stop here",
+      "stopOnMatchHint": "If this rule matches, do not run any rule below it for that ticket.",
+      "applyToExisting": "Also apply to tickets that are already waiting",
+      "applyToExistingHint": "Off by default, so saving this rule cannot alert on your whole backlog at once.",
+      "allowChaining": "Let other rules' changes set this off",
+      "allowChainingHint": "Off by default. This is what stops two rules setting each other off forever.",
+      "previewHeading": "Check before you save",
+      "previewHint": "See which tickets this would match right now. Nothing is sent.",
+      "previewButton": "Check now",
+      "previewCount": "of the {considered} tickets looked at match right now.",
+      "previewCountHypothetical": "of the {considered} open tickets would match, if this happened to them now. Nothing has happened yet.",
+      "previewExcluded": "{count, plural, =1 {1 more matches but has been waiting since before this rule existed, so it will be left alone.} other {# more match but have been waiting since before this rule existed, so they will be left alone.}} Tick “also apply to tickets that are already waiting” to include them.",
+      "previewTopReason": "Most often it stopped at: {reason}",
+      "templatesTitle": "Examples to start from",
+      "templatesBlurb": "Pick one, change what you need, and save. You can always edit it later.",
+      "templatesSafeNote": "Every example only records what it finds — it tells nobody until you add that yourself. Switch one on, leave it a day, then read what it caught.",
+      "activityBlurb": "What this rule has done, and why it sometimes did not.",
+      "activityLoading": "Loading…",
+      "activityDid": "What it did",
+      "activityNothingDone": "Nothing yet.",
+      "activityDidNot": "Why it did not act",
+      "activityNoMisses": "Nothing to report — it has not passed on anything recently.",
+      "deleteTitle": "Delete this rule?",
+      "deleteBlurb": "“{name}” will be removed, along with its history. This cannot be undone.",
+      "deleteConfirm": "Delete it",
+      "unitMinutes": "minutes",
+      "unitHours": "hours",
+      "unitDays": "days",
+      "yes": "yes",
+      "no": "no"
     }
   }
 }
