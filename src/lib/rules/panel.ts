@@ -114,6 +114,50 @@ function toCard(
   };
 }
 
+/**
+ * Load the panel, or report that the engine is not installed.
+ *
+ * The rules section shares a page with the eighteen built-in jobs and the
+ * scheduled reports. Those must keep working when the rule tables are absent
+ * — which is the state of every deployment between pushing this code and
+ * running `pnpm db:add-automation-rules`, and the state of any environment
+ * where that script is never run at all.
+ *
+ * Only a MISSING TABLE is treated this way. Any other failure is re-thrown,
+ * because swallowing it would hide a real fault behind a friendly message
+ * telling the operator to run a migration they have already run.
+ */
+export async function loadRulesPanelSafe(): Promise<
+  { installed: true; panel: RulesPanel } | { installed: false; reason: string }
+> {
+  try {
+    return { installed: true, panel: await loadRulesPanel() };
+  } catch (err) {
+    if (isMissingTable(err)) {
+      return {
+        installed: false,
+        reason: "The rule engine is not installed on this database yet.",
+      };
+    }
+    throw err;
+  }
+}
+
+/** Postgres 42P01 — undefined_table. Checked by code, not by message text,
+ *  so it survives a locale or wording change in the driver. */
+function isMissingTable(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  if (code === "42P01") return true;
+  // The neon-http driver wraps the original; check one level down.
+  const cause = (err as { cause?: unknown }).cause;
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    (cause as { code?: unknown }).code === "42P01"
+  );
+}
+
 export async function loadRulesPanel(): Promise<RulesPanel> {
   const [rows, activity, userRows, roleRows, orgRows, catRows, typeRows, backlog] =
     await Promise.all([

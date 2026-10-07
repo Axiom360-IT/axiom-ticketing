@@ -3323,7 +3323,8 @@
       "unitHours": "hours",
       "unitDays": "days",
       "yes": "yes",
-      "no": "no"
+      "no": "no",
+      "notInstalled": "Your own rules are not switched on for this database yet. An administrator needs to run the one-off setup step (pnpm db:add-automation-rules). Everything else on this page works as normal."
     }
   }
 }

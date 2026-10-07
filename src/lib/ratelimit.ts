@@ -72,6 +72,13 @@ export const ratelimits = {
    *  hour. Gates the BATCH itself, not the individual sends within it. */
   bulkResendInvites: makeLimiter(10, "1 h"),
   authUpdateSetting: makeLimiter(100, "1 d"),
+  /** Rule dry-run ("Check now"): 200 per operator per hour. Its own bucket,
+   *  deliberately: it is a READ, and an operator tuning a condition will
+   *  press it dozens of times in an afternoon. Sharing authUpdateSetting's
+   *  100-per-DAY budget — as this first did — meant a productive hour of
+   *  rule-writing left them unable to change a setting until tomorrow.
+   *  Still limited, because each press scans up to 500 tickets. */
+  authPreviewRule: makeLimiter(200, "1 h"),
   /** Confirmation SMS on profile phone-change: 5 per user per hour. Caps
    * abuse of the profile phone field as a way to SMS-bomb an arbitrary
    * number (toll fraud / harassment) — far above any legitimate need. */

@@ -29,7 +29,7 @@ import {
   type AutomationCard,
   loadAutomationPanel,
 } from "@/lib/automations/panel";
-import { loadRulesPanel } from "@/lib/rules/panel";
+import { loadRulesPanelSafe } from "@/lib/rules/panel";
 import { AUTOMATION_BY_ID, type AutomationCategory } from "@/lib/automations/registry";
 import { cn } from "@/lib/utils";
 
@@ -80,9 +80,9 @@ export default async function AutomationsPage() {
     productionContext,
   );
 
-  const [panel, rulesPanel] = await Promise.all([
+  const [panel, rules] = await Promise.all([
     loadAutomationPanel(),
-    loadRulesPanel(),
+    loadRulesPanelSafe(),
   ]);
   const t = await getTranslations("automations");
   const tJobs = await getTranslations("automations.jobs");
@@ -155,15 +155,20 @@ export default async function AutomationsPage() {
       {/* ── Your rules ──────────────────────────────────────────────
           First on the page: the built-in jobs below are configuration an
           operator reads, these are the ones they came here to write. */}
-      {canEdit ? (
+      {canEdit && rules.installed ? (
         <RulesManager
-          rules={rulesPanel.rules}
-          refs={rulesPanel.refs}
-          catalog={rulesPanel.catalog}
-          backlog={rulesPanel.backlog}
+          rules={rules.panel.rules}
+          refs={rules.panel.refs}
+          catalog={rules.panel.catalog}
+          backlog={rules.panel.backlog}
           engineEnabled={rulesEngineOn}
           timezone={panel.timezone}
         />
+      ) : null}
+      {canEdit && !rules.installed ? (
+        <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          {t("rules.notInstalled")}
+        </p>
       ) : null}
 
       {/* ── Scheduled, grouped ──────────────────────────────────────── */}

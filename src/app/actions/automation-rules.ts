@@ -348,7 +348,7 @@ export async function previewRuleNow(
   createdAt?: string,
 ): Promise<PreviewResult> {
   const caller = await requireOperator();
-  await enforceUserRateLimit("authUpdateSetting", caller.id);
+  await enforceUserRateLimit("authPreviewRule", caller.id);
 
   const shape = ruleInputSchema.safeParse({
     name: "preview",
