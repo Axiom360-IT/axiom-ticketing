@@ -21,6 +21,10 @@ import type { EngineSummary } from "./engine";
 export type DrainResult = EngineSummary & {
   drained: number;
   remaining: number;
+  /** Present when the pass had nothing to do. `withAutomationRun` reads this
+   *  key to record the run as `skipped` rather than `ok` — "ran, found
+   *  nothing" and "ran, did work" are different answers on the panel. */
+  skipped?: string;
 };
 
 export async function drainChangeFeed(
@@ -116,6 +120,33 @@ export async function drainChangeFeed(
 
   const { runnable, broken } = await loadRulesFor("event", [...keysSeen]);
   for (const b of broken) await markBroken(b.id, b.reason);
+
+  // Nothing watches any of these events, so stop before `runRules` — it would
+  // otherwise build a full FactSheet for every ticket in the batch (nine
+  // queries) only to find no rule to evaluate against them.
+  //
+  // This is the common case, not an edge case: with no event rules written
+  // yet, the dispatcher wakes 720 times a day, and each pass would load facts
+  // for every ticket touched since the last one. The SLA monitor was widened
+  // from 5 minutes to 20 for exactly this budget, and the two other
+  // dispatchers already return early for the same reason.
+  if (runnable.length === 0) {
+    return {
+      drained: rows.length,
+      remaining: Number(remaining ?? 0),
+      skipped: "no rules watch these events",
+      candidates: candidates.length,
+      evaluated: 0,
+      matched: 0,
+      fired: 0,
+      actions: 0,
+      errors: 0,
+      skippedByDedupe: 0,
+      skippedByBudget: 0,
+      skippedByChaining: 0,
+      skippedAsExisting: 0,
+    };
+  }
 
   const rulesFor = new Map<string, LoadedRule[]>();
   for (const rule of runnable) {
