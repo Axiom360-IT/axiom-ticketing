@@ -118,6 +118,48 @@ export async function latestRunByAutomation(
   return new Map(rows.map((r) => [r.automationId, r as AutomationRunRow]));
 }
 
+/**
+ * One page of run history, newest first, with the total for the pager.
+ *
+ * Used both for a single automation's side pane (`automationId`) and for the
+ * all-automations Activity tab (`automationId` omitted). `errorsOnly` is the
+ * "just show me what broke" filter.
+ *
+ * Offset paging is fine here: the table is pruned nightly to the retention
+ * window, so it stays small, and the (automation_id, started_at DESC) index
+ * serves the per-automation case directly.
+ */
+export async function listRunsPage(opts: {
+  automationId?: string;
+  errorsOnly?: boolean;
+  page: number;
+  pageSize: number;
+}): Promise<{ rows: AutomationRunRow[]; total: number }> {
+  const where = and(
+    opts.automationId
+      ? eq(automationRuns.automationId, opts.automationId)
+      : undefined,
+    opts.errorsOnly ? eq(automationRuns.status, "error") : undefined,
+  );
+  const pageSize = Math.min(Math.max(opts.pageSize, 1), 100);
+  const offset = Math.max(0, (Math.max(opts.page, 1) - 1) * pageSize);
+
+  const [rows, totals] = await Promise.all([
+    db
+      .select()
+      .from(automationRuns)
+      .where(where)
+      .orderBy(desc(automationRuns.startedAt))
+      .limit(pageSize)
+      .offset(offset),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(automationRuns)
+      .where(where),
+  ]);
+  return { rows: rows as AutomationRunRow[], total: Number(totals[0]?.n ?? 0) };
+}
+
 /** Recent runs across everything, for the activity list. */
 export async function listRecentRuns(limit = 50): Promise<AutomationRunRow[]> {
   const rows = await db

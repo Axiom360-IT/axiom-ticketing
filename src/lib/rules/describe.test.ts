@@ -12,6 +12,7 @@ import {
 import {
   defaultSubjectLine,
   placeholderValues,
+  PLACEHOLDER_LABELS,
   PLACEHOLDERS,
   renderMessage,
   renderSms,
@@ -249,7 +250,7 @@ describe("describeActions", () => {
         { type: "internal_note", body: "x" },
         { type: "flag", reason: "y" },
       ]),
-    ).toBe('post an internal note, then record it as "y", without telling anyone');
+    ).toBe("post an internal note, then record it without telling anyone");
   });
 
   it("says so when a rule does nothing", () => {
@@ -291,7 +292,7 @@ describe("describeRule", () => {
         conditions: { combinator: "all", conditions: [] },
         actions: [{ type: "flag", reason: "new" }],
       }),
-    ).toBe('When a ticket is raised, record it as "new", without telling anyone.');
+    ).toBe("When a ticket is raised, record it without telling anyone.");
   });
 });
 
@@ -438,5 +439,17 @@ describe("renderSms", () => {
 describe("defaultSubjectLine", () => {
   it("leads with the ticket number", () => {
     expect(defaultSubjectLine(ctx)).toBe("AX-0042 — Printer on fire");
+  });
+});
+
+describe("placeholder names", () => {
+  it("gives every placeholder a name a person would recognise", () => {
+    // Shown on the insert buttons instead of raw `{ticketNumber}`.
+    for (const p of PLACEHOLDERS) {
+      const label = PLACEHOLDER_LABELS[p];
+      expect(label, p).toBeTruthy();
+      expect(label, p).not.toMatch(/[{}_]/);
+      expect(label, p).not.toBe(p);
+    }
   });
 });

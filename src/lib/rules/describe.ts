@@ -203,7 +203,9 @@ export function describeAction(action: RuleAction, refs: RefNames = {}): string 
     case "internal_note":
       return "post an internal note";
     case "flag":
-      return `record it as "${action.reason}", without telling anyone`;
+      // Not the note's own text: it is mail-merge syntax ("{ticketNumber}
+      // matched this rule.") and reads as code inside a sentence.
+      return "record it without telling anyone";
     case "webhook":
       return "call a webhook";
     case "assign":

@@ -37,6 +37,33 @@ export const PLACEHOLDERS = [
 
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 
+/**
+ * What each placeholder is called to the person writing the message.
+ *
+ * The builder shows these on its insert buttons ("+ Ticket number") rather than
+ * the raw `{ticketNumber}`, which reads as code. An exhaustive Record, so a new
+ * placeholder cannot ship without a human name.
+ */
+export const PLACEHOLDER_LABELS: Record<Placeholder, string> = {
+  ticketNumber: "Ticket number",
+  subject: "Subject",
+  status: "Status",
+  priority: "Priority",
+  category: "Category",
+  type: "Work type",
+  serviceType: "Onsite or remote",
+  customerName: "Customer's name",
+  customerEmail: "Customer's email",
+  organizationName: "Client name",
+  assigneeName: "Owner's name",
+  ageHours: "How old it is",
+  minutesInStatus: "Time in this status",
+  reopenedCount: "Times reopened",
+  slaState: "SLA state",
+  url: "Link to the ticket",
+  ruleName: "This rule's name",
+};
+
 export type RenderContext = {
   facts: FactSheet;
   /** Display name for the assignee, resolved by the caller — facts carry ids

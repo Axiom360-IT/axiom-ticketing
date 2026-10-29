@@ -69,6 +69,8 @@ type Props = {
   timezone: string;
 };
 
+const RULES_PER_PAGE = 8;
+
 const KIND_ICON = {
   event: Zap,
   state: Hourglass,
@@ -94,6 +96,7 @@ export function RulesManager({
     data: RuleActivity | null;
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RuleCard | null>(null);
+  const [rulePage, setRulePage] = useState(1);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -205,6 +208,11 @@ export function RulesManager({
     });
   }
 
+  // The list is already in memory, so it pages on the client. `safePage` clamps
+  // it: deleting the last rule on page 2 must land on page 1, not on an empty one.
+  const pageCount = Math.max(1, Math.ceil(rules.length / RULES_PER_PAGE));
+  const safePage = Math.min(rulePage, pageCount);
+
   const live = rules.filter((r) => r.enabled && !r.brokenReason).length;
   const needsAttention = rules.filter((r) => r.brokenReason).length;
 
@@ -277,8 +285,9 @@ export function RulesManager({
       {rules.length === 0 ? (
         <EmptyState onBrowse={() => setShowTemplates(true)} onNew={openNew} />
       ) : (
+        <>
         <ul className="space-y-2">
-          {rules.map((rule) => {
+          {rules.slice((safePage - 1) * RULES_PER_PAGE, safePage * RULES_PER_PAGE).map((rule) => {
             const Icon =
               KIND_ICON[rule.triggerKind as keyof typeof KIND_ICON] ?? Zap;
             const broken = Boolean(rule.brokenReason);
@@ -388,6 +397,40 @@ export function RulesManager({
             );
           })}
         </ul>
+
+        {pageCount > 1 ? (
+          <nav
+            aria-label={t("pagerLabel")}
+            className="flex items-center justify-between gap-3 pt-1"
+          >
+            <span className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+              {t("pagerRange", {
+                start: (safePage - 1) * RULES_PER_PAGE + 1,
+                end: Math.min(safePage * RULES_PER_PAGE, rules.length),
+                total: rules.length,
+              })}
+            </span>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => setRulePage(safePage - 1)}
+              >
+                {t("pagerPrev")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage >= pageCount}
+                onClick={() => setRulePage(safePage + 1)}
+              >
+                {t("pagerNext")}
+              </Button>
+            </div>
+          </nav>
+        ) : null}
+        </>
       )}
 
       {/* ── Builder ────────────────────────────────────────────────── */}
@@ -400,34 +443,43 @@ export function RulesManager({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? t("editTitle") : t("newTitle")}</DialogTitle>
+        {/* `sm:max-w-5xl`, not `max-w-3xl`: the base dialog sets `sm:max-w-sm`,
+            and an unprefixed max-width loses to a prefixed one at every size
+            above mobile — which is how this modal ended up 24rem wide. */}
+        <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+          <DialogHeader className="border-b border-zinc-200 px-6 py-4 pr-14 dark:border-zinc-800">
+            <DialogTitle className="text-lg">
+              {draft?.id ? t("editTitle") : t("newTitle")}
+            </DialogTitle>
             <DialogDescription>
               {draft?.id ? t("editBlurb") : t("newBlurb", { timezone })}
             </DialogDescription>
           </DialogHeader>
 
-          {draft ? (
-            <RuleBuilder
-              draft={draft}
-              onChange={setDraft}
-              catalog={catalog}
-              refs={refs}
-              onPreview={runPreview}
-              preview={preview}
-              previewing={previewing}
-              disabled={isPending}
-            />
-          ) : null}
+          {/* Only the body scrolls. The header and the save buttons stay put, so
+              the Save button is never off-screen on a long rule. */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {draft ? (
+              <RuleBuilder
+                draft={draft}
+                onChange={setDraft}
+                catalog={catalog}
+                refs={refs}
+                onPreview={runPreview}
+                preview={preview}
+                previewing={previewing}
+                disabled={isPending}
+              />
+            ) : null}
 
-          {error ? (
-            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
-              {error}
-            </p>
-          ) : null}
+            {error ? (
+              <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+                {error}
+              </p>
+            ) : null}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="mx-0 mb-0 px-6 py-3">
             <Button
               variant="outline"
               onClick={() => {
@@ -446,7 +498,7 @@ export function RulesManager({
 
       {/* ── Templates ──────────────────────────────────────────────── */}
       <Dialog open={showTemplates} onOpenChange={setShowTemplates}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{t("templatesTitle")}</DialogTitle>
             <DialogDescription>{t("templatesBlurb")}</DialogDescription>
@@ -460,7 +512,7 @@ export function RulesManager({
         open={activityFor !== null}
         onOpenChange={(open) => !open && setActivityFor(null)}
       >
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{activityFor?.rule.name}</DialogTitle>
             <DialogDescription>{t("activityBlurb")}</DialogDescription>
@@ -474,7 +526,7 @@ export function RulesManager({
         open={confirmDelete !== null}
         onOpenChange={(open) => !open && setConfirmDelete(null)}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("deleteTitle")}</DialogTitle>
             <DialogDescription>
@@ -547,13 +599,13 @@ function TemplateGallery({ onPick }: { onPick: (t: RuleTemplate) => void }) {
           <h3 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
             {TEMPLATE_CATEGORY_LABELS[category]}
           </h3>
-          <ul className="grid gap-1.5">
+          <ul className="grid gap-2 md:grid-cols-2">
             {RULE_TEMPLATES.filter((x) => x.category === category).map((template) => (
               <li key={template.id}>
                 <button
                   type="button"
                   onClick={() => onPick(template)}
-                  className="w-full rounded-lg border border-zinc-200 p-2.5 text-left transition-colors hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:hover:border-blue-600 dark:hover:bg-blue-950/30"
+                  className="h-full w-full rounded-lg border border-zinc-200 p-3 text-left transition-colors hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:hover:border-blue-600 dark:hover:bg-blue-950/30"
                 >
                   <p className="text-sm font-medium">{template.name}</p>
                   <p className="mt-0.5 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">

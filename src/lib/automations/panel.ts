@@ -18,7 +18,6 @@ import {
   type AutomationRunRow,
   failureCounts,
   latestRunByAutomation,
-  listRecentRuns,
 } from "./runs";
 import {
   type CronDescription,
@@ -53,7 +52,6 @@ export type AutomationPanel = {
   localNow: string;
   scheduled: AutomationCard[];
   reactive: AutomationCard[];
-  recentRuns: AutomationRunRow[];
   reports: (typeof scheduledReports.$inferSelect)[];
   /** For the recipient pickers. */
   staff: { id: string; name: string; email: string }[];
@@ -94,12 +92,11 @@ export async function loadAutomationPanel(): Promise<AutomationPanel> {
     (SETTING_KEYS as readonly string[]).includes(k),
   );
 
-  const [settingValues, latest, failures, recentRuns, reports, staff, roleRows] =
+  const [settingValues, latest, failures, reports, staff, roleRows] =
     await Promise.all([
       getSettings(keys) as Promise<Record<string, unknown>>,
       latestRunByAutomation(TRACKED_AUTOMATION_IDS),
       failureCounts(TRACKED_AUTOMATION_IDS, 24),
-      listRecentRuns(40),
       db
         .select()
         .from(scheduledReports)
@@ -169,7 +166,6 @@ export async function loadAutomationPanel(): Promise<AutomationPanel> {
     localNow: `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}`,
     scheduled: AUTOMATIONS.filter((a) => a.kind === "scheduled").map(toCard),
     reactive: AUTOMATIONS.filter((a) => a.kind === "reactive").map(toCard),
-    recentRuns,
     reports,
     staff,
     roleNames: roleRows.map((r) => r.name),

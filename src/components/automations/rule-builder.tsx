@@ -16,13 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LabeledSelect } from "./labeled-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { PreviewResult } from "@/app/actions/automation-rules";
 import type { ClientCatalog, ClientFieldDef } from "@/lib/rules/catalog";
@@ -40,7 +34,7 @@ import {
   valueLabel,
 } from "@/lib/rules/labels";
 import type { RuleRefs } from "@/lib/rules/panel";
-import { PLACEHOLDERS, unknownPlaceholders } from "@/lib/rules/render";
+import { PLACEHOLDERS, PLACEHOLDER_LABELS, unknownPlaceholders } from "@/lib/rules/render";
 import type {
   Condition,
   ConditionGroup,
@@ -117,6 +111,10 @@ export function emptyDraft(): RuleDraft {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+/** The catalog's labels are written to read mid-sentence ("a ticket is
+ *  raised"). On their own in a dropdown they want a capital. */
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 type Props = {
   draft: RuleDraft;
   onChange: (next: RuleDraft) => void;
@@ -160,12 +158,14 @@ export function RuleBuilder({
 
   return (
     <div className="space-y-5">
-      {/* ── The sentence ───────────────────────────────────────────── */}
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-3 text-sm leading-relaxed dark:border-zinc-800 dark:bg-zinc-900/60">
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+      {/* ── The sentence ─────────────────────────────────────────────
+          Sticky, so it stays in view while you scroll the form: the point of
+          it is to watch the rule read back as you build it. */}
+      <div className="sticky top-0 z-10 rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm dark:border-blue-900 dark:bg-blue-950/80">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
           {t("sentenceHeading")}
         </p>
-        <p className="text-zinc-800 dark:text-zinc-100">
+        <p className="text-base leading-relaxed text-zinc-900 dark:text-zinc-50">
           <span className="font-medium">{sentence.when}</span>
           {sentence.conditions ? (
             <>
@@ -191,6 +191,10 @@ export function RuleBuilder({
         />
       </div>
 
+      {/* Two columns on a wide screen: what SETS IT OFF on the left, what it DOES
+          on the right. One long column made a wide modal pointless. */}
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+      <div className="space-y-5">
       {/* ── WHEN ───────────────────────────────────────────────────── */}
       <Section step={1} title={t("whenHeading")} hint={t("whenHint")}>
         <div className="grid gap-1.5 sm:grid-cols-3">
@@ -221,31 +225,38 @@ export function RuleBuilder({
         </div>
 
         {draft.triggerKind === "event" ? (
-          <Select
+          <LabeledSelect
             value={draft.event}
             disabled={disabled}
-            onValueChange={(v) => typeof v === "string" && set("event", v as EventTriggerId)}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {catalog.eventOrder.map((id) => (
-                <SelectItem key={id} value={id}>
-                  {EVENT_LABELS[id as EventTriggerId]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="h-10 w-full text-sm"
+            aria-label={t("whenHeading")}
+            options={catalog.eventOrder.map((id) => ({
+              value: id,
+              label: cap(EVENT_LABELS[id as EventTriggerId]),
+              // Grouped, so thirty events read as six short lists.
+              group: t(
+                `eventGroup.${catalog.events[id]?.category ?? "lifecycle"}`,
+              ),
+            }))}
+            onValueChange={(v) => set("event", v as EventTriggerId)}
+          />
         ) : null}
 
         {draft.triggerKind === "state" ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Select
+            <span className="text-sm text-zinc-600 dark:text-zinc-300">
+              {t("stateLeadIn")}
+            </span>
+            <LabeledSelect
               value={draft.state}
               disabled={disabled}
+              className="h-10 min-w-[16rem] flex-1 text-sm"
+              aria-label={t("whenHeading")}
+              options={catalog.stateOrder.map((id) => ({
+                value: id,
+                label: STATE_LABELS[id as StateTriggerId],
+              }))}
               onValueChange={(v) => {
-                if (typeof v !== "string") return;
                 const next = v as StateTriggerId;
                 onChange({
                   ...draft,
@@ -253,18 +264,7 @@ export function RuleBuilder({
                   stateMinutes: catalog.states[next]?.defaultMinutes ?? 30,
                 });
               }}
-            >
-              <SelectTrigger className="min-w-[14rem] flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {catalog.stateOrder.map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {STATE_LABELS[id as StateTriggerId]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <DurationInput
               minutes={draft.stateMinutes}
               disabled={disabled}
@@ -344,6 +344,8 @@ export function RuleBuilder({
         />
       </Section>
 
+      </div>
+      <div className="space-y-5">
       {/* ── THEN ───────────────────────────────────────────────────── */}
       <Section step={3} title={t("thenHeading")} hint={t("thenHint")}>
         <div className="space-y-2">
@@ -394,24 +396,14 @@ export function RuleBuilder({
       {/* ── How often ──────────────────────────────────────────────── */}
       <Section step={4} title={t("howOftenHeading")} hint={t("howOftenHint")}>
         <div className="flex flex-wrap items-center gap-2">
-          <Select
+          <LabeledSelect
             value={draft.dedupePolicy}
             disabled={disabled}
-            onValueChange={(v) =>
-              typeof v === "string" && set("dedupePolicy", v as DedupePolicy)
-            }
-          >
-            <SelectTrigger className="min-w-[14rem] flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {policies.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {DEDUPE_LABELS[p]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="h-10 min-w-[16rem] flex-1 text-sm"
+            aria-label={t("howOftenHeading")}
+            options={policies.map((p) => ({ value: p, label: cap(DEDUPE_LABELS[p]) }))}
+            onValueChange={(v) => set("dedupePolicy", v as DedupePolicy)}
+          />
           {draft.dedupePolicy === "throttle" ? (
             <DurationInput
               minutes={draft.throttleMinutes}
@@ -452,6 +444,9 @@ export function RuleBuilder({
           />
         </div>
       </Section>
+
+      </div>
+      </div>
 
       {/* ── Preview ────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
@@ -567,17 +562,17 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-2">
-      <div className="flex items-baseline gap-2">
-        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+    <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="flex items-start gap-3">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
           {step}
         </span>
         <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
+          <h3 className="text-sm font-semibold leading-6">{title}</h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>
         </div>
       </div>
-      <div className="space-y-2 pl-7">{children}</div>
+      <div className="space-y-3">{children}</div>
     </section>
   );
 }
@@ -651,7 +646,7 @@ function DurationInput({
       <Input
         type="number"
         min={0}
-        className="w-20"
+        className="h-10 w-24 text-sm"
         disabled={disabled}
         value={amount}
         onChange={(e) => {
@@ -659,20 +654,17 @@ function DurationInput({
           onChange(Number.isFinite(n) && n >= 0 ? Math.round(n) * unit : 0);
         }}
       />
-      <Select
+      <LabeledSelect
         value={String(unit)}
         disabled={disabled}
-        onValueChange={(v) => typeof v === "string" && onChange(amount * Number(v))}
-      >
-        <SelectTrigger className="w-28">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="1">{t("unitMinutes")}</SelectItem>
-          <SelectItem value="60">{t("unitHours")}</SelectItem>
-          <SelectItem value="1440">{t("unitDays")}</SelectItem>
-        </SelectContent>
-      </Select>
+        className="h-10 w-32 text-sm"
+        options={[
+          { value: "1", label: t("unitMinutes") },
+          { value: "60", label: t("unitHours") },
+          { value: "1440", label: t("unitDays") },
+        ]}
+        onValueChange={(v) => onChange(amount * Number(v))}
+      />
     </span>
   );
 }
@@ -759,22 +751,16 @@ function GroupEditor({
       {group.conditions.length > 1 ? (
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-zinc-500">{t("match")}</span>
-          <Select
+          <LabeledSelect
             value={group.combinator}
             disabled={disabled}
-            onValueChange={(v) =>
-              typeof v === "string" &&
-              onChange({ ...group, combinator: v as "all" | "any" })
-            }
-          >
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("matchAll")}</SelectItem>
-              <SelectItem value="any">{t("matchAny")}</SelectItem>
-            </SelectContent>
-          </Select>
+            className="h-8 w-36 text-sm"
+            options={[
+              { value: "all", label: t("matchAll") },
+              { value: "any", label: t("matchAny") },
+            ]}
+            onValueChange={(v) => onChange({ ...group, combinator: v as "all" | "any" })}
+          />
           {onRemove ? (
             <Button
               type="button"
@@ -919,13 +905,18 @@ function ConditionRow({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Select
+      <LabeledSelect
         value={condition.field}
         disabled={disabled}
+        className="h-10 min-w-[14rem] flex-1 text-sm"
+        options={[...grouped.entries()].flatMap(([groupName, ids]) =>
+          ids.map((id) => ({
+            value: id,
+            label: cap(FIELD_LABELS[id as keyof typeof FIELD_LABELS] ?? id),
+            group: t(`fieldGroup.${groupName}`),
+          })),
+        )}
         onValueChange={(field) => {
-          // base-ui can emit null on clear; a null field would be stored and
-          // then fail closed on every evaluation.
-          if (typeof field !== "string") return;
           const next = catalog.fields[field];
           if (!next) return;
           // Reset the operator and value: carrying "is more than" onto a text
@@ -936,31 +927,14 @@ function ConditionRow({
             value: next.valueType === "boolean" ? true : undefined,
           });
         }}
-      >
-        <SelectTrigger className="h-8 min-w-[12rem] flex-1 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {[...grouped.entries()].map(([groupName, ids]) => (
-            <div key={groupName}>
-              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                {t(`fieldGroup.${groupName}`)}
-              </p>
-              {ids.map((id) => (
-                <SelectItem key={id} value={id}>
-                  {FIELD_LABELS[id as keyof typeof FIELD_LABELS] ?? id}
-                </SelectItem>
-              ))}
-            </div>
-          ))}
-        </SelectContent>
-      </Select>
+      />
 
-      <Select
+      <LabeledSelect
         value={condition.operator}
         disabled={disabled}
+        className="h-10 w-44 text-sm"
+        options={def.operators.map((op) => ({ value: op, label: OPERATOR_LABELS[op] }))}
         onValueChange={(op) => {
-          if (typeof op !== "string") return;
           onChange({
             ...condition,
             operator: op as ConditionOperator,
@@ -975,18 +949,7 @@ function ConditionRow({
                 : condition.value,
           });
         }}
-      >
-        <SelectTrigger className="h-8 w-36 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {def.operators.map((op) => (
-            <SelectItem key={op} value={op}>
-              {OPERATOR_LABELS[op]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      />
 
       {needsValue ? (
         <ValueInput
@@ -1033,19 +996,16 @@ function ValueInput({
 
   if (def.valueType === "boolean") {
     return (
-      <Select
+      <LabeledSelect
         value={value === true || value === "true" ? "true" : "false"}
         disabled={disabled}
-        onValueChange={(v) => typeof v === "string" && onChange(v === "true")}
-      >
-        <SelectTrigger className="h-8 w-28 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="true">{t("yes")}</SelectItem>
-          <SelectItem value="false">{t("no")}</SelectItem>
-        </SelectContent>
-      </Select>
+        className="h-10 w-28 text-sm"
+        options={[
+          { value: "true", label: t("yes") },
+          { value: "false", label: t("no") },
+        ]}
+        onValueChange={(v) => onChange(v === "true")}
+      />
     );
   }
 
@@ -1086,22 +1046,14 @@ function ValueInput({
       );
     }
     return (
-      <Select
+      <LabeledSelect
         value={typeof value === "string" ? value : ""}
         disabled={disabled}
-        onValueChange={(v) => typeof v === "string" && onChange(v)}
-      >
-        <SelectTrigger className="h-8 min-w-[10rem] flex-1 text-xs">
-          <SelectValue placeholder="choose…" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="h-10 min-w-[12rem] flex-1 text-sm"
+        placeholder={t("choose")}
+        options={options}
+        onValueChange={(v) => onChange(v)}
+      />
     );
   }
 
@@ -1223,31 +1175,22 @@ function ActionRow({
   return (
     <div className="space-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
       <div className="flex items-center gap-1.5">
-        <Select
+        <LabeledSelect
           value={action.type}
           disabled={disabled}
-          onValueChange={(v) =>
-            typeof v === "string" && onChange(defaultActionOf(v as RuleAction["type"]))
-          }
-        >
-          <SelectTrigger className="h-8 min-w-[12rem] flex-1 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.keys(catalog.actions).map((type) => (
-              <SelectItem
-                key={type}
-                value={type}
-                // Mutating actions are listed but not selectable: showing the
-                // shape of what is coming beats a mysteriously short menu.
-                disabled={!safe.has(type)}
-              >
-                {ACTION_LABELS[type as RuleAction["type"]]}
-                {safe.has(type) ? "" : ` — ${t("notYet")}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-10 min-w-[16rem] flex-1 text-sm"
+          aria-label={t("thenHeading")}
+          options={Object.keys(catalog.actions).map((type) => ({
+            value: type,
+            // Mutating actions are listed but not selectable: showing the
+            // shape of what is coming beats a mysteriously short menu.
+            label:
+              cap(ACTION_LABELS[type as RuleAction["type"]]) +
+              (safe.has(type) ? "" : ` — ${t("notYet")}`),
+            disabled: !safe.has(type),
+          }))}
+          onValueChange={(v) => onChange(defaultActionOf(v as RuleAction["type"]))}
+        />
         {onRemove ? (
           <Button
             type="button"
@@ -1509,19 +1452,25 @@ function MessageField({
         {showAll ? t("hidePlaceholders") : t("showPlaceholders")}
       </button>
       {showAll ? (
-        <p className="flex flex-wrap gap-1">
+        <div className="space-y-1.5">
+        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+          {t("placeholderHint")}
+        </p>
+        <p className="flex flex-wrap gap-1.5">
           {PLACEHOLDERS.map((p) => (
             <button
               key={p}
               type="button"
               disabled={disabled}
               onClick={() => onChange(`${value}{${p}}`)}
-              className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"
+              title={`{${p}}`}
+              className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:border-blue-400 hover:bg-blue-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-blue-600 dark:hover:bg-blue-950/40"
             >
-              {`{${p}}`}
+              + {PLACEHOLDER_LABELS[p]}
             </button>
           ))}
         </p>
+        </div>
       ) : null}
     </div>
   );

@@ -3050,7 +3050,7 @@
     "subtitle": "Everything this system does on its own — what it is, when it runs, and whether it is working.",
     "clock": "{timezone} · {localNow} now",
     "scheduledHeading": "Runs on a schedule",
-    "scheduledHint": "Safe to switch off — nothing else waits on these. Every run is recorded below.",
+    "scheduledHint": "Safe to switch off — nothing else waits on these. Click one to see what it does and its run history.",
     "reactiveHeading": "Runs when something happens",
     "reactiveHint": "These react to an event rather than a clock. They have no switch because turning one off would silently break part of the product.",
     "activityHeading": "Recent activity",
@@ -3310,7 +3310,7 @@
       "subjectPlaceholder": "Subject line (optional)",
       "emailsPlaceholder": "Addresses, separated by commas",
       "webhookSecret": "Signing secret (optional)",
-      "showPlaceholders": "Show what you can drop in",
+      "showPlaceholders": "Insert a ticket detail",
       "hidePlaceholders": "Hide",
       "unknownPlaceholders": "{names} is not something we can fill in — check the spelling.",
       "howOftenHeading": "How often",
@@ -3346,7 +3346,53 @@
       "unitDays": "days",
       "yes": "yes",
       "no": "no",
-      "notInstalled": "Your own rules are not switched on for this database yet. An administrator needs to run the one-off setup step (pnpm db:add-automation-rules). Everything else on this page works as normal."
+      "notInstalled": "Your own rules are not switched on for this database yet. An administrator needs to run the one-off setup step (pnpm db:add-automation-rules). Everything else on this page works as normal.",
+      "stateLeadIn": "A ticket has",
+      "choose": "Choose…",
+      "eventGroup": {
+        "lifecycle": "A ticket's progress",
+        "assignment": "Who owns it",
+        "triage": "Sorting and details",
+        "sla": "Deadlines and escalation",
+        "conversation": "Replies and notes",
+        "billing": "Billing and clients"
+      },
+      "pagerLabel": "Rules pages",
+      "pagerRange": "{start}–{end} of {total}",
+      "pagerPrev": "Previous",
+      "pagerNext": "Next",
+      "placeholderHint": "Details you insert are filled in for each ticket when the message is sent."
+    },
+    "tabs": {
+      "rules": "Your rules",
+      "jobs": "Scheduled jobs",
+      "background": "Background services",
+      "reports": "Reports",
+      "sla": "SLA targets",
+      "activity": "Activity"
+    },
+    "pane": {
+      "runs": "Runs",
+      "onEvent": "When something happens",
+      "status": "Status",
+      "on": "On",
+      "switchedOff": "Switched off",
+      "history": "Run history",
+      "historyEmpty": "It hasn't run yet. Its runs will appear here.",
+      "notTracked": "This runs whenever something happens, so its individual runs aren't logged here — recording every email or text would bury the signal. If one of these is failing, the Inngest dashboard shows it."
+    },
+    "pager": {
+      "newer": "Newer",
+      "older": "Older",
+      "range": "{start}–{end} of {total}"
+    },
+    "activity": {
+      "heading": "Activity",
+      "hint": "Every run of every scheduled job, newest first. Click a name to open it.",
+      "all": "All runs",
+      "failedOnly": "Failed only",
+      "noFailures": "Nothing has failed in the period kept.",
+      "report": "Scheduled report"
     }
   }
 }
