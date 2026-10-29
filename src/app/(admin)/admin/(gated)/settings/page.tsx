@@ -24,10 +24,10 @@ import { db } from "@/lib/db/client";
 import { roles } from "@/lib/db/schema/rbac";
 import { ne } from "drizzle-orm";
 import { DEFAULT_BRANDING, isAccentKey, isGradientKey } from "@/lib/branding/presets";
-import { can } from "@/lib/auth/can";
-import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { settingsAccessFor } from "@/lib/settings-access";
 import { cn } from "@/lib/utils";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 const PUBLIC_RATE_LIMITS = [
   "rate_limits.public_submit",
@@ -57,6 +57,29 @@ const SETTINGS_TABS = [
   "email-templates",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+// Which tier each tab belongs to. `mixed` is the Email tab: sender identity and
+// the inbound address are technical, the moderation and allow-list policy are
+// business, so the tab opens for either and each card checks its own tier.
+const TAB_LABEL_KEY = {
+  operations: "tabOperations",
+  tickets: "tabTickets",
+  billing: "tabBilling",
+  email: "tabEmail",
+  security: "tabSecurity",
+  branding: "tabBranding",
+  "email-templates": "tabEmailTemplates",
+} as const satisfies Record<SettingsTab, string>;
+
+const TAB_TIER: Record<SettingsTab, "business" | "technical" | "mixed"> = {
+  operations: "business",
+  tickets: "business",
+  billing: "business",
+  email: "mixed",
+  security: "technical",
+  branding: "business",
+  "email-templates": "business",
+};
 
 function num(v: unknown, fallback: number): number {
   return typeof v === "number" ? v : fallback;
@@ -90,18 +113,39 @@ export default async function SettingsPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/admin/login");
-  if (
-    !(await can(user, "settings.view", { type: "global" }, productionContext))
-  ) {
+  // Two tiers of settings, each with its own view permission. Either opens the
+  // page; WHICH tabs and cards appear depends on which the user holds. The
+  // values themselves are filtered again on the server in
+  // loadSettingsSnapshot, so hiding a card here is presentation, not the
+  // boundary.
+  const access = await settingsAccessFor(user);
+  if (!access.viewAny) {
     redirect("/admin");
   }
 
+  const tabVisible = (t: SettingsTab): boolean => {
+    switch (TAB_TIER[t]) {
+      case "business":
+        return access.viewBusiness;
+      case "technical":
+        return access.viewTechnical;
+      case "mixed":
+        return access.viewAny;
+    }
+  };
+  const visibleTabs = SETTINGS_TABS.filter(tabVisible);
+
   const sp = await searchParams;
-  const tab: SettingsTab = (SETTINGS_TABS as readonly string[]).includes(
+  const requestedTab = (SETTINGS_TABS as readonly string[]).includes(
     sp.tab ?? "",
   )
     ? (sp.tab as SettingsTab)
-    : "operations";
+    : null;
+  // A tab the user cannot see is not an error — land on the first one they can.
+  const tab: SettingsTab =
+    requestedTab && visibleTabs.includes(requestedTab)
+      ? requestedTab
+      : (visibleTabs[0] ?? "operations");
 
   const snapshot = await loadSettingsSnapshot();
   const v = snapshot.values;
@@ -146,6 +190,7 @@ export default async function SettingsPage({
   const tRl = await getTranslations("settings.rateLimits");
   const tBill = await getTranslations("settings.billing");
   const tMod = await getTranslations("settings.moderation");
+  const tPd = await getTranslations("settings.permissionDisplay");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -160,13 +205,14 @@ export default async function SettingsPage({
         aria-label={t("title")}
         className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800 -mt-2 overflow-x-auto"
       >
-        <SettingsTabLink tab="operations" active={tab === "operations"} label={t("tabOperations")} />
-        <SettingsTabLink tab="tickets" active={tab === "tickets"} label={t("tabTickets")} />
-        <SettingsTabLink tab="billing" active={tab === "billing"} label={t("tabBilling")} />
-        <SettingsTabLink tab="email" active={tab === "email"} label={t("tabEmail")} />
-        <SettingsTabLink tab="security" active={tab === "security"} label={t("tabSecurity")} />
-        <SettingsTabLink tab="branding" active={tab === "branding"} label={t("tabBranding")} />
-        <SettingsTabLink tab="email-templates" active={tab === "email-templates"} label={t("tabEmailTemplates")} />
+        {visibleTabs.map((tabId) => (
+          <SettingsTabLink
+            key={tabId}
+            tab={tabId}
+            active={tab === tabId}
+            label={t(TAB_LABEL_KEY[tabId])}
+          />
+        ))}
       </nav>
 
       {/* ── Operations ─────────────────────────────────────────────── */}
@@ -250,7 +296,7 @@ export default async function SettingsPage({
                 initial={
                   strArr(v["sla.warning_notify_roles"]).length > 0
                     ? strArr(v["sla.warning_notify_roles"])
-                    : ["Super Admin", "IT Director", "Coordinator"]
+                    : [SUPER_ADMIN_ROLE, "IT Director", "Coordinator"]
                 }
                 emptyHint={tSwn("rolesEmpty")}
               />
@@ -274,7 +320,7 @@ export default async function SettingsPage({
                   initial={
                     strArr(v["sla.breach_notify_roles"]).length > 0
                       ? strArr(v["sla.breach_notify_roles"])
-                      : ["Super Admin", "IT Director", "Coordinator"]
+                      : [SUPER_ADMIN_ROLE, "IT Director", "Coordinator"]
                   }
                   emptyHint={tSbn("rolesEmpty")}
                 />
@@ -481,6 +527,7 @@ export default async function SettingsPage({
       {/* ── Email ──────────────────────────────────────────────────── */}
       {tab === "email" ? (
         <>
+          {access.viewTechnical ? (
           <Card>
             <CardHeader>
               <CardTitle>{tEm("title")}</CardTitle>
@@ -513,7 +560,10 @@ export default async function SettingsPage({
               />
             </CardContent>
           </Card>
+          ) : null}
 
+          {access.viewBusiness ? (
+            <>
           <Card>
             <CardHeader>
               <CardTitle>{tEm("allowlistTitle")}</CardTitle>
@@ -548,6 +598,8 @@ export default async function SettingsPage({
               />
             </CardContent>
           </Card>
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -648,6 +700,27 @@ export default async function SettingsPage({
                   initial={rateLimitObj(v[k])}
                 />
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Technical tier, so only the Technical Lead can change how much the
+              people it restricts get to see. */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{tPd("title")}</CardTitle>
+              <CardDescription>{tPd("description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SelectSettingForm
+                settingKey="permissions.undelegable_display"
+                label={tPd("label")}
+                hint={tPd("hint")}
+                initial={str(v["permissions.undelegable_display"], "hidden")}
+                options={[
+                  { value: "hidden", label: tPd("hidden") },
+                  { value: "locked", label: tPd("locked") },
+                ]}
+              />
             </CardContent>
           </Card>
         </>

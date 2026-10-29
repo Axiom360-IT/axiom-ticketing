@@ -2,6 +2,7 @@ import {
   inngest,
   type NotificationDispatchPayload,
 } from "@/inngest/client";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 /**
  * Fire the staff "a ticket was closed" notification to Coordinators, IT
@@ -24,7 +25,7 @@ export async function dispatchTicketClosedStaff(args: {
 
   const data: NotificationDispatchPayload = {
     type: "ticket.closed_staff",
-    recipientRoles: ["Coordinator", "IT Director", "Super Admin"],
+    recipientRoles: ["Coordinator", "IT Director", SUPER_ADMIN_ROLE],
     email: {
       template: {
         template: "ticket_closed_staff",

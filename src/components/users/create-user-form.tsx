@@ -149,6 +149,7 @@ export function CreateUserForm({
         <legend className="text-sm font-medium">{tFields("roles")}</legend>
         <RoleMultiSelect
           roles={roles}
+          lockedTitle={tFields("roleLocked")}
           value={selectedRoles}
           onChange={setSelectedRoles}
         />

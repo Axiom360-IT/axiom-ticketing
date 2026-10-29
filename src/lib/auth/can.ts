@@ -1,4 +1,11 @@
 import type { Permission } from "./permissions";
+import {
+  ELEVATED_ROLE_NAMES,
+  isAtLeastSuperAdmin,
+  rankOf,
+  SUPER_ADMIN_ROLE,
+  TECHNICAL_LEAD_ROLE,
+} from "./rank";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -43,6 +50,11 @@ export type SessionUser = {
   id: string;
   permissions: Set<Permission>;
   roleNames: Set<string>;
+  /** Highest `roles.rank` among the user's roles (see lib/auth/rank.ts).
+   *  Optional so a session built without it — a test fixture, a row read
+   *  before the column was migrated — behaves as the LOWEST rank rather than
+   *  failing; `rankOf()` raises it from the role names where it can. */
+  rank?: number;
   isImpersonating: boolean;
 };
 
@@ -52,15 +64,16 @@ export type CanContext = {
   isDescendantOf: (targetId: string, actorId: string) => Promise<boolean>;
   userHasRole: (userId: string, roleName: string) => Promise<boolean>;
   isLastActiveSuperAdmin: (userId: string) => Promise<boolean>;
+  /** Rank of another account, for "you cannot act on someone who outranks
+   *  you". Optional so contexts that predate it (mocks) keep compiling; absent
+   *  means no outranking check, which is the pre-existing behaviour. The
+   *  production context always supplies it. */
+  userRank?: (userId: string) => Promise<number>;
 };
 
 // ── Role helpers (sync, no DB) ─────────────────────────────────────────
 
-const ELEVATED_ROLES = new Set([
-  "Super Admin",
-  "IT Director",
-  "Coordinator",
-]);
+const ELEVATED_ROLES = new Set(ELEVATED_ROLE_NAMES);
 
 /** A user whose ONLY role is Technician (no Coordinator/Admin/IT Director). */
 export function isStrictTechnician(user: SessionUser): boolean {
@@ -89,15 +102,15 @@ export function isNonStaff(user: SessionUser): boolean {
 
 /** A user with no Coordinator/Super Admin role — used for procurement scope. */
 export function isStrictRequester(user: SessionUser): boolean {
-  return (
-    !user.roleNames.has("Coordinator") && !user.roleNames.has("Super Admin")
-  );
+  return !user.roleNames.has("Coordinator") && !isAtLeastSuperAdmin(user);
 }
 
 // ── The single permission gate ────────────────────────────────────────
 
 const BLOCKED_DURING_IMPERSONATION: ReadonlySet<Permission> = new Set([
   "settings.update",
+  "settings.technical.update",
+  "rules.manage",
   "roles.create",
   "roles.update",
   "roles.delete",
@@ -214,6 +227,13 @@ export async function can(
       if (action !== "users.update" && target.user.id === user.id) {
         return false;
       }
+      // Nobody acts on an account that OUTRANKS them. Without this, the
+      // user-hierarchy bypass below would let a Super Admin reset the
+      // Technical Lead's password and sign in as it, which defeats the tier.
+      // Peers are unchanged: this is strictly "higher", not "equal or higher".
+      if (ctx?.userRank && (await ctx.userRank(target.user.id)) > rankOf(user)) {
+        return false;
+      }
       if (action === "users.deactivate") {
         if (!ctx) throw new Error("CanContext required for users.deactivate");
         if (await ctx.isLastActiveSuperAdmin(target.user.id)) return false;
@@ -223,23 +243,23 @@ export async function can(
       if (action === "users.update" && target.user.id === user.id) {
         return true;
       }
-      // Super Admin bypasses the hierarchy gate. The spec calls Super
-      // Admin "all permissions across all modules"; without this, a
+      // Super Admin (and above) bypasses the hierarchy gate. The spec calls
+      // Super Admin "all permissions across all modules"; without this, a
       // seeded Super Admin can't manage seeded peers because nobody
       // has `createdById` pointing at them. Keeps the descendant rule
       // for non-Super-Admin grantees who must respect the hierarchy.
-      if (user.roleNames.has("Super Admin")) return true;
+      if (isAtLeastSuperAdmin(user)) return true;
       if (!ctx) throw new Error("CanContext required for user-scope actions");
       return await ctx.isDescendantOf(target.user.id, user.id);
 
     case "users.impersonate": {
       if (target.type !== "user") return false;
       if (!ctx) throw new Error("CanContext required for users.impersonate");
-      const targetIsSuperAdmin = await ctx.userHasRole(
-        target.user.id,
-        "Super Admin",
-      );
-      if (targetIsSuperAdmin) return false;
+      // Super Admins are immune, and so is the Technical Lead above them.
+      const targetIsProtected =
+        (await ctx.userHasRole(target.user.id, SUPER_ADMIN_ROLE)) ||
+        (await ctx.userHasRole(target.user.id, TECHNICAL_LEAD_ROLE));
+      if (targetIsProtected) return false;
       return true;
     }
 

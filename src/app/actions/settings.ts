@@ -18,7 +18,9 @@ import {
   SETTING_KEYS,
   SETTING_SCHEMAS,
   type SettingKey,
+  settingUpdatePermission,
 } from "@/lib/settings-registry";
+import { canViewSetting, settingsAccessFor } from "@/lib/settings-access";
 import { ForbiddenError } from "@/lib/errors";
 
 export type UpdateSettingResult =
@@ -33,9 +35,14 @@ export async function updateSetting(
 ): Promise<UpdateSettingResult> {
   const caller = await requireSessionUser();
   await enforceUserRateLimit("authUpdateSetting", caller.id);
-  if (
-    !(await can(caller, "settings.update", { type: "global" }, productionContext))
-  ) {
+  // Which permission depends on the KEY's tier: a rate limit or the scanner
+  // endpoint needs `settings.technical.update`, business hours need
+  // `settings.update`. An unknown key is judged as business so a stranger
+  // learns nothing about the technical tier from the order of the errors.
+  const required = isValidSettingKey(key)
+    ? settingUpdatePermission(key as SettingKey)
+    : "settings.update";
+  if (!(await can(caller, required, { type: "global" }, productionContext))) {
     throw new ForbiddenError();
   }
   // M17: settings changes affect everyone — require a fresh password
@@ -206,9 +213,9 @@ export async function loadSettingsSnapshot(): Promise<{
   holidays: { date: string; label: string }[];
 }> {
   const caller = await requireSessionUser();
-  if (
-    !(await can(caller, "settings.view", { type: "global" }, productionContext))
-  ) {
+  // Either tier opens the page; WHICH values come back depends on the tier.
+  const access = await settingsAccessFor(caller);
+  if (!access.viewAny) {
     throw new ForbiddenError();
   }
   const rows = await db
@@ -216,7 +223,10 @@ export async function loadSettingsSnapshot(): Promise<{
     .from(settingsTable);
   const values: SettingsSnapshot = {};
   for (const r of rows) {
-    if (isValidSettingKey(r.key)) {
+    // Filtered here, on the server. This is an action a browser can call
+    // directly, so hiding technical cards in the page would still have handed
+    // the scanner endpoint and the rate limits to anyone with settings.view.
+    if (isValidSettingKey(r.key) && canViewSetting(access, r.key)) {
       values[r.key] = r.value;
     }
   }

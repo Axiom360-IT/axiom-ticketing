@@ -25,6 +25,8 @@ export type RoleRowSummary = {
   description: string | null;
   isSystem: boolean;
   userCount: number;
+  manageable: boolean;
+  locked: boolean;
 };
 
 type Props = {
@@ -53,7 +55,10 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
-  const [detail, setDetail] = useState<RoleDetail>(null);
+  // undefined = still loading; null = the server declined to show it (a role
+  // ranked above the viewer, under the `hidden` policy). Two different states
+  // that used to be one, which left the dialog on "Loading…" forever.
+  const [detail, setDetail] = useState<RoleDetail | undefined>(undefined);
   const [name, setName] = useState(role.name);
   const [description, setDescription] = useState(role.description ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +66,7 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
 
   // Lazy-load permissions when the View modal opens.
   useEffect(() => {
-    if (!viewOpen || detail) return;
+    if (!viewOpen || detail !== undefined) return;
     let cancelled = false;
     void getRoleDetail(role.id).then((d) => {
       if (!cancelled) setDetail(d);
@@ -71,7 +76,10 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
     };
   }, [viewOpen, detail, role.id]);
 
-  const showRemove = canDelete && !role.isSystem && role.userCount === 0;
+  // `manageable` is the rank rule (lib/auth/rank.ts): no remove or quick-edit
+  // on a role the viewer does not strictly outrank. The server refuses anyway.
+  const showRemove =
+    canDelete && role.manageable && !role.isSystem && role.userCount === 0;
 
   function submitEdit() {
     setError(null);
@@ -107,7 +115,11 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
       <RowActionIcons
         ariaLabelPrefix={role.name}
         view={() => setViewOpen(true)}
-        edit={canEdit && !role.isSystem ? () => setEditOpen(true) : undefined}
+        edit={
+          canEdit && role.manageable && !role.isSystem
+            ? () => setEditOpen(true)
+            : undefined
+        }
         remove={showRemove ? { onClick: () => setRemoveOpen(true) } : undefined}
       />
 
@@ -139,8 +151,12 @@ export function RoleRowActions({ role, canEdit, canDelete }: Props) {
               {tDialog("permissionsLabel")}
             </dt>
             <dd>
-              {!detail ? (
+              {detail === undefined ? (
                 <span className="text-xs text-zinc-400">{t("loading")}</span>
+              ) : detail === null ? (
+                <span className="text-xs text-zinc-400">
+                  {tDialog("unavailable")}
+                </span>
               ) : detail.permissions.length === 0 ? (
                 <span className="text-xs text-zinc-400">
                   {tDialog("noPermissions")}

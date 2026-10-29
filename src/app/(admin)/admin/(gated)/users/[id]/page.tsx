@@ -11,14 +11,15 @@ import {
 import { DeactivateModal } from "@/components/users/deactivate-modal";
 import { EditUserForm } from "@/components/users/edit-user-form";
 import { ImpersonateButton } from "@/components/users/impersonate-button";
-import { getDescendants, listAllRoles } from "@/app/actions/users";
+import { getDescendants } from "@/app/actions/users";
+import { roleOptionsFor } from "@/lib/roles/assignable";
 import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-import { rolePermissions, userRoles } from "@/lib/db/schema/rbac";
+import { userRoles } from "@/lib/db/schema/rbac";
 
 export default async function EditUserPage({
   params,
@@ -59,7 +60,6 @@ export default async function EditUserPage({
     canReset,
     canImpersonate,
     canUnlock,
-    allRoles,
     currentRoleRows,
   ] = await Promise.all([
     can(caller, "users.update", userScope, productionContext),
@@ -68,7 +68,6 @@ export default async function EditUserPage({
     can(caller, "users.reset_password", userScope, productionContext),
     can(caller, "users.impersonate", userScope, productionContext),
     can(caller, "users.unlock", { type: "global" }, productionContext),
-    listAllRoles(),
     db
       .select({ roleId: userRoles.roleId })
       .from(userRoles)
@@ -89,29 +88,11 @@ export default async function EditUserPage({
   const isLocked =
     target.lockedUntil != null && target.lockedUntil.getTime() > Date.now();
 
-  // Roles available to this caller — drop ones whose permissions exceed the
-  // caller's. Super Admin sees them all because their set is ALL_PERMISSIONS.
-  const callerPermissions = caller.permissions;
-  const allRoleIds = allRoles.map((r) => r.id);
-  const permsByRole = new Map<string, string[]>();
-  if (allRoleIds.length > 0) {
-    const rows = await db
-      .select({
-        roleId: rolePermissions.roleId,
-        permission: rolePermissions.permission,
-      })
-      .from(rolePermissions);
-    for (const r of rows) {
-      const list = permsByRole.get(r.roleId) ?? [];
-      list.push(r.permission);
-      permsByRole.set(r.roleId, list);
-    }
-  }
-  const assignableRoles = allRoles.filter((r) => {
-    const perms = permsByRole.get(r.id) ?? [];
-    return perms.every((p) =>
-      callerPermissions.has(p as Parameters<typeof callerPermissions.has>[0]),
-    );
+  // Roles offered to this caller: what they could assign, plus what the person
+  // already holds (shown locked), per the Technical Lead's visibility policy.
+  // Replaces a filter that knew about permissions but not about rank.
+  const assignableRoles = await roleOptionsFor(caller, {
+    heldRoleIds: currentRoleRows.map((r) => r.roleId),
   });
 
   // Org options for the org dropdown (CR-06), when the caller can read them.

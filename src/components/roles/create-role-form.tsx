@@ -10,13 +10,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { PermissionsMatrix } from "@/components/roles/permissions-matrix";
 import { createRole } from "@/app/actions/roles";
 import type { Permission } from "@/lib/auth/permissions";
+import type { UndelegableDisplay } from "@/lib/auth/rank";
 
 type Props = {
   callerPermissions: Permission[];
   callerHasAll: boolean;
+  display: UndelegableDisplay;
 };
 
-export function CreateRoleForm({ callerPermissions, callerHasAll }: Props) {
+export function CreateRoleForm({
+  callerPermissions,
+  callerHasAll,
+  display,
+}: Props) {
   const router = useRouter();
   const tFields = useTranslations("roles.fields");
   const tCreate = useTranslations("roles.create");
@@ -76,6 +82,7 @@ export function CreateRoleForm({ callerPermissions, callerHasAll }: Props) {
           value={perms}
           callerPermissions={callerPermissions}
           callerHasAll={callerHasAll}
+          display={display}
           onChange={setPerms}
         />
       </div>

@@ -3,6 +3,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { getSetting } from "@/lib/settings";
+import { STAFF_ROLE_NAMES } from "@/lib/auth/rank";
 
 // Single source of truth for "is this ticket internal or external?".
 //
@@ -18,12 +19,7 @@ import { getSetting } from "@/lib/settings";
 // This avoids the failure mode where a Technician with a personal
 // gmail address has their tickets misclassified as external.
 
-const STAFF_ROLE_NAMES = new Set([
-  "Super Admin",
-  "IT Director",
-  "Coordinator",
-  "Technician",
-]);
+const STAFF_ROLES = new Set(STAFF_ROLE_NAMES);
 
 export type Stream = "internal" | "external";
 
@@ -41,7 +37,7 @@ export async function classifyStream(email: string): Promise<Stream> {
     .innerJoin(roles, eq(roles.id, userRoles.roleId))
     .where(eq(users.email, normalized));
   for (const row of matchedRoles) {
-    if (row.isActive && STAFF_ROLE_NAMES.has(row.name)) {
+    if (row.isActive && STAFF_ROLES.has(row.name)) {
       return "internal";
     }
   }

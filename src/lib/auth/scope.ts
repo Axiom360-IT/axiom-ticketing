@@ -7,12 +7,9 @@ import {
   isStrictCustomer,
   isStrictTechnician,
 } from "./can";
+import { ELEVATED_ROLE_NAMES } from "./rank";
 
-const ELEVATED_TICKET_ROLES = new Set([
-  "Super Admin",
-  "IT Director",
-  "Coordinator",
-]);
+const ELEVATED_TICKET_ROLES = new Set(ELEVATED_ROLE_NAMES);
 
 // Always exclude soft-deleted rows AND drafts (the latter are
 // in-progress submissions that haven't been confirmed yet, used

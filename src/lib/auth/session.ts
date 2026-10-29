@@ -1,11 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { db } from "../db/client";
+import { isUndefinedColumn } from "../db/pg-errors";
 import { users } from "../db/schema/auth";
 import { roles, rolePermissions, userRoles } from "../db/schema/rbac";
 import { auth } from "./index";
 import type { SessionUser } from "./can";
 import type { Permission } from "./permissions";
+import { rankOf } from "./rank";
 import {
   IMPERSONATION_COOKIE,
   verifyImpersonationToken,
@@ -25,8 +27,8 @@ export async function loadSessionUserById(
   userId: string,
 ): Promise<SessionUser | null> {
   if (!(await allUsersActive([userId]))) return null;
-  const { permissions, roleNames } = await loadEffectivePerms(userId);
-  return { id: userId, permissions, roleNames, isImpersonating: false };
+  const { permissions, roleNames, rank } = await loadEffectivePerms(userId);
+  return { id: userId, permissions, roleNames, rank, isImpersonating: false };
 }
 
 /**
@@ -46,15 +48,39 @@ async function allUsersActive(userIds: string[]): Promise<boolean> {
   return rows.length === ids.length;
 }
 
-async function loadEffectivePerms(
-  userId: string,
-): Promise<{ permissions: Set<Permission>; roleNames: Set<string> }> {
-  const roleRows = await db
-    .select({ name: roles.name, id: roles.id })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, userId));
+async function loadEffectivePerms(userId: string): Promise<{
+  permissions: Set<Permission>;
+  roleNames: Set<string>;
+  rank: number;
+}> {
+  // Every request passes through here, so this is the one place a deploy that
+  // lands BEFORE `pnpm db:add-role-rank` could take the whole site down: the
+  // column does not exist yet, so the select below throws for everyone. In
+  // that window, and only that window, read without it. `rankOf()` still
+  // floors a Super Admin at 1 by name, so nobody loses access. The fallback
+  // fires on SQLSTATE 42703 alone — any other failure is real and re-thrown.
+  let roleRows: { name: string; id: string; rank: number }[];
+  try {
+    roleRows = await db
+      .select({ name: roles.name, id: roles.id, rank: roles.rank })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, userId));
+  } catch (err) {
+    if (!isUndefinedColumn(err)) throw err;
+    roleRows = (
+      await db
+        .select({ name: roles.name, id: roles.id })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(eq(userRoles.userId, userId))
+    ).map((r) => ({ ...r, rank: 0 }));
+  }
   const roleNames = new Set(roleRows.map((r) => r.name));
+  const rank = rankOf({
+    rank: roleRows.reduce((max, r) => Math.max(max, r.rank), 0),
+    roleNames,
+  });
   const permRows =
     roleRows.length === 0
       ? []
@@ -70,7 +96,7 @@ async function loadEffectivePerms(
   const permissions = new Set(
     permRows.map((p) => p.permission as Permission),
   );
-  return { permissions, roleNames };
+  return { permissions, roleNames, rank };
 }
 
 /**
@@ -114,12 +140,14 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   // either the impersonator or their target ends the request.
   if (!(await allUsersActive([realUserId, effectiveUserId]))) return null;
 
-  const { permissions, roleNames } = await loadEffectivePerms(effectiveUserId);
+  const { permissions, roleNames, rank } =
+    await loadEffectivePerms(effectiveUserId);
 
   return {
     id: effectiveUserId,
     permissions,
     roleNames,
+    rank,
     isImpersonating: Boolean(imp),
   };
 }

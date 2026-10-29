@@ -29,6 +29,7 @@ import { audit } from "@/lib/audit";
 import { ForbiddenError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { inngest } from "@/inngest/client";
+import { STAFF_ROLE_NAMES } from "@/lib/auth/rank";
 
 const MAX_ROWS = 500;
 const DEFAULT_PHONE_COUNTRY = "US";
@@ -219,12 +220,7 @@ export async function previewCustomerImport(
     let status = r.status;
     let error = r.error;
     if (status === "valid" && existing) {
-      const INTERNAL_ROLE_NAMES = new Set([
-        "Super Admin",
-        "IT Director",
-        "Coordinator",
-        "Technician",
-      ]);
+      const INTERNAL_ROLE_NAMES = new Set(STAFF_ROLE_NAMES);
       const isStaff = existing.roleNames.some((n) => INTERNAL_ROLE_NAMES.has(n));
       status = isStaff ? "duplicate_existing_staff" : "duplicate_existing_customer";
       error = isStaff

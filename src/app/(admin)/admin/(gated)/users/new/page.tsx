@@ -2,11 +2,11 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateUserForm } from "@/components/users/create-user-form";
-import { listAllRoles } from "@/app/actions/users";
 import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { getSessionUser } from "@/lib/auth/session";
+import { roleOptionsFor } from "@/lib/roles/assignable";
 
 async function loadOrgOptions(user: Awaited<ReturnType<typeof getSessionUser>>) {
   if (
@@ -32,7 +32,7 @@ export default async function NewUserPage() {
 
   const t = await getTranslations("users.create");
   const [roles, organizations] = await Promise.all([
-    listAllRoles(),
+    roleOptionsFor(user),
     loadOrgOptions(user),
   ]);
 

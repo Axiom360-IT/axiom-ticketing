@@ -23,6 +23,7 @@ import { messages } from "@/lib/db/schema/messages";
 import { ticketParticipants } from "@/lib/db/schema/ticket-participants";
 import { tickets } from "@/lib/db/schema/tickets";
 import { customerVisibleMessages } from "@/lib/messages/visibility";
+import { STAFF_ROLE_NAMES } from "@/lib/auth/rank";
 
 export type CustomerTicketSummary = {
   id: string;
@@ -328,7 +329,7 @@ export async function listMyOrgColleagues(
     .limit(1);
   if (!me?.organizationId) return [];
 
-  const staffRoles = ["Super Admin", "IT Director", "Coordinator", "Technician"];
+  const staffRoles = [...STAFF_ROLE_NAMES];
 
   return db
     .selectDistinct({ id: users.id, name: users.name })

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
+import { Lock } from "lucide-react";
 import { DataTable } from "@/components/ui/data-table";
 import { RoleRowActions } from "@/components/roles/role-row-actions";
 
@@ -13,6 +14,11 @@ export type RoleRow = {
   description: string | null;
   isSystem: boolean;
   userCount: number;
+  /** May the viewer change this role (they strictly outrank it)? */
+  manageable: boolean;
+  /** Ranked above the viewer — only ever true under the `locked` policy, since
+   *  `hidden` drops such roles from the list entirely. */
+  locked: boolean;
 };
 
 export function RolesTable({
@@ -44,12 +50,20 @@ export function RolesTable({
           cellClassName: "px-4",
         },
         cell: ({ row }) => (
-          <Link
-            href={`/admin/roles/${row.original.id}`}
-            className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-          >
-            {row.original.name}
-          </Link>
+          <span className="inline-flex items-center gap-1.5">
+            <Link
+              href={`/admin/roles/${row.original.id}`}
+              className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              {row.original.name}
+            </Link>
+            {row.original.locked ? (
+              <Lock
+                className="size-3 text-amber-600 dark:text-amber-400"
+                aria-label={tCommon("restricted")}
+              />
+            ) : null}
+          </span>
         ),
       },
       {

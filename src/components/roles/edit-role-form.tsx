@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PermissionsMatrix } from "@/components/roles/permissions-matrix";
 import { deleteRole, updateRole } from "@/app/actions/roles";
 import type { Permission } from "@/lib/auth/permissions";
+import type { UndelegableDisplay } from "@/lib/auth/rank";
 
 type Props = {
   roleId: string;
@@ -22,8 +23,18 @@ type Props = {
   callerPermissions: Permission[];
   callerHasAll: boolean;
   canDelete: boolean;
-  /** Super Admin can edit system-role permissions (Meeting-2, CR-27). */
-  callerIsSuperAdmin: boolean;
+  display: UndelegableDisplay;
+  /**
+   * May the caller change this role AT ALL? False when the role is ranked at or
+   * above them (lib/auth/rank.ts): they can look, they cannot edit its name,
+   * description or permissions, and cannot delete it. Computed on the server;
+   * the server action refuses regardless, this only stops the form offering a
+   * save button that is certain to fail.
+   */
+  canEditRole: boolean;
+  /** …and its permission set, which also depends on the system-role rule
+   *  (Meeting-2, CR-27). */
+  canEditPermissions: boolean;
 };
 
 export function EditRoleForm({
@@ -32,7 +43,9 @@ export function EditRoleForm({
   callerPermissions,
   callerHasAll,
   canDelete,
-  callerIsSuperAdmin,
+  display,
+  canEditRole,
+  canEditPermissions,
 }: Props) {
   const router = useRouter();
   const tFields = useTranslations("roles.fields");
@@ -46,8 +59,7 @@ export function EditRoleForm({
   const [saving, setSaving] = useState(false);
   const [isDeletePending, startDelete] = useTransition();
 
-  // System-role permissions are editable only by a Super Admin (CR-27).
-  const permsLocked = initial.isSystem && !callerIsSuperAdmin;
+  const permsLocked = !canEditPermissions;
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -83,7 +95,11 @@ export function EditRoleForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      {initial.isSystem ? (
+      {!canEditRole ? (
+        <div className="text-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900 text-amber-800 dark:text-amber-300">
+          {tEdit("outranked")}
+        </div>
+      ) : initial.isSystem ? (
         <div className="text-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900 text-amber-800 dark:text-amber-300">
           {permsLocked ? tEdit("systemBadge") : tEdit("systemEditableBadge")}
         </div>
@@ -97,6 +113,7 @@ export function EditRoleForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={80}
+          disabled={!canEditRole}
         />
       </div>
 
@@ -108,6 +125,7 @@ export function EditRoleForm({
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
           maxLength={500}
+          disabled={!canEditRole}
         />
       </div>
 
@@ -118,6 +136,7 @@ export function EditRoleForm({
           callerPermissions={callerPermissions}
           callerHasAll={callerHasAll}
           readOnly={permsLocked}
+          display={display}
           onChange={setPerms}
         />
       </div>
@@ -132,7 +151,7 @@ export function EditRoleForm({
       ) : null}
 
       <div className="flex justify-between items-center gap-2">
-        {canDelete && !initial.isSystem ? (
+        {canDelete && canEditRole && !initial.isSystem ? (
           <Button
             type="button"
             variant="destructive"
@@ -152,9 +171,11 @@ export function EditRoleForm({
           >
             {tCommon("cancel")}
           </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? tEdit("saving") : tEdit("saveButton")}
-          </Button>
+          {canEditRole ? (
+            <Button type="submit" disabled={saving}>
+              {saving ? tEdit("saving") : tEdit("saveButton")}
+            </Button>
+          ) : null}
         </div>
       </div>
     </form>

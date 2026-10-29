@@ -24,12 +24,18 @@ import type { RuleTrigger } from "@/lib/rules/types";
 
 // ── Automation rules: CRUD ────────────────────────────────────────────
 //
-// Gated on `settings.update`, exactly as scheduled reports are, and for the
-// same reason: a rule decides who gets emailed and what happens to tickets,
-// which is the same blast radius as the settings it sits beside. Deliberately
-// NOT a new permission — a new one needs an explicit case in `can()` to dodge
-// the switch's `default: return true`, plus a migration script, because
-// `pnpm db:seed` no-ops on a live database.
+// Gated on its own `rules.manage` permission, NOT on `settings.update` as
+// scheduled reports are. A rule is more powerful than the person who writes
+// it: it can email arbitrary outside addresses and, in a later phase, change
+// any ticket. Borrowing `settings.update` would make that permission quietly
+// mean "can do anything to any ticket, via a rule".
+//
+// `rules.manage` needs no case in `can()`: it is a global gate with nothing to
+// scope, and falling through the switch's `default: return true` AFTER the
+// holder check is the intended behaviour here, as it is for settings.update.
+// It is blocked during impersonation, like the other configuration powers.
+// `pnpm db:add-technical-permissions` installs it on every role that already
+// held settings.update, so introducing it changes nobody's access.
 //
 // Re-auth is required to CREATE, CHANGE or DELETE a rule (adding a recipient
 // is how company data leaves the building) but NOT to pause one. Pausing is
@@ -42,7 +48,7 @@ export type RuleResult =
 async function requireOperator() {
   const caller = await requireSessionUser();
   if (
-    !(await can(caller, "settings.update", { type: "global" }, productionContext))
+    !(await can(caller, "rules.manage", { type: "global" }, productionContext))
   ) {
     throw new ForbiddenError();
   }

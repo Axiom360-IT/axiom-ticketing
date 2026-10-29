@@ -26,6 +26,7 @@ import {
   deescalateTicket,
   escalateTicket,
 } from "@/app/actions/tickets";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 const ESCALATION_REASONS = [
   "beyond_scope",
@@ -39,7 +40,7 @@ type EscalationReason = (typeof ESCALATION_REASONS)[number];
 // Upper-hierarchy roles a technician can escalate to (Meeting-2, CR-14).
 // Overridable so a deployment with extra elevated roles (e.g. "CTO") can
 // pass its own list from the server.
-const DEFAULT_ESCALATION_TARGETS = ["Coordinator", "IT Director", "Super Admin"];
+const DEFAULT_ESCALATION_TARGETS = ["Coordinator", "IT Director", SUPER_ADMIN_ROLE];
 
 type EscalateModalProps = {
   ticketId: string;

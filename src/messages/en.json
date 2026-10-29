@@ -70,7 +70,8 @@
     "openMenu": "Open menu",
     "deleteConfirmTitle": "Delete this item?",
     "deleteConfirmBody": "This action cannot be undone.",
-    "typeToConfirm": "Type {value} to confirm"
+    "typeToConfirm": "Type {value} to confirm",
+    "restricted": "Restricted"
   },
   "portal": {
     "guest": {
@@ -1125,7 +1126,8 @@
       "phoneOptional": "(optional)",
       "phonePlaceholder": "+14165550123",
       "phoneHint": "E.164 format. Receives SMS alerts (assignment, SLA breach, escalation).",
-      "roles": "Roles"
+      "roles": "Roles",
+      "roleLocked": "You can't grant or remove this role. Ask the Technical Lead."
     },
     "impersonate": {
       "button": "Impersonate",
@@ -1374,7 +1376,8 @@
       "saving": "Saving…",
       "deleteTitle": "Delete role {role}?",
       "deleteDescription": "Removes the role and its permission grants. Anyone holding the role must be reassigned first.",
-      "deleting": "Deleting…"
+      "deleting": "Deleting…",
+      "unavailable": "Not available."
     },
     "create": {
       "title": "Create role",
@@ -1394,7 +1397,8 @@
       "deleteConfirm": "Delete this role? This can't be undone.",
       "systemBadge": "System role — permissions are locked.",
       "systemEditableBadge": "System role — you're the Super Admin, so its permissions are editable.",
-      "permissionsTitle": "Permissions"
+      "permissionsTitle": "Permissions",
+      "outranked": "You can look at this role, but you can't change it."
     },
     "fields": {
       "name": "Name",
@@ -1406,8 +1410,11 @@
         "tickets": "Tickets",
         "procurement": "Procurement",
         "reports": "Reports",
+        "worklog": "Work log",
+        "organizations": "Organizations",
         "users": "Users",
         "roles": "Roles",
+        "rules": "Automation rules",
         "settings": "Settings",
         "audit": "Audit log",
         "mcp": "AI agent connector"
@@ -1416,19 +1423,19 @@
         "tickets": "Submit, assign, and resolve customer support requests.",
         "procurement": "Hardware and software purchase requests tied to tickets.",
         "reports": "Ticket health, SLA compliance, and procurement spend.",
+        "worklog": "Seeing everyone's logged time, not just your own.",
+        "organizations": "Client organizations and their contacts.",
         "users": "Staff and customer accounts.",
         "roles": "Custom roles and per-action permission grants.",
-        "settings": "SLA targets, business hours, email, and security knobs.",
+        "rules": "Rules that watch tickets and act on them without anyone pressing a button.",
+        "settings": "Business hours, SLA targets and notification routing, plus the technical settings behind them.",
         "audit": "Append-only record of every privileged action.",
         "mcp": "Connecting an AI agent (Claude or any other MCP-compatible tool) to this app."
       },
       "selectAll": "Grant all in this module",
       "selectedCount": "{selected} of {total} selected",
       "locked": "Locked",
-      "lockedTooltip": "You don't hold this permission yourself, so you can't grant it. Ask the Super Admin.",
-      "lockedHidden": "{count, plural, =1 {1 permission hidden — Locked} other {# permissions hidden — Locked}}",
-      "showLocked": "Show locked",
-      "hideLocked": "Hide locked",
+      "lockedTooltip": "You can't grant this. Ask the Technical Lead.",
       "label": {
         "tickets__view": "View tickets",
         "tickets__create": "Create tickets",
@@ -1470,8 +1477,11 @@
         "roles__create": "Create roles",
         "roles__update": "Update roles",
         "roles__delete": "Delete roles",
+        "rules__manage": "Manage automation rules",
         "settings__view": "View settings",
         "settings__update": "Update settings",
+        "settings__technical__view": "View technical settings",
+        "settings__technical__update": "Update technical settings",
         "audit__view": "View audit log",
         "audit__export": "Export audit log",
         "mcp__connect": "Connect an AI agent"
@@ -1517,12 +1527,16 @@
         "roles__create": "Define a new role.",
         "roles__update": "Edit role names, descriptions, and permission grants.",
         "roles__delete": "Remove a role (only when no users hold it).",
+        "rules__manage": "Write, switch on and delete rules that watch tickets and act on them. A rule can email people outside the company, so this is a separate grant from changing settings.",
         "settings__view": "Read system-wide configuration values.",
         "settings__update": "Change system-wide configuration values.",
+        "settings__technical__view": "Read the settings that can break the system if changed carelessly: rate limits, the virus scanner, email sender and inbound address, file limits and data retention.",
+        "settings__technical__update": "Change those settings.",
         "audit__view": "Read the append-only audit log.",
         "audit__export": "Export audit-log entries to CSV.",
         "mcp__connect": "Generate a personal access token to connect an AI agent to this app from the profile page."
-      }
+      },
+      "lockedForYou": "Locked"
     }
   },
   "settings": {
@@ -1778,6 +1792,14 @@
         "per_user_per_hour": "per user / hour",
         "per_user_per_day": "per user / day"
       }
+    },
+    "permissionDisplay": {
+      "title": "Permission visibility",
+      "description": "What an administrator sees for a permission or role they are not allowed to hand out. Only the Technical Lead can change this.",
+      "label": "When someone cannot grant it",
+      "hint": "Hidden shows nothing at all — no row, no count — so nobody asks for what they cannot see. Locked shows it greyed out, with who to ask.",
+      "hidden": "Hide it completely",
+      "locked": "Show it, greyed out"
     }
   },
   "audit": {

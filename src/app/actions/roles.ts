@@ -6,11 +6,20 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
+import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
 import {
   ALL_PERMISSIONS,
   PERMISSIONS,
   type Permission,
 } from "@/lib/auth/permissions";
+import { canManageRank, rankOf } from "@/lib/auth/rank";
+import {
+  loadRoleForAuthority,
+  roleDeleteRefusal,
+  roleUpdateRefusal,
+} from "@/lib/auth/role-authority";
+import { getUndelegableDisplay } from "@/lib/auth/undelegable-display";
+import { loadRoleDetail } from "@/lib/roles/detail";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import {
@@ -29,19 +38,6 @@ function asPermissions(input: string[]): Permission[] {
   return input.filter((p): p is Permission =>
     PERMISSION_SET.has(p as Permission),
   );
-}
-
-function permissionsBeyondCaller(
-  requested: Set<Permission>,
-  callerPermissions: Set<Permission>,
-): Permission[] {
-  const callerIsAll = ALL_PERMISSIONS.every((p) => callerPermissions.has(p));
-  if (callerIsAll) return [];
-  const out: Permission[] = [];
-  for (const p of requested) {
-    if (!callerPermissions.has(p)) out.push(p);
-  }
-  return out;
 }
 
 // ── createRole ─────────────────────────────────────────────────────
@@ -144,49 +140,26 @@ export async function updateRole(
     throw new ForbiddenError();
   }
 
-  const [role] = await db
-    .select({
-      id: roles.id,
-      name: roles.name,
-      description: roles.description,
-      isSystem: roles.isSystem,
-    })
-    .from(roles)
-    .where(eq(roles.id, roleId))
-    .limit(1);
+  const role = await loadRoleForAuthority(roleId);
   if (!role) throw new NotFoundError();
 
-  // System roles: the permission set is locked for everyone EXCEPT the
-  // Super Admin (Meeting-2, CR-27 — "even the system roles should be editable
-  // by the system admin"). Name + description stay editable by anyone with
-  // roles.update. Deletion of system roles remains blocked for all.
-  if (
-    role.isSystem &&
-    parsed.data.permissions !== undefined &&
-    !caller.roleNames.has("Super Admin")
-  ) {
-    return {
-      ok: false,
-      error: "Only the Super Admin can change a system role's permissions.",
-    };
-  }
+  // One shared decision for this action and the MCP tool: rank (you may only
+  // change a role you strictly outrank), the system-role rule, and the
+  // permission DELTA — see lib/auth/role-authority.ts.
+  const requested = parsed.data.permissions
+    ? asPermissions(parsed.data.permissions)
+    : undefined;
+  const refusal = await roleUpdateRefusal(caller, role, requested);
+  if (refusal) return { ok: false, error: refusal };
 
-  if (parsed.data.permissions) {
-    const requested = new Set(asPermissions(parsed.data.permissions));
-    const beyond = permissionsBeyondCaller(requested, caller.permissions);
-    if (beyond.length > 0) {
-      return {
-        ok: false,
-        error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
-      };
-    }
+  if (requested) {
     await transactional(async (tx) => {
       await tx
         .delete(rolePermissions)
         .where(eq(rolePermissions.roleId, roleId));
-      if (requested.size > 0) {
+      if (requested.length > 0) {
         await tx.insert(rolePermissions).values(
-          [...requested].map((p) => ({ roleId, permission: p })),
+          [...new Set(requested)].map((p) => ({ roleId, permission: p })),
         );
       }
     });
@@ -227,12 +200,10 @@ export async function deleteRole(
   if (!(await can(caller, "roles.delete", { type: "global" }, productionContext))) {
     throw new ForbiddenError();
   }
-  const [role] = await db
-    .select({ id: roles.id, name: roles.name, isSystem: roles.isSystem })
-    .from(roles)
-    .where(eq(roles.id, roleId))
-    .limit(1);
+  const role = await loadRoleForAuthority(roleId);
   if (!role) throw new NotFoundError();
+  const refusal = roleDeleteRefusal(caller, role);
+  if (refusal) return { ok: false, error: refusal };
   if (role.isSystem) {
     return { ok: false, error: "System roles can't be deleted." };
   }
@@ -269,6 +240,17 @@ export async function deleteRole(
 }
 
 // ── Read helpers ───────────────────────────────────────────────────
+//
+// Both readers apply the Technical Lead's visibility policy
+// (`permissions.undelegable_display`), and they apply it HERE rather than in
+// the component, because these are server actions a browser can call directly:
+// filtering only on the client would hide a role from the screen and still
+// hand it over the wire.
+//
+//   hidden (default)  a role ranked above the caller does not exist as far as
+//                     they can tell, and a role they CAN see lists only the
+//                     permissions they themselves hold
+//   locked            everything is returned, flagged so the UI can grey it out
 
 export async function listRolesForAdmin() {
   const caller = await requireSessionUser();
@@ -276,34 +258,46 @@ export async function listRolesForAdmin() {
     throw new ForbiddenError();
   }
 
+  const callerRank = rankOf(caller);
+  const display = await getUndelegableDisplay();
+
   const allRoles = await db
     .select({
       id: roles.id,
       name: roles.name,
       description: roles.description,
       isSystem: roles.isSystem,
+      rank: roles.rank,
     })
     .from(roles)
     .orderBy(roles.name);
 
+  const visible = allRoles.filter(
+    (r) => display === "locked" || r.rank <= callerRank,
+  );
+
   const counts = new Map<string, number>();
-  if (allRoles.length > 0) {
+  if (visible.length > 0) {
     const rows = await db
       .select({ roleId: userRoles.roleId, value: count() })
       .from(userRoles)
       .where(
         inArray(
           userRoles.roleId,
-          allRoles.map((r) => r.id),
+          visible.map((r) => r.id),
         ),
       )
       .groupBy(userRoles.roleId);
     for (const r of rows) counts.set(r.roleId, Number(r.value));
   }
 
-  return allRoles.map((r) => ({
+  return visible.map(({ rank, ...r }) => ({
     ...r,
     userCount: counts.get(r.id) ?? 0,
+    // May THIS caller change it? Drives whether the row offers edit/delete.
+    manageable: canManageRank(callerRank, rank),
+    // Ranked above the caller: shown greyed out (locked mode only).
+    locked: rank > callerRank,
   }));
 }
 
@@ -312,23 +306,20 @@ export async function getRoleDetail(roleId: string) {
   if (!(await can(caller, "roles.view", { type: "global" }, productionContext))) {
     throw new ForbiddenError();
   }
-  const [role] = await db
-    .select({
-      id: roles.id,
-      name: roles.name,
-      description: roles.description,
-      isSystem: roles.isSystem,
-    })
-    .from(roles)
-    .where(eq(roles.id, roleId))
-    .limit(1);
-  if (!role) return null;
-  const perms = await db
-    .select({ permission: rolePermissions.permission })
-    .from(rolePermissions)
-    .where(eq(rolePermissions.roleId, roleId));
-  return {
-    ...role,
-    permissions: perms.map((p) => p.permission as Permission),
-  };
+  const detail = await loadRoleDetail(roleId);
+  if (!detail) return null;
+
+  const display = await getUndelegableDisplay();
+  if (display === "hidden") {
+    // A role above the caller does not exist as far as they can tell.
+    if (detail.rank > rankOf(caller)) return null;
+    // And they see only the permissions they could themselves hand out.
+    const callerHasAll = ALL_PERMISSIONS.every((p) => caller.permissions.has(p));
+    if (!callerHasAll) {
+      detail.permissions = detail.permissions.filter((p) =>
+        caller.permissions.has(p),
+      );
+    }
+  }
+  return detail;
 }

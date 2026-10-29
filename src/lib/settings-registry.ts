@@ -253,6 +253,15 @@ export const SETTING_SCHEMAS = {
       (v) => v === "" || /^https?:\/\//i.test(v),
       "Must be empty or start with http(s)://",
     ),
+
+  // ── Permission delegation ──────────────────────────────────────────
+  // What a restricted admin sees for a permission or role they are not
+  // allowed to hand out. `hidden` (the default) shows nothing at all — no
+  // row, no count, no "show locked" link — because a capability people can
+  // see but not have is a capability they will ask for. `locked` shows it
+  // greyed out with the name of who to ask. Technical tier, so only the
+  // Technical Lead can change it.
+  "permissions.undelegable_display": z.enum(["hidden", "locked"]),
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
@@ -264,6 +273,130 @@ export const SETTING_KEYS = Object.keys(SETTING_SCHEMAS) as SettingKey[];
 
 export function isValidSettingKey(k: string): k is SettingKey {
   return Object.prototype.hasOwnProperty.call(SETTING_SCHEMAS, k);
+}
+
+// ── Tiers ─────────────────────────────────────────────────────────────
+//
+// Which side of the line each setting is on. This is what `settings.update`
+// could not express while it was ONE permission for every key: business hours
+// and the virus-scanner endpoint were the same switch.
+//
+//   business   what an operations lead changes — hours, SLA targets, holidays,
+//              who gets alerted, email wording, billing, follow-up cadence
+//   technical  what breaks the system if changed carelessly — rate limits,
+//              the scanner, the sender and inbound email addresses, file
+//              limits, retention, the rule engine's internals
+//
+// A TYPED, EXHAUSTIVE record, deliberately. `satisfies Record<SettingKey, …>`
+// makes TypeScript refuse to compile a setting that has not been placed on a
+// side, so a new key cannot quietly default into the weaker tier.
+export type SettingTier = "business" | "technical";
+
+export const SETTING_TIERS = {
+  // business hours + SLA
+  "business_hours.timezone": "business",
+  "business_hours.start_hour": "business",
+  "business_hours.end_hour": "business",
+  "business_hours.working_days": "business",
+  "sla.critical.response_minutes": "business",
+  "sla.critical.resolve_minutes": "business",
+  "sla.critical.respect_business_hours": "business",
+  "sla.high.response_minutes": "business",
+  "sla.high.resolve_minutes": "business",
+  "sla.high.respect_business_hours": "business",
+  "sla.medium.response_minutes": "business",
+  "sla.medium.resolve_minutes": "business",
+  "sla.medium.respect_business_hours": "business",
+  "sla.low.response_minutes": "business",
+  "sla.low.resolve_minutes": "business",
+  "sla.low.respect_business_hours": "business",
+  "sla.breach_notify_roles": "business",
+  "sla.breach_repeat_hours": "business",
+  "sla.warning_notify_roles": "business",
+  // tickets + email policy
+  internal_email_domains: "business",
+  customer_response_window_hours: "business",
+  inbound_sender_allowlist_only: "business",
+  inbound_moderation_enabled: "business",
+  inbound_harvest_cc: "business",
+  procurement_approval_threshold: "business",
+  // automation switches an operator turns on and off
+  "unassigned_alert.enabled": "business",
+  "auto_close.enabled": "business",
+  "monthly_plan_reset.enabled": "business",
+  "scheduled_reports.enabled": "business",
+  "unassigned_alert.threshold_minutes": "business",
+  "unassigned_alert.repeat_minutes": "business",
+  "customer_followup.enabled": "business",
+  "customer_followup.daily": "business",
+  "customer_followup.followup_days": "business",
+  "customer_followup.close_days": "business",
+  "customer_followup.max_reminders": "business",
+  "customer_invite.expiry_hours": "business",
+  "customer_sms.enabled": "business",
+  // billing + branding
+  "billing.accountant_emails": "business",
+  "billing.accountant_phones": "business",
+  "billing.superadmin_receive_copy": "business",
+  branding: "business",
+
+  // technical — email identity and routing
+  support_email: "technical",
+  inbound_email_domain: "technical",
+  default_sender_name: "technical",
+  default_sender_email: "technical",
+  // technical — rate limits
+  "rate_limits.public_submit": "technical",
+  "rate_limits.login": "technical",
+  "rate_limits.password_reset": "technical",
+  "rate_limits.guest_portal": "technical",
+  "rate_limits.authenticated.create_ticket": "technical",
+  "rate_limits.authenticated.reply": "technical",
+  "rate_limits.authenticated.internal_note": "technical",
+  "rate_limits.authenticated.escalate": "technical",
+  "rate_limits.authenticated.create_proc": "technical",
+  "rate_limits.authenticated.create_user": "technical",
+  "rate_limits.authenticated.create_role": "technical",
+  "rate_limits.authenticated.update_setting": "technical",
+  // technical — files and scanning
+  "file_upload.max_size_bytes": "technical",
+  "file_upload.max_files_per_message": "technical",
+  "file_upload.allowed_mime_types": "technical",
+  "virus_scan.enabled": "technical",
+  "virus_scan.provider": "technical",
+  "virus_scan.endpoint": "technical",
+  // technical — retention and the rule engine
+  "housekeeping.enabled": "technical",
+  "housekeeping.run_history_days": "technical",
+  "rules.enabled": "technical",
+  "rules.drain_batch": "technical",
+  "rules.event_retention_days": "technical",
+  "rules.log_retention_days": "technical",
+  // technical — who may see what, so it must not be changeable by those it
+  // restricts
+  "permissions.undelegable_display": "technical",
+} as const satisfies Record<SettingKey, SettingTier>;
+
+export function settingTier(key: SettingKey): SettingTier {
+  return SETTING_TIERS[key];
+}
+
+/** The permission needed to READ this key. */
+export function settingViewPermission(
+  key: SettingKey,
+): "settings.view" | "settings.technical.view" {
+  return SETTING_TIERS[key] === "technical"
+    ? "settings.technical.view"
+    : "settings.view";
+}
+
+/** The permission needed to CHANGE this key. */
+export function settingUpdatePermission(
+  key: SettingKey,
+): "settings.update" | "settings.technical.update" {
+  return SETTING_TIERS[key] === "technical"
+    ? "settings.technical.update"
+    : "settings.update";
 }
 
 // Settings whose value is non-mutable after first set (per spec). The UI

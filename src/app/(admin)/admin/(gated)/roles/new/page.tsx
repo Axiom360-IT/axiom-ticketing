@@ -9,6 +9,7 @@ import {
   type Permission,
 } from "@/lib/auth/permissions";
 import { getSessionUser } from "@/lib/auth/session";
+import { getUndelegableDisplay } from "@/lib/auth/undelegable-display";
 
 export async function generateMetadata() {
   const t = await getTranslations("roles.create");
@@ -28,6 +29,7 @@ export default async function NewRolePage() {
   const callerHasAll = ALL_PERMISSIONS.every((p) => user.permissions.has(p));
 
   const t = await getTranslations("roles.create");
+  const display = await getUndelegableDisplay();
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -45,6 +47,7 @@ export default async function NewRolePage() {
           <CreateRoleForm
             callerPermissions={callerPermissions}
             callerHasAll={callerHasAll}
+            display={display}
           />
         </CardContent>
       </Card>

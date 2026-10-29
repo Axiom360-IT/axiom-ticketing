@@ -1,36 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronRight, Lock } from "lucide-react";
-import { PERMISSIONS, type Permission } from "@/lib/auth/permissions";
+import type { Permission } from "@/lib/auth/permissions";
+import {
+  PERMISSION_MODULES,
+  type PermissionModule,
+  permissionsByModule,
+} from "@/lib/auth/permission-modules";
+import type { UndelegableDisplay } from "@/lib/auth/rank";
 import { cn } from "@/lib/utils";
 
-// Group every permission by its dotted prefix. The order here determines
-// the display order of expandable sections.
-const MODULE_ORDER = [
-  "tickets",
-  "procurement",
-  "reports",
-  "users",
-  "roles",
-  "settings",
-  "audit",
-  "mcp",
-] as const;
-type Module = (typeof MODULE_ORDER)[number];
-
-function groupedByModule(): Record<Module, Permission[]> {
-  const out = {} as Record<Module, Permission[]>;
-  for (const m of MODULE_ORDER) out[m] = [];
-  for (const p of PERMISSIONS) {
-    const [m] = p.split(".");
-    if ((MODULE_ORDER as readonly string[]).includes(m)) {
-      out[m as Module].push(p);
-    }
-  }
-  return out;
-}
+// The groups, and their order, come from lib/auth/permission-modules.ts so a
+// test can assert that EVERY permission lands in one. This component used to
+// keep its own list of eight, which left `organizations.*` and
+// `worklog.view_all` in no group at all — never rendered, so never delegable.
+type Module = PermissionModule;
 
 type Props = {
   /** Permissions currently selected on the role being edited. */
@@ -41,6 +27,14 @@ type Props = {
   callerHasAll: boolean;
   /** Whether to render in read-only mode (system role / no edit perm). */
   readOnly?: boolean;
+  /**
+   * What to do with a permission the caller cannot delegate — the Technical
+   * Lead's policy (`permissions.undelegable_display`):
+   *   hidden  leave it out entirely: no row, and no count or "show locked"
+   *           link, because either would tell the viewer it exists
+   *   locked  show it greyed out, with who to ask
+   */
+  display: UndelegableDisplay;
   onChange: (next: Permission[]) => void;
 };
 
@@ -49,6 +43,7 @@ export function PermissionsMatrix({
   callerPermissions,
   callerHasAll,
   readOnly = false,
+  display,
   onChange,
 }: Props) {
   const t = useTranslations("roles.matrix");
@@ -67,19 +62,29 @@ export function PermissionsMatrix({
     "roles.matrix.moduleDescription",
   ) as unknown as (key: string) => string;
 
-  const groups = useMemo(() => groupedByModule(), []);
+  const groups = useMemo(() => permissionsByModule(), []);
   const callerSet = useMemo(
     () => new Set(callerPermissions),
     [callerPermissions],
   );
   const valueSet = useMemo(() => new Set(value), [value]);
 
-  const [showLockedFor, setShowLockedFor] = useState<Set<Module>>(new Set());
-
   function isLocked(p: Permission): boolean {
     if (readOnly) return true;
     if (callerHasAll) return false;
     return !callerSet.has(p);
+  }
+
+  /** Does the caller hold it — i.e. could they hand it out? */
+  function heldByCaller(p: Permission): boolean {
+    return callerHasAll || callerSet.has(p);
+  }
+
+  // Under `hidden`, a permission the caller does not hold is not rendered, in
+  // edit mode OR read-only mode. Its checkbox state still lives in `value`, so
+  // saving the role resubmits it untouched rather than silently stripping it.
+  function isShown(p: Permission): boolean {
+    return display === "locked" || heldByCaller(p);
   }
 
   function toggle(p: Permission, on: boolean) {
@@ -103,37 +108,22 @@ export function PermissionsMatrix({
     onChange([...set]);
   }
 
-  function toggleShowLocked(module: Module) {
-    setShowLockedFor((prev) => {
-      const next = new Set(prev);
-      if (next.has(module)) next.delete(module);
-      else next.add(module);
-      return next;
-    });
-  }
-
   return (
     <div className="space-y-3">
-      {MODULE_ORDER.map((m) => {
-        const perms = groups[m];
+      {PERMISSION_MODULES.map((m) => {
+        // Only what the policy lets this viewer see. Counts are taken over
+        // THIS list, never the module's full one: "3 of 9 selected" over a
+        // module that hides 4 of the 9 would announce that the 4 exist.
+        const perms = groups[m].filter(isShown);
+        // A module with nothing visible is not rendered at all — an empty
+        // "Automation rules" section would be the same announcement.
         if (perms.length === 0) return null;
 
         const grantable = perms.filter((p) => !isLocked(p));
-        const locked = perms.filter((p) => isLocked(p));
         const allOn =
           grantable.length > 0 && grantable.every((p) => valueSet.has(p));
         const someOn = grantable.some((p) => valueSet.has(p));
-        const showingLocked = showLockedFor.has(m);
-        // Read-only mode (system roles, or non-editor viewers) needs to
-        // SHOW every permission so the body isn't empty — `isLocked()`
-        // returns true for every permission when readOnly, which would
-        // otherwise leave `grantable` empty and the accordion looking
-        // blank. We render the full list as disabled inputs instead.
-        const visiblePerms = readOnly
-          ? perms
-          : showingLocked
-            ? perms
-            : grantable;
+        const visiblePerms = perms;
         const selectedCount = perms.filter((p) => valueSet.has(p)).length;
 
         return (
@@ -253,24 +243,6 @@ export function PermissionsMatrix({
                     </li>
                   );
                 })}
-                {/* Locked footer — explains hidden count + toggle. */}
-                {!readOnly && locked.length > 0 ? (
-                  <li className="px-3 py-2 bg-zinc-50/60 dark:bg-zinc-900/60 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Lock className="size-3" aria-hidden="true" />
-                      {showingLocked
-                        ? t("lockedTooltip")
-                        : t("lockedHidden", { count: locked.length })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleShowLocked(m)}
-                      className="text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      {showingLocked ? t("hideLocked") : t("showLocked")}
-                    </button>
-                  </li>
-                ) : null}
               </ul>
           </details>
         );

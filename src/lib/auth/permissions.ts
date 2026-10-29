@@ -73,9 +73,26 @@ export const PERMISSIONS = [
   "roles.update",
   "roles.delete",
 
-  // Settings
+  // Automation rules. Its own permission rather than a reading of
+  // `settings.update`, because a rule is more powerful than the person who
+  // writes it: it can email arbitrary outside addresses and, in a later
+  // phase, change any ticket. `settings.update` should not quietly mean "can
+  // do anything to any ticket, via a rule".
+  "rules.manage",
+
+  // Settings. Two tiers, decided per key in lib/settings-registry.ts:
+  //   business   hours, SLA targets, holidays, notification routing, email
+  //              wording, billing — what an operations lead changes
+  //   technical  rate limits, the virus scanner, inbound/sender email, file
+  //              limits, retention, rule-engine internals — what breaks the
+  //              system if changed carelessly
+  // The technical pair is installed onto every role that already held
+  // settings.* (pnpm db:add-technical-permissions), so introducing the split
+  // changes nobody's access; the Technical Lead then prunes it deliberately.
   "settings.view",
   "settings.update",
+  "settings.technical.view",
+  "settings.technical.update",
 
   // Audit Log
   "audit.view",

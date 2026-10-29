@@ -19,6 +19,7 @@ import {
   IT_DIRECTOR_PERMISSIONS,
   TECHNICIAN_PERMISSIONS,
 } from "../auth/permissions";
+import { RANK, SUPER_ADMIN_ROLE } from "../auth/rank";
 import { db } from "./client";
 import { rolePermissions, roles } from "./schema/rbac";
 import { settings } from "./schema/settings";
@@ -388,6 +389,11 @@ async function seed() {
         name: r.name,
         description: r.description,
         isSystem: true,
+        // So a fresh install agrees with a migrated one: the roles table and
+        // the session must give the same answer about who outranks whom.
+        // (`rankOf` floors a Super Admin at 1 by name regardless, but the
+        // role-assignment check reads THIS column.)
+        rank: r.name === SUPER_ADMIN_ROLE ? RANK.SUPER_ADMIN : RANK.STAFF,
       })),
     )
     .returning();

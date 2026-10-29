@@ -2,14 +2,18 @@
 
 import { useMemo } from "react";
 import { Combobox } from "@base-ui/react/combobox";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Lock, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Searchable multi-select for picking roles. Scales to hundreds of
 // options — chips render inline with the search input, the popup is
 // virtualized by Base UI's filter, and keyboard nav comes for free.
 
-export type RoleOption = { id: string; name: string };
+/** `locked` = the caller cannot grant or remove this role. Shown disabled under
+ *  the Technical Lead's `locked` policy; under `hidden` it is not sent at all,
+ *  except for a role the person being edited already holds (see
+ *  lib/roles/assignable.ts). */
+export type RoleOption = { id: string; name: string; locked?: boolean };
 
 type Props = {
   roles: RoleOption[];
@@ -21,6 +25,8 @@ type Props = {
   placeholder?: string;
   /** Empty-state message when the search filters out all roles. */
   emptyMessage?: string;
+  /** Tooltip for a locked role — who to ask. */
+  lockedTitle?: string;
 };
 
 export function RoleMultiSelect({
@@ -30,11 +36,13 @@ export function RoleMultiSelect({
   disabled = false,
   placeholder = "Search roles…",
   emptyMessage = "No roles match your search.",
+  lockedTitle,
 }: Props) {
   // Combobox items use { value, label } shape so Base UI's default
   // itemToString helpers pick up labels for filtering and chips.
   const items = useMemo(
-    () => roles.map((r) => ({ value: r.id, label: r.name })),
+    () =>
+      roles.map((r) => ({ value: r.id, label: r.name, locked: Boolean(r.locked) })),
     [roles],
   );
 
@@ -63,12 +71,21 @@ export function RoleMultiSelect({
             className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-blue-600 text-white text-xs font-medium"
           >
             <span>{it.label}</span>
-            <Combobox.ChipRemove
-              aria-label={`Remove ${it.label}`}
-              className="inline-flex items-center justify-center rounded-full hover:bg-blue-700 size-4"
-            >
-              <X className="size-3" aria-hidden="true" />
-            </Combobox.ChipRemove>
+            {it.locked ? (
+              // Held but not removable by this caller. No remove button, and a
+              // lock saying so, rather than a button that is certain to fail.
+              <Lock
+                className="size-3 mr-1 opacity-80"
+                aria-label={lockedTitle}
+              />
+            ) : (
+              <Combobox.ChipRemove
+                aria-label={`Remove ${it.label}`}
+                className="inline-flex items-center justify-center rounded-full hover:bg-blue-700 size-4"
+              >
+                <X className="size-3" aria-hidden="true" />
+              </Combobox.ChipRemove>
+            )}
           </Combobox.Chip>
         ))}
         <Combobox.Input
@@ -97,11 +114,14 @@ export function RoleMultiSelect({
               {emptyMessage}
             </Combobox.Empty>
             <Combobox.List>
-              {(item: { value: string; label: string }) => (
+              {(item: { value: string; label: string; locked: boolean }) => (
                 <Combobox.Item
                   key={item.value}
                   value={item}
+                  disabled={item.locked}
+                  title={item.locked ? lockedTitle : undefined}
                   className={cn(
+                    item.locked && "opacity-50 cursor-not-allowed",
                     "flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm cursor-pointer outline-none select-none",
                     "data-highlighted:bg-zinc-100 dark:data-highlighted:bg-zinc-800",
                     "data-[selected]:font-medium",
@@ -111,6 +131,9 @@ export function RoleMultiSelect({
                     <Check className="size-4" aria-hidden="true" />
                   </Combobox.ItemIndicator>
                   <span className="flex-1">{item.label}</span>
+                  {item.locked ? (
+                    <Lock className="size-3.5 text-zinc-400" aria-hidden="true" />
+                  ) : null}
                 </Combobox.Item>
               )}
             </Combobox.List>

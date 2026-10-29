@@ -6,6 +6,7 @@ import { organizations } from "@/lib/db/schema/organizations";
 import { roles } from "@/lib/db/schema/rbac";
 import { ticketCategories } from "@/lib/db/schema/ticket-categories";
 import { ticketTypes } from "@/lib/db/schema/ticket-types";
+import { isUndefinedTable } from "@/lib/db/pg-errors";
 import { changeFeedBacklog } from "./changefeed";
 import { type ClientCatalog, clientCatalog } from "./catalog";
 import { describeRule, type RefNames } from "./describe";
@@ -133,7 +134,7 @@ export async function loadRulesPanelSafe(): Promise<
   try {
     return { installed: true, panel: await loadRulesPanel() };
   } catch (err) {
-    if (isMissingTable(err)) {
+    if (isUndefinedTable(err)) {
       return {
         installed: false,
         reason: "The rule engine is not installed on this database yet.",
@@ -141,21 +142,6 @@ export async function loadRulesPanelSafe(): Promise<
     }
     throw err;
   }
-}
-
-/** Postgres 42P01 — undefined_table. Checked by code, not by message text,
- *  so it survives a locale or wording change in the driver. */
-function isMissingTable(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const code = (err as { code?: unknown }).code;
-  if (code === "42P01") return true;
-  // The neon-http driver wraps the original; check one level down.
-  const cause = (err as { cause?: unknown }).cause;
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    (cause as { code?: unknown }).code === "42P01"
-  );
 }
 
 export async function loadRulesPanel(): Promise<RulesPanel> {

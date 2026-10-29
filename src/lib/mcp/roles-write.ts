@@ -6,6 +6,7 @@ import { can, type SessionUser } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import { PERMISSIONS, type Permission } from "@/lib/auth/permissions";
 import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
+import { roleDeleteRefusal, roleUpdateRefusal } from "@/lib/auth/role-authority";
 import { db, transactional } from "@/lib/db/client";
 import { rolePermissions, roles, userRoles } from "@/lib/db/schema/rbac";
 
@@ -21,7 +22,7 @@ type Result = { ok: true; [k: string]: unknown } | { ok: false; error: string };
 
 async function findRoleByName(name: string) {
   const [row] = await db
-    .select({ id: roles.id, name: roles.name, isSystem: roles.isSystem })
+    .select({ id: roles.id, name: roles.name, isSystem: roles.isSystem, rank: roles.rank })
     .from(roles)
     .where(eq(roles.name, name))
     .limit(1);
@@ -79,20 +80,18 @@ export async function updateRoleViaMcp(
   const role = await findRoleByName(roleName);
   if (!role) return { ok: false, error: `No role found named "${roleName}".` };
 
-  if (role.isSystem && changes.permissions !== undefined && !user.roleNames.has("Super Admin")) {
-    return { ok: false, error: "Only the Super Admin can change a system role's permissions." };
-  }
+  // The same shared decision the admin UI's action asks — rank, the
+  // system-role rule and the permission delta — so this path cannot drift from
+  // it. See lib/auth/role-authority.ts.
+  const requested = changes.permissions ? asPermissions(changes.permissions) : undefined;
+  const refusal = await roleUpdateRefusal(user, role, requested);
+  if (refusal) return { ok: false, error: refusal };
 
-  if (changes.permissions) {
-    const requested = new Set(asPermissions(changes.permissions));
-    const beyond = permissionsBeyondCaller(requested, user.permissions);
-    if (beyond.length > 0) {
-      return { ok: false, error: `You can't grant permissions you don't hold: ${beyond.join(", ")}` };
-    }
+  if (requested) {
     await transactional(async (tx) => {
       await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, role.id));
-      if (requested.size > 0) {
-        await tx.insert(rolePermissions).values([...requested].map((p) => ({ roleId: role.id, permission: p })));
+      if (requested.length > 0) {
+        await tx.insert(rolePermissions).values([...new Set(requested)].map((p) => ({ roleId: role.id, permission: p })));
       }
     });
   }
@@ -127,6 +126,8 @@ export async function deleteRoleViaMcp(user: SessionUser, roleName: string): Pro
   }
   const role = await findRoleByName(roleName);
   if (!role) return { ok: false, error: `No role found named "${roleName}".` };
+  const refusal = roleDeleteRefusal(user, role);
+  if (refusal) return { ok: false, error: refusal };
   if (role.isSystem) return { ok: false, error: "System roles can't be deleted." };
 
   const [{ value: assigned }] = await db.select({ value: count() }).from(userRoles).where(eq(userRoles.roleId, role.id));

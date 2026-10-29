@@ -1,7 +1,9 @@
 import { and, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
+import { STAFF_ROLE_NAMES } from "@/lib/auth/rank";
 import { getSessionUser } from "@/lib/auth/session";
+import { visibleRoleRankCeiling } from "@/lib/roles/assignable";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
@@ -14,14 +16,9 @@ export const runtime = "nodejs";
 const EXPORT_CAP = 10000;
 
 // Mirrors /admin/users' "internal" audience partition (anyone holding one of
-// these roles is internal staff; everyone else is external). Kept in sync with
-// INTERNAL_ROLE_NAMES in src/app/actions/users.ts.
-const INTERNAL_ROLE_NAMES = [
-  "Super Admin",
-  "IT Director",
-  "Coordinator",
-  "Technician",
-];
+// these roles is internal staff; everyone else is external). One list for the
+// whole app now: lib/auth/rank.ts.
+const INTERNAL_ROLE_NAMES = STAFF_ROLE_NAMES;
 
 function fmt(d: Date | null): string {
   return d ? d.toISOString().slice(0, 16).replace("T", " ") : "—";
@@ -63,11 +60,17 @@ export async function GET(request: Request): Promise<Response> {
             ? "all"
             : "internal";
 
+  // Same visibility policy as the screen: under `hidden`, roles ranked above
+  // the viewer are left out of the aggregated names.
+  const rankCeiling = await visibleRoleRankCeiling(user);
+  const rankClause =
+    rankCeiling === null ? sql`` : sql` and r.rank <= ${rankCeiling}`;
+
   // Correlated to the OUTER users row — qualify with the real table name so the
   // reference can't bind to the subquery's own tables.
   const rolesText = sql<
     string | null
-  >`(select string_agg(r.name, ', ' order by r.name) from user_roles r_ur join roles r on r.id = r_ur.role_id where r_ur.user_id = "users"."id")`;
+  >`(select string_agg(r.name, ', ' order by r.name) from user_roles r_ur join roles r on r.id = r_ur.role_id where r_ur.user_id = "users"."id"${rankClause})`;
   const internalIn = sql.join(
     INTERNAL_ROLE_NAMES.map((n) => sql`${n}`),
     sql`, `,

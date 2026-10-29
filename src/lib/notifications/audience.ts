@@ -1,4 +1,5 @@
 import type { NotificationEventType } from "@/inngest/client";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // ── Role-based notification matrix (req 6.4) ─────────────────────────
 //
@@ -83,7 +84,7 @@ const MANAGEMENT_EVENT_TYPES = [
   "procurement.submitted",
 ] as const satisfies readonly NotificationEventType[];
 
-const MANAGEMENT_ROLES = ["Coordinator", "IT Director", "Super Admin"] as const;
+const MANAGEMENT_ROLES = ["Coordinator", "IT Director", SUPER_ADMIN_ROLE] as const;
 
 /** Always-CC oversight roles: Coordinator + Super Admin now receive every
  *  staff-facing event, not just the events that already broadcast to the
@@ -91,7 +92,7 @@ const MANAGEMENT_ROLES = ["Coordinator", "IT Director", "Super Admin"] as const;
  *  narrower, explicit ask (see DECISIONS.md). Used at dispatch call sites
  *  that previously only reached one role or reached a role conditionally
  *  (e.g. "only when unassigned"). */
-export const OVERSIGHT_ROLES = ["Coordinator", "Super Admin"] as const;
+export const OVERSIGHT_ROLES = ["Coordinator", SUPER_ADMIN_ROLE] as const;
 
 /**
  * The staff notification events a user may tune, scoped to their role(s). A

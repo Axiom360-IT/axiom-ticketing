@@ -16,6 +16,7 @@ import {
 } from "@/lib/users/provision";
 import { sendCustomerSetupInvite } from "@/lib/customer/invite";
 import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
+import { roleAssignmentRefusal } from "@/lib/auth/role-authority";
 import {
   getDescendants,
   permissionsForRoles,
@@ -83,6 +84,10 @@ export async function createUserViaMcp(
       return { ok: false, error: `You can't grant permissions you don't hold: ${beyond.join(", ")}` };
     }
   }
+
+  // Rank — the same shared decision as the admin UI's createUser.
+  const assignmentRefusal = await roleAssignmentRefusal(user, [], roleIds);
+  if (assignmentRefusal) return { ok: false, error: assignmentRefusal };
 
   if (await rolesIncludeSuperAdmin(roleIds)) {
     return {
@@ -164,6 +169,14 @@ export async function updateUserViaMcp(
     if (beyond.length > 0) {
       return { ok: false, error: `You can't grant permissions you don't hold: ${beyond.join(", ")}` };
     }
+    // Rank, judged on the change. Without this the connector could strip the
+    // Super Admin role from another Super Admin, which the UI refuses.
+    const currentRoleIds = (
+      await db.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, target.id))
+    ).map((r) => r.roleId);
+    const assignmentRefusal = await roleAssignmentRefusal(user, currentRoleIds, roleIds);
+    if (assignmentRefusal) return { ok: false, error: assignmentRefusal };
+
     const willStillBeSuperAdmin = await rolesIncludeSuperAdmin(roleIds);
     if (!willStillBeSuperAdmin && (await productionContext.isLastActiveSuperAdmin(target.id))) {
       return { ok: false, error: "You can't remove the Super Admin role from the only active Super Admin." };

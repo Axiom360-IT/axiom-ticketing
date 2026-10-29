@@ -75,6 +75,7 @@ import {
   verifyDraftUploadToken,
 } from "@/lib/tokens";
 import { verifyTurnstile } from "@/lib/turnstile";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // ── Public ticket submission (no auth required) ──────────────────────
 
@@ -2868,7 +2869,7 @@ type EscalationReason = (typeof ESCALATION_REASONS)[number];
 const ESCALATION_TARGET_ROLES = [
   "IT Director",
   "Coordinator",
-  "Super Admin",
+  SUPER_ADMIN_ROLE,
 ] as const;
 
 const escalateSchema = z.object({

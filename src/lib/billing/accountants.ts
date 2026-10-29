@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { getSetting } from "@/lib/settings";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // Who receives accountant billing notifications (reqs 8.6–8.9). Accountants are
 // OUR platform's accountants — a GLOBAL list of contacts configured in
@@ -32,7 +33,7 @@ export async function getAccountantRecipients(): Promise<AccountantRecipients> {
       .from(users)
       .innerJoin(userRoles, eq(userRoles.userId, users.id))
       .innerJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(and(eq(roles.name, "Super Admin"), eq(users.isActive, true)));
+      .where(and(eq(roles.name, SUPER_ADMIN_ROLE), eq(users.isActive, true)));
     for (const u of superAdmins) {
       if (u.email) emailSet.add(u.email.trim().toLowerCase());
       if (u.phone) phoneSet.add(u.phone.trim());

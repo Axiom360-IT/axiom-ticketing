@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -9,6 +9,14 @@ import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import type { Permission } from "@/lib/auth/permissions";
 import { permissionsBeyondCaller } from "@/lib/auth/permission-diff";
+import {
+  RANK,
+  STAFF_ROLE_NAMES,
+  SUPER_ADMIN_ROLE,
+  TECHNICAL_LEAD_ROLE,
+} from "@/lib/auth/rank";
+import { roleAssignmentRefusal } from "@/lib/auth/role-authority";
+import { visibleRoleRankCeiling } from "@/lib/roles/assignable";
 import { revokeAllUserAccess } from "@/lib/auth/revoke";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
@@ -43,12 +51,29 @@ export async function loadUserScope(userId: string) {
   return u;
 }
 
+/**
+ * Does this set of roles confer Super Admin-tier authority — rank 1 or above?
+ *
+ * Drives two things: the fresh-password requirement when granting such a role,
+ * and the "last active administrator" lockout guard. Both must treat a
+ * Technical Lead as the Super Admin tier would be treated, and neither should
+ * care what a role is NAMED, so this reads the rank (and, belt and braces for
+ * a database that has not been migrated yet, the two built-in names).
+ */
 export async function rolesIncludeSuperAdmin(roleIds: string[]): Promise<boolean> {
   if (roleIds.length === 0) return false;
   const rows = await db
     .select({ id: rolesTable.id })
     .from(rolesTable)
-    .where(and(inArray(rolesTable.id, roleIds), eq(rolesTable.name, "Super Admin")))
+    .where(
+      and(
+        inArray(rolesTable.id, roleIds),
+        or(
+          gte(rolesTable.rank, RANK.SUPER_ADMIN),
+          inArray(rolesTable.name, [SUPER_ADMIN_ROLE, TECHNICAL_LEAD_ROLE]),
+        ),
+      ),
+    )
     .limit(1);
   return rows.length > 0;
 }
@@ -150,6 +175,11 @@ export async function createUser(
       };
     }
   }
+
+  // Rank: you may only hand out roles you strictly outrank. A Super Admin
+  // therefore cannot create another Super Admin — only the Technical Lead can.
+  const assignmentRefusal = await roleAssignmentRefusal(caller, [], data.roleIds);
+  if (assignmentRefusal) return { ok: false, error: assignmentRefusal };
 
   // M17: granting Super Admin requires fresh password confirmation.
   if (
@@ -277,6 +307,23 @@ export async function updateUser(
         error: `You can't grant permissions you don't hold: ${beyond.join(", ")}`,
       };
     }
+    // Rank: judged on the CHANGE, so resubmitting a user's existing roles
+    // (as the edit form does) is not a problem — what a Super Admin cannot do
+    // is add the Super Admin role to someone, take it away, or touch the
+    // Technical Lead's.
+    const currentRoleIds = (
+      await db
+        .select({ roleId: userRoles.roleId })
+        .from(userRoles)
+        .where(eq(userRoles.userId, userId))
+    ).map((r) => r.roleId);
+    const assignmentRefusal = await roleAssignmentRefusal(
+      caller,
+      currentRoleIds,
+      data.roleIds,
+    );
+    if (assignmentRefusal) return { ok: false, error: assignmentRefusal };
+
     // Lockout guard: don't let the last active Super Admin lose the
     // role via a role update. We already block this for `deactivate`;
     // this closes the symmetric path. Applies to self-edits AND
@@ -791,12 +838,7 @@ export async function bulkResendCustomerInvites(
 // Roles that mark a user as "internal staff" (vs external customer).
 // Anyone holding any of these is considered internal; everyone else
 // (Customer-only or no-roles) is external.
-const INTERNAL_ROLE_NAMES = new Set([
-  "Super Admin",
-  "IT Director",
-  "Coordinator",
-  "Technician",
-]);
+const INTERNAL_ROLE_NAMES = new Set(STAFF_ROLE_NAMES);
 
 export async function listUsersForAdmin(opts: {
   query?: string;
@@ -835,6 +877,11 @@ export async function listUsersForAdmin(opts: {
     .where(where);
 
   const userIds = baseRows.map((u) => u.id);
+  // Under the `hidden` policy, a role ranked above the viewer is left off the
+  // chips — otherwise the Technical Lead's row would announce the role to
+  // everyone beneath it. A role the viewer merely cannot ASSIGN (a peer's)
+  // still shows: this is describing people, not offering a choice.
+  const rankCeiling = await visibleRoleRankCeiling(caller);
   const rolesByUser = new Map<string, { id: string; name: string }[]>();
   if (userIds.length > 0) {
     const roleJoin = await db
@@ -842,11 +889,13 @@ export async function listUsersForAdmin(opts: {
         userId: userRoles.userId,
         roleId: rolesTable.id,
         roleName: rolesTable.name,
+        roleRank: rolesTable.rank,
       })
       .from(userRoles)
       .innerJoin(rolesTable, eq(userRoles.roleId, rolesTable.id))
       .where(inArray(userRoles.userId, userIds));
     for (const r of roleJoin) {
+      if (rankCeiling !== null && r.roleRank > rankCeiling) continue;
       const list = rolesByUser.get(r.userId) ?? [];
       list.push({ id: r.roleId, name: r.roleName });
       rolesByUser.set(r.userId, list);
@@ -893,13 +942,23 @@ export async function listUsersForAdmin(opts: {
 }
 
 export async function listAllRoles() {
-  return db
+  // This is an exported server action, so a browser can call it directly — and
+  // it used to check nothing at all, handing every role name to anyone. It now
+  // requires a session and applies the visibility policy: under `hidden`, a
+  // role ranked above the caller is not listed.
+  const caller = await requireSessionUser();
+  const ceiling = await visibleRoleRankCeiling(caller);
+  const rows = await db
     .select({
       id: rolesTable.id,
       name: rolesTable.name,
       isSystem: rolesTable.isSystem,
+      rank: rolesTable.rank,
     })
     .from(rolesTable)
     .where(ne(rolesTable.name, ""))
     .orderBy(rolesTable.name);
+  return rows
+    .filter((r) => ceiling === null || r.rank <= ceiling)
+    .map((r) => ({ id: r.id, name: r.name, isSystem: r.isSystem }));
 }

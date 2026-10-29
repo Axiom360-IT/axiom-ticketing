@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
+import { ALL_PERMISSIONS } from "@/lib/auth/permissions";
+import { rankOf } from "@/lib/auth/rank";
 import { getSessionUser } from "@/lib/auth/session";
+import { getUndelegableDisplay } from "@/lib/auth/undelegable-display";
 import { db } from "@/lib/db/client";
 import { roles } from "@/lib/db/schema/rbac";
 import { type ExportDataset, parseExportFormat } from "@/lib/export/dataset";
@@ -28,9 +31,27 @@ export async function GET(request: Request): Promise<Response> {
         ? "custom"
         : "";
 
+  // The Technical Lead's visibility policy applies to the export too. Left
+  // alone it would list every role, with a permission count, and so hand over
+  // exactly what the screens hide: under `hidden`, a role ranked above the
+  // caller is absent and the count covers only permissions the caller holds
+  // (a count over the full set would announce how many are hidden).
+  const hidden = (await getUndelegableDisplay()) === "hidden";
+  const callerRank = rankOf(user);
+  const callerHasAll = ALL_PERMISSIONS.every((p) => user.permissions.has(p));
+  const held = [...user.permissions];
+
   // Member + permission counts as correlated subqueries (qualified table name).
   const memberCount = sql<number>`(select count(*) from user_roles ur where ur.role_id = "roles"."id")`;
-  const permCount = sql<number>`(select count(*) from role_permissions rp where rp.role_id = "roles"."id")`;
+  const permCount =
+    hidden && !callerHasAll
+      ? held.length === 0
+        ? sql<number>`0`
+        : sql<number>`(select count(*) from role_permissions rp where rp.role_id = "roles"."id" and rp.permission in (${sql.join(
+            held.map((p) => sql`${p}`),
+            sql`, `,
+          )}))`
+      : sql<number>`(select count(*) from role_permissions rp where rp.role_id = "roles"."id")`;
 
   const all = await db
     .select({
@@ -38,6 +59,7 @@ export async function GET(request: Request): Promise<Response> {
       name: roles.name,
       description: roles.description,
       isSystem: roles.isSystem,
+      rank: roles.rank,
       memberCount,
       permCount,
     })
@@ -45,7 +67,7 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(roles.name);
 
   // Filters mirror the page's in-memory filtering.
-  let items = all;
+  let items = hidden ? all.filter((r) => r.rank <= callerRank) : all;
   if (q) {
     items = items.filter((r) =>
       `${r.name} ${r.description ?? ""}`.toLowerCase().includes(q),

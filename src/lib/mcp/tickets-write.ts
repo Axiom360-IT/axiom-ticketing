@@ -39,6 +39,7 @@ import {
   guestTicketUrl,
   ticketTrackingUrl,
 } from "@/lib/tokens";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // Mirrors app/actions/tickets.ts's mutating actions, adapted to take an
 // explicit SessionUser (MCP auths via bearer token, not a browser cookie —
@@ -63,7 +64,7 @@ const ESCALATION_REASONS = [
   "vendor_involvement",
   "other",
 ] as const;
-const ESCALATION_TARGET_ROLES = ["IT Director", "Coordinator", "Super Admin"] as const;
+const ESCALATION_TARGET_ROLES = ["IT Director", "Coordinator", SUPER_ADMIN_ROLE] as const;
 
 type Result = { ok: true; [k: string]: unknown } | { ok: false; error: string };
 

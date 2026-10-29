@@ -2,14 +2,16 @@ import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditRoleForm } from "@/components/roles/edit-role-form";
-import { getRoleDetail } from "@/app/actions/roles";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
 import {
   ALL_PERMISSIONS,
   type Permission,
 } from "@/lib/auth/permissions";
+import { canManageRank, isAtLeastSuperAdmin, rankOf } from "@/lib/auth/rank";
 import { getSessionUser } from "@/lib/auth/session";
+import { getUndelegableDisplay } from "@/lib/auth/undelegable-display";
+import { loadRoleDetail } from "@/lib/roles/detail";
 
 export default async function EditRolePage({
   params,
@@ -20,8 +22,17 @@ export default async function EditRolePage({
   if (!user) redirect("/admin/login");
 
   const { id } = await params;
-  const role = await getRoleDetail(id);
+  // The FULL permission set, not the policy-filtered one the browser-callable
+  // `getRoleDetail` returns: this form must resubmit permissions the editor
+  // cannot see, or saving would silently strip them.
+  const role = await loadRoleDetail(id);
   if (!role) notFound();
+
+  const display = await getUndelegableDisplay();
+  const callerRank = rankOf(user);
+  // Under `hidden`, a role ranked above the caller does not exist as far as
+  // they can tell — the same answer as a role that really does not exist.
+  if (display === "hidden" && role.rank > callerRank) notFound();
 
   const [canUpdate, canDelete] = await Promise.all([
     can(user, "roles.update", { type: "global" }, productionContext),
@@ -29,6 +40,7 @@ export default async function EditRolePage({
   ]);
   if (!canUpdate) redirect("/admin/roles");
 
+  const canEditRole = canManageRank(callerRank, role.rank);
   const callerPermissions = [...user.permissions] as Permission[];
   const callerHasAll = ALL_PERMISSIONS.every((p) => user.permissions.has(p));
 
@@ -58,7 +70,11 @@ export default async function EditRolePage({
             callerPermissions={callerPermissions}
             callerHasAll={callerHasAll}
             canDelete={canDelete}
-            callerIsSuperAdmin={user.roleNames.has("Super Admin")}
+            display={display}
+            canEditRole={canEditRole}
+            canEditPermissions={
+              canEditRole && !(role.isSystem && !isAtLeastSuperAdmin(user))
+            }
           />
         </CardContent>
       </Card>

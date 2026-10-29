@@ -132,6 +132,7 @@ export function EditUserForm({
         <legend className="text-sm font-medium">{tEdit("rolesTitle")}</legend>
         <RoleMultiSelect
           roles={roles}
+          lockedTitle={tFields("roleLocked")}
           value={selected}
           onChange={setSelected}
           disabled={!isActive}

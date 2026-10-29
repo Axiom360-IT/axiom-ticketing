@@ -7,13 +7,14 @@ import { getAppUrl } from "@/lib/request";
 import { getSetting } from "@/lib/settings";
 import { withAutomationRun } from "@/lib/automations/runs";
 import { inngest } from "../client";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // Fallback breach recipients when the setting isn't configured (req 6.3).
-const DEFAULT_BREACH_ROLES = ["Super Admin", "IT Director", "Coordinator"];
+const DEFAULT_BREACH_ROLES = [SUPER_ADMIN_ROLE, "IT Director", "Coordinator"];
 // Fallback warning (50%/80%, not-yet-breached) recipients — same default
 // roles as breach, so management sees an SLA risk approaching, not just
 // after it's already blown.
-const DEFAULT_WARNING_ROLES = ["Super Admin", "IT Director", "Coordinator"];
+const DEFAULT_WARNING_ROLES = [SUPER_ADMIN_ROLE, "IT Director", "Coordinator"];
 
 // SLA monitor — runs every 20 minutes. (Widened from 5 min to keep the
 // database idle enough between runs for Neon's free compute tier; SLA

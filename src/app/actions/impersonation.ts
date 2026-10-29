@@ -17,13 +17,13 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { STAFF_ROLE_NAMES } from "@/lib/auth/rank";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1h
 
 // Staff roles reach the /admin console; a user whose only role is Customer
 // belongs in the /portal experience. When impersonating, we send the admin to
 // the impersonated user's OWN home so they see what that user actually sees.
-const STAFF_ROLE_NAMES = ["Super Admin", "IT Director", "Coordinator", "Technician"];
 
 /**
  * Begin impersonating `targetUserId`. Gated by `users.impersonate` with a

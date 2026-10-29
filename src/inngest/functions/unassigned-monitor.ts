@@ -6,6 +6,7 @@ import { getAppUrl } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
 import { withAutomationRun } from "@/lib/automations/runs";
 import { inngest } from "../client";
+import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 // Unassigned-ticket monitor — runs every 20 minutes. (Matches the SLA
 // monitor cadence; widened from 5 min so the database can idle between runs
@@ -142,7 +143,7 @@ async function dispatch(t: {
       name: "notification/dispatch",
       data: {
         type: "ticket.unassigned_reminder",
-        recipientRoles: ["Coordinator", "IT Director", "Super Admin"],
+        recipientRoles: ["Coordinator", "IT Director", SUPER_ADMIN_ROLE],
         email: {
           template: {
             template: "ticket_unassigned_staff",

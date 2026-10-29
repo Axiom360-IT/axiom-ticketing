@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -15,6 +17,10 @@ export const roles = pgTable("roles", {
   name: text("name").notNull().unique(),
   description: text("description"),
   isSystem: boolean("is_system").notNull().default(false),
+  // Who outranks whom: 0 staff, 1 Super Admin, 2 Technical Lead. You may
+  // change a role only if your rank is STRICTLY higher than its rank. See
+  // lib/auth/rank.ts. Not editable through the app — set by the installers.
+  rank: integer("rank").notNull().default(0),
   createdById: uuid("created_by_id").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -24,7 +30,7 @@ export const roles = pgTable("roles", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),
-});
+}, (t) => [check("roles_rank_check", sql`${t.rank} BETWEEN 0 AND 2`)]);
 
 export const rolePermissions = pgTable(
   "role_permissions",

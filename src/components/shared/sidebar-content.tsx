@@ -72,6 +72,9 @@ type NavItem = {
    *  destination the user can't reach. Omitted for the Dashboard, which every
    *  admin can reach. */
   requires?: Permission;
+  /** Visible if the user holds ANY of these. For pages two permissions open —
+   *  Settings and Automations open for either settings tier. */
+  requiresAny?: Permission[];
 };
 
 type NavGroup = {
@@ -128,8 +131,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/categories", labelKey: "navCategories", icon: Tags, color: "text-pink-400", requires: "settings.update" },
       { href: "/admin/types", labelKey: "navTypes", icon: Layers, color: "text-sky-400", requires: "settings.update" },
       { href: "/admin/vendors", labelKey: "navVendors", icon: Store, color: "text-lime-400", requires: "settings.update" },
-      { href: "/admin/automations", labelKey: "navAutomations", icon: Workflow, color: "text-amber-400", requires: "settings.view" },
-      { href: "/admin/settings", labelKey: "navSettings", icon: Settings, color: "text-indigo-400", requires: "settings.view" },
+      { href: "/admin/automations", labelKey: "navAutomations", icon: Workflow, color: "text-amber-400", requiresAny: ["settings.view", "settings.technical.view"] },
+      { href: "/admin/settings", labelKey: "navSettings", icon: Settings, color: "text-indigo-400", requiresAny: ["settings.view", "settings.technical.view"] },
     ],
   },
 ];
@@ -194,7 +197,11 @@ export function SidebarContent({
 
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !i.requires || permSet.has(i.requires)),
+    items: g.items.filter(
+      (i) =>
+        (!i.requires || permSet.has(i.requires)) &&
+        (!i.requiresAny || i.requiresAny.some((p) => permSet.has(p))),
+    ),
   })).filter((g) => g.items.length > 0);
 
   // Persisted "which groups are collapsed" map. Starts empty (all expanded) so

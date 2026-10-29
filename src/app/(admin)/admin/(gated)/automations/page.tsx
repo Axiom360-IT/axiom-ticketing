@@ -31,6 +31,13 @@ import {
 } from "@/lib/automations/panel";
 import { loadRulesPanelSafe } from "@/lib/rules/panel";
 import { AUTOMATION_BY_ID, type AutomationCategory } from "@/lib/automations/registry";
+import {
+  canUpdateSetting,
+  canViewSetting,
+  type SettingsAccess,
+  settingsAccessFor,
+} from "@/lib/settings-access";
+import type { SettingKey } from "@/lib/settings-registry";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -65,24 +72,30 @@ const CATEGORY_ORDER: AutomationCategory[] = [
 
 export default async function AutomationsPage() {
   const user = await requireSessionUser();
-  // Read is `settings.view`, same as the Settings page it sits beside. The
-  // switches go through `updateSetting`, which re-checks `settings.update` —
-  // so a viewer sees the panel and cannot change it.
-  if (
-    !(await can(user, "settings.view", { type: "global" }, productionContext))
-  ) {
+  // Opens for either settings tier, like the Settings page it sits beside. The
+  // switches go through `updateSetting`, which re-checks the permission for
+  // each KEY's tier — so a viewer sees the panel and cannot change what they
+  // lack the tier for, and the cards below hide controls and knobs that the
+  // user's tier could not use anyway.
+  const access = await settingsAccessFor(user);
+  if (!access.viewAny) {
     notFound();
   }
-  const canEdit = await can(
+  // Business-tier editing: scheduled reports and the SLA targets form.
+  const canEdit = access.updateBusiness;
+  // Rules are their own permission, not a reading of settings.update.
+  const canManageRules = await can(
     user,
-    "settings.update",
+    "rules.manage",
     { type: "global" },
     productionContext,
   );
 
   const [panel, rules] = await Promise.all([
     loadAutomationPanel(),
-    loadRulesPanelSafe(),
+    canManageRules
+      ? loadRulesPanelSafe()
+      : Promise.resolve({ installed: false as const, reason: "" }),
   ]);
   const t = await getTranslations("automations");
   const tJobs = await getTranslations("automations.jobs");
@@ -155,7 +168,7 @@ export default async function AutomationsPage() {
       {/* ── Your rules ──────────────────────────────────────────────
           First on the page: the built-in jobs below are configuration an
           operator reads, these are the ones they came here to write. */}
-      {canEdit && rules.installed ? (
+      {canManageRules && rules.installed ? (
         <RulesManager
           rules={rules.panel.rules}
           refs={rules.panel.refs}
@@ -165,7 +178,7 @@ export default async function AutomationsPage() {
           timezone={panel.timezone}
         />
       ) : null}
-      {canEdit && !rules.installed ? (
+      {canManageRules && !rules.installed ? (
         <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           {t("rules.notInstalled")}
         </p>
@@ -196,7 +209,7 @@ export default async function AutomationsPage() {
                   <li key={card.def.id}>
                     <JobCard
                       card={card}
-                      canEdit={canEdit}
+                      access={access}
                       t={t}
                       tJobs={tJobs}
                       format={format}
@@ -346,19 +359,28 @@ function Stat({
 
 function JobCard({
   card,
-  canEdit,
+  access,
   t,
   tJobs,
   format,
 }: {
   card: AutomationCard;
-  canEdit: boolean;
+  access: SettingsAccess;
   t: T;
   tJobs: TJobs;
   format: Fmt;
 }) {
   const off = card.enabledKey !== null && !card.enabled;
   const broken = card.failures24h > 0;
+  // Only the knobs this user's tier may read. A rate limit or retention window
+  // is a technical setting; showing it to someone who cannot read that tier
+  // would undo the split.
+  const visibleSettings = card.settings.filter((s) =>
+    canViewSetting(access, s.key as SettingKey),
+  );
+  const canToggle =
+    card.enabledKey !== null &&
+    canUpdateSetting(access, card.enabledKey as SettingKey);
   return (
     <div
       className={cn(
@@ -400,9 +422,9 @@ function JobCard({
             ) : null}
           </div>
 
-          {card.settings.length > 0 ? (
+          {visibleSettings.length > 0 ? (
             <dl className="mt-2 flex flex-wrap gap-1.5">
-              {card.settings.map((s) => (
+              {visibleSettings.map((s) => (
                 <div
                   key={s.key}
                   className="inline-flex items-baseline gap-1 rounded border border-zinc-200 px-1.5 py-0.5 text-[11px] dark:border-zinc-800"
@@ -420,7 +442,7 @@ function JobCard({
         </div>
 
         <div className="shrink-0">
-          {card.enabledKey && canEdit ? (
+          {card.enabledKey && canToggle ? (
             <AutomationToggle
               settingKey={card.enabledKey}
               enabled={card.enabled}
