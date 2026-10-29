@@ -49,6 +49,7 @@ const ACTION_LABELS: Record<string, string> = {
   "role.update": "Updated a role",
   "role.delete": "Deleted a role",
   "role.technical_lead_grant": "Granted the Technical Lead role",
+  "email.delivery_test": "Sent a delivery test email",
   // Sessions
   "session.revoke": "Revoked a session",
   "session.revoke_others": "Signed out other sessions",

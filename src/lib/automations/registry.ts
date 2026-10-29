@@ -103,6 +103,13 @@ export const AUTOMATIONS: AutomationDef[] = [
     settingKeys: ["customer_response_window_hours"],
   },
   {
+    id: "email-delivery-monitor",
+    kind: "scheduled",
+    category: "notifications",
+    cron: "*/10 * * * *",
+    tracked: true,
+  },
+  {
     id: "monthly-plan-reset",
     kind: "scheduled",
     category: "billing",

@@ -55,6 +55,7 @@
     "db:add-automation-rules": "tsx --env-file=.env.local src/lib/db/add-automation-rules.ts",
     "db:deploy-migrations": "tsx --env-file=.env.local src/lib/db/deploy-migrations.ts --force",
     "db:deploy-migrations:plan": "tsx --env-file=.env.local src/lib/db/deploy-migrations.ts --plan",
+    "db:add-email-delivery-issues": "tsx --env-file=.env.local src/lib/db/add-email-delivery-issues.ts",
     "db:add-role-rank": "tsx --env-file=.env.local src/lib/db/add-role-rank.ts",
     "db:add-technical-permissions": "tsx --env-file=.env.local src/lib/db/add-technical-permissions.ts",
     "db:add-technical-lead": "tsx --env-file=.env.local src/lib/db/add-technical-lead.ts",

@@ -13,6 +13,8 @@ import { EditUserForm } from "@/components/users/edit-user-form";
 import { ImpersonateButton } from "@/components/users/impersonate-button";
 import { getDescendants } from "@/app/actions/users";
 import { roleOptionsFor } from "@/lib/roles/assignable";
+import { EmailDeliveryAlert } from "@/components/shared/email-delivery-alert";
+import { openIssuesFor } from "@/lib/email/delivery-monitor";
 import { listActiveOrganizations } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
 import { productionContext } from "@/lib/auth/can-context";
@@ -167,6 +169,15 @@ export default async function EditUserPage({
           </p>
         ) : null}
       </header>
+
+      <EmailDeliveryAlert
+        canAct={canUpdate}
+        issues={(await openIssuesFor([target.email])).map((i) => ({
+          email: i.email,
+          status: i.status,
+          since: i.since.toISOString(),
+        }))}
+      />
 
       <Card>
         <CardHeader>

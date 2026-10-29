@@ -72,6 +72,10 @@ export const ratelimits = {
    *  hour. Gates the BATCH itself, not the individual sends within it. */
   bulkResendInvites: makeLimiter(10, "1 h"),
   authUpdateSetting: makeLimiter(100, "1 d"),
+  /** "Send a test email" to an address flagged as undeliverable: 20 per staff
+   *  member per hour. It mails a real customer, so it is limited — but a person
+   *  working through a handful of affected addresses must not hit the ceiling. */
+  authSendTestEmail: makeLimiter(20, "1 h"),
   /** Rule dry-run ("Check now"): 200 per operator per hour. Its own bucket,
    *  deliberately: it is a READ, and an operator tuning a condition will
    *  press it dozens of times in an afternoon. Sharing authUpdateSetting's

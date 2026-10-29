@@ -73,6 +73,15 @@ export const DEPLOY_MIGRATIONS: readonly DeployMigration[] = [
         AND EXISTS (SELECT 1 FROM roles WHERE name = 'Super Admin' AND "rank" >= 1)`,
   },
   {
+    // One new table, nothing else. The ticket and user pages read it, but every
+    // read is guarded so they cannot break if it is missing.
+    id: "add-email-delivery-issues",
+    description: "email_delivery_issues: addresses Resend will not deliver to",
+    appliedProbe: `
+      SELECT 1 WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'email_delivery_issues')
+        AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_delivery_issues_status_check')`,
+  },
+  {
     // Copies the new technical permissions onto every role that already holds
     // settings.*, so splitting the permission changes nobody's access. A
     // plain INSERT … ON CONFLICT DO NOTHING: no probe, no lock, and cheap

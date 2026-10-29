@@ -33,3 +33,4 @@ export * from "./holidays";
 // `db:push` since, which is the only reason it went unnoticed.
 export * from "./automations";
 export * from "./automation-rules";
+export * from "./email-delivery";

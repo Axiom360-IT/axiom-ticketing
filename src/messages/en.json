@@ -3042,6 +3042,14 @@
       "ticketLine": "This is about {ticketNumber} — {subject}",
       "openLine": "Open it here: {adminUrl}",
       "sentBy": "Sent automatically by the rule “{ruleName}”. To change it or stop it, open Automations in the admin area."
+    },
+    "deliveryTest": {
+      "subject": "A test message from Axiom360 Support",
+      "preview": "Checking that our emails reach you",
+      "title": "Checking that our emails reach you",
+      "greeting": "Hello,",
+      "body": "{requestedBy} on the Axiom360 support team sent this short message to check that our emails can reach this address. Some of our earlier updates about your support tickets may not have arrived.",
+      "noAction": "If you are reading this, they will from now on. There is nothing you need to do, and no need to reply."
     }
   },
   "automations": {
@@ -3153,6 +3161,10 @@
       "rule-schedule-dispatcher": {
         "name": "Rules that run at a set time",
         "description": "Wakes every five minutes and runs any rule whose time has come, checking it against every open ticket."
+      },
+      "email-delivery-monitor": {
+        "name": "Email delivery check",
+        "description": "Reads our email provider's delivery log and finds customers whose address it is refusing to deliver to — so a customer who silently stopped getting our emails shows up on their ticket instead of in a complaint."
       }
     },
     "reports": {
@@ -3394,5 +3406,32 @@
       "noFailures": "Nothing has failed in the period kept.",
       "report": "Scheduled report"
     }
+  },
+  "emailDelivery": {
+    "title": "{count, plural, =1 {1 person isn't receiving our emails} other {# people aren't receiving our emails}}",
+    "intro": "They can still see every update in the portal, but nothing we send is reaching their inbox — so they won't know about replies unless they look.",
+    "status": {
+      "suppressed": "Our email provider is blocking this address. It was added to the provider's block list, usually after an earlier message bounced or was marked as spam.",
+      "bounced": "Their mail server refused our last message, so we've paused sending to this address and will try again in a week.",
+      "complained": "They marked one of our messages as spam, so the email provider now blocks this address."
+    },
+    "since": "Blocked since {date}",
+    "testButton": "Send a test email",
+    "testing": "Sending…",
+    "recheck": "Check again",
+    "checking": "Checking…",
+    "checked": "Checked just now.",
+    "autoCheck": "This also checks itself every 10 minutes.",
+    "outcome": {
+      "delivered": "It got through — this address is receiving our emails again.",
+      "blocked": "Still blocked. Remove the address from Resend's block list (step 2 below), then try again.",
+      "pending": "Sent, but not confirmed yet. Click “Check again” in a minute."
+    },
+    "howTitle": "How to fix this",
+    "step1": "Open Resend, our email provider, and go to Emails. Search for {email}.",
+    "step2": "Open the most recent message. Its details explain why the address was blocked, and there is a “Remove from suppression list” button. Click it.",
+    "step3": "If it was blocked because of a bounce — a mistyped address, or a full or disabled mailbox — fix that first. Ask the customer to confirm their address, or ask their IT team to allow mail from axiom360.it. Otherwise it will be blocked again the next time we send.",
+    "step4": "Come back here and click “Send a test email”. It tells you straight away whether the message got through, and this warning clears itself once it has.",
+    "openResend": "Open Resend"
   }
 }

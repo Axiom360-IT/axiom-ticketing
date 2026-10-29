@@ -48,6 +48,8 @@ import { TicketCategoryControl } from "@/components/tickets/ticket-category-cont
 import { TicketTypeControl } from "@/components/tickets/ticket-type-control";
 import { TicketServiceTypeControl } from "@/components/tickets/ticket-service-type-control";
 import { ParticipantsPanel } from "@/components/tickets/participants-panel";
+import { EmailDeliveryAlert } from "@/components/shared/email-delivery-alert";
+import { openIssuesFor } from "@/lib/email/delivery-monitor";
 import {
   getCategoryLabelMap,
   loadActiveTicketCategories,
@@ -243,6 +245,18 @@ export default async function TicketDetailPage({
     ]);
   const categoryLabel = categoryLabelMap[ticket.category] ?? ticket.category;
   const typeLabel = typeLabelMap[ticket.type] ?? ticket.type;
+
+  // Is anyone who should be getting this ticket's emails being refused by the
+  // email provider? Checked for the requester and every ACTIVE participant —
+  // the people a reply is actually mailed to. (Standing organization contacts
+  // are listed in the panel but not emailed per ticket, so they are not
+  // checked.) Never throws: see openIssuesFor.
+  const emailIssues = await openIssuesFor([
+    ticket.customerEmail,
+    ...participantPanelRows
+      .filter((r) => r.kind === "participant" && r.status === "active")
+      .map((r) => r.email),
+  ]);
 
   const attachmentLimits = await getAttachmentLimits();
 
@@ -459,6 +473,15 @@ export default async function TicketDetailPage({
           </>
         ) : null}
       </div>
+
+      <EmailDeliveryAlert
+        canAct={canUpdate}
+        issues={emailIssues.map((i) => ({
+          email: i.email,
+          status: i.status,
+          since: i.since.toISOString(),
+        }))}
+      />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6 min-w-0">

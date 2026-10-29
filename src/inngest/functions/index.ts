@@ -15,6 +15,7 @@ import { cleanupStaleDrafts } from "./cleanup-stale-drafts";
 import { cleanupStaleLockouts } from "./cleanup-stale-lockouts";
 import { customerFollowupMonitor } from "./customer-followup-monitor";
 import { dispatchNotification } from "./dispatch-notification";
+import { emailDeliveryMonitor } from "./email-delivery-monitor";
 import { monthlyPlanReset } from "./monthly-plan-reset";
 import { notifyAccountantResolved } from "./notify-accountant-resolved";
 import { processCustomerImportBatch } from "./process-customer-import-batch";
@@ -45,6 +46,8 @@ export const functions = [
   cleanupOldNotifications,
   cleanupStaleDrafts,
   cleanupStaleLockouts,
+  // Finds customers whose email Resend is refusing to deliver
+  emailDeliveryMonitor,
   // Automations panel: user-created scheduled reports
   scheduledReportDispatcher,
   // The rule engine: three dispatchers, one per trigger family

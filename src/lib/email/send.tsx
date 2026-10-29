@@ -82,6 +82,11 @@ import {
   type AutomationRuleProps,
 } from "./templates/automation-rule";
 import {
+  DeliveryTestEmail,
+  type DeliveryTestProps,
+} from "./templates/delivery-test";
+import { skipReasonFor } from "./send-guard";
+import {
   ScheduledReportEmail,
   type ScheduledReportProps,
 } from "./templates/scheduled-report";
@@ -154,6 +159,7 @@ import {
 // injected by `sendEmail` from the recipient's preference (or default), so
 // callers don't need to plumb it through.
 export type EmailTemplate =
+  | { template: "delivery_test"; data: Omit<DeliveryTestProps, "locale"> }
   | {
       template: "automation_rule";
       data: Omit<AutomationRuleProps, "locale">;
@@ -301,6 +307,19 @@ type SendEmailOptions = {
    * encoding happens here, once.
    */
   attachments?: { filename: string; content: Buffer | string }[];
+  /**
+   * Send even to an address the delivery guard would skip (a no-reply mailbox,
+   * or one that hard-bounced recently). Only the "send a test email" action
+   * sets this: its whole job is to find out whether such an address works NOW.
+   */
+  bypassDeliveryGuard?: boolean;
+};
+
+export type SendEmailResult = {
+  /** Resend's id for the message, so a caller can look up what became of it. */
+  id: string | null;
+  /** Set when nothing was sent, and why. A skip is not an error. */
+  skipped?: string;
 };
 
 async function renderTemplate(
@@ -370,6 +389,8 @@ async function renderTemplate(
       );
     case "automation_rule":
       return await render(<AutomationRuleEmail {...t.data} locale={locale} />);
+    case "delivery_test":
+      return await render(<DeliveryTestEmail {...t.data} locale={locale} />);
     case "scheduled_report":
       return await render(<ScheduledReportEmail {...t.data} locale={locale} />);
     case "procurement_submitted":
@@ -453,6 +474,7 @@ const TEMPLATE_NAMESPACE = {
   participant_added: "emails.participantAdded",
   scheduled_report: "emails.scheduledReport",
   automation_rule: "emails.automationRule",
+  delivery_test: "emails.deliveryTest",
   procurement_submitted: "emails.procurementSubmitted",
   procurement_approved: "emails.procurementApproved",
   procurement_rejected: "emails.procurementRejected",
@@ -500,7 +522,9 @@ async function defaultSubject(
  * Currently called inline from Server Actions. M11 moves all sends through
  * Inngest functions for retry resilience (per ARCHITECTURE §9.5).
  */
-export async function sendEmail(options: SendEmailOptions): Promise<void> {
+export async function sendEmail(
+  options: SendEmailOptions,
+): Promise<SendEmailResult> {
   const {
     to,
     template,
@@ -511,6 +535,19 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     fromActorName,
     attachments,
   } = options;
+
+  // Do not send mail that cannot arrive: a no-reply mailbox, or an address that
+  // has hard-bounced recently. Each such send is a mark against the reputation
+  // every real customer's email depends on — a month of ticket notices to
+  // monitoring tools' no-reply addresses cost 126 of them. Returns normally: a
+  // skip is a decision, not a failure, so callers and Inngest do not retry it.
+  if (!options.bypassDeliveryGuard) {
+    const why = await skipReasonFor(String(to));
+    if (why) {
+      console.info(`[email] skipped ${String(to)} — ${why}`);
+      return { id: null, skipped: why };
+    }
+  }
 
   const resolvedLocale = pickLocale(locale) ?? DEFAULT_LOCALE;
   const html = await renderTemplate(template, resolvedLocale);
@@ -559,7 +596,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
     ? buildOutboundMessageId(ticketNumber, inboundDomain)
     : undefined;
 
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: `${displayName} <${fromEmail}>`,
     to,
     subject: finalSubject,
@@ -605,4 +642,5 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       error.name,
     );
   }
+  return { id: data?.id ?? null };
 }
