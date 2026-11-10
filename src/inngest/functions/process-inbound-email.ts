@@ -54,12 +54,16 @@ import {
   uploadObject,
 } from "@/lib/storage/upload";
 import { generateTicketNumber } from "@/lib/ticket-number";
+import { type InboundStep } from "@/lib/email/direct-step";
 import { inngest } from "../client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 
-// Inbound email processor. Runs on every `email/inbound.received` event
-// emitted by `app/api/email/inbound/route.ts`. Decisions in order:
+// Inbound email processor. The webhook (`app/api/email/inbound/route.ts`) now
+// runs `runInboundEmail` below directly, in-process, so ticket creation never
+// waits on Inngest; this Inngest function is the FALLBACK, invoked via an
+// `email/inbound.received` event only when a direct run fails before writing
+// anything (lib/email/process-inbound-direct.ts). Decisions in order:
 //   1. shouldAcceptInbound() — drop OOO/bounce/list mail/empty bodies
 //   2. extract ticket number — drop with `inbound_bounce` reply if none
 //   3. look up ticket — drop with `inbound_bounce` reply if not found
@@ -72,7 +76,7 @@ import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 const LOOP_WINDOW_MS = 5 * 60 * 1000;
 const LOOP_THRESHOLD = 5;
 
-type EventData = {
+export type EventData = {
   payload: NormalizedInboundEmail;
   eventId: string;
 };
@@ -236,6 +240,690 @@ async function harvestInboundRecipients(args: {
   }
 }
 
+/**
+ * The whole inbound-email decision tree, written against a `step` so the same
+ * code runs in two places:
+ *   - under Inngest (`processInboundEmail` below), the original path, and
+ *   - inline in the webhook (`app/api/email/inbound/route.ts`) via
+ *     `createDirectStep`, so a metered/unavailable queue can't stop a ticket
+ *     being created. See lib/email/direct-step.ts for why.
+ */
+export async function runInboundEmail(
+  eventData: EventData,
+  step: InboundStep,
+) {
+  const { eventId } = eventData;
+  let payload = eventData.payload;
+
+  // The webhook route sends this event WITHOUT the body/headers — Resend's
+  // `email.received` webhook is metadata-only, and fetching+inlining the
+  // full content at webhook time used to blow past Inngest's per-event
+  // payload cap (256KiB-3MiB depending on plan) on long Outlook threads
+  // with several inline images, silently losing the reply (see
+  // app/api/email/inbound/route.ts). Fetch it here instead: a plain
+  // outbound fetch from a background function has no such ceiling, and a
+  // transient Resend API failure just retries this step (this function's
+  // `retries: 2`) rather than depending on Resend's own webhook redelivery.
+  if (payload.providerEmailId) {
+    const emailId = payload.providerEmailId;
+    const content = await step.run("fetch-email-content", async () => {
+      const fetched = await fetchResendInboundContent(emailId);
+      if (!fetched) {
+        throw new Error(
+          `failed to fetch content for inbound email ${emailId}`,
+        );
+      }
+      return fetched;
+    });
+    payload = {
+      ...payload,
+      text: content.text,
+      html: content.html,
+      headers: content.headers,
+    };
+  }
+
+  const appUrl = getAppUrl();
+  const newTicketUrl = `${appUrl}/portal/submit`;
+
+  // Resolve which ticket this email belongs to, cheapest signal first:
+  //   1. Ticket-number token in To (`ticket+NUM@`), subject, or refs — the
+  //      canonical handle, present when replying to one of our emails.
+  //   2. RFC Message-ID thread chain — the reply's In-Reply-To/References vs.
+  //      ids we recorded for a ticket. Catches a customer replying inside
+  //      their ORIGINAL mail thread, or to a staff Outlook reply, where no
+  //      number token exists (otherwise → duplicate ticket).
+  //   3. Same sender + same subject on a still-open ticket — a last-resort
+  //      fallback for threads that predate id capture.
+  // We never thread by sender identity alone (req 5.1/5.2). Knowing this is a
+  // reply also lets the filter keep quote-only replies that would otherwise
+  // be over-stripped to empty and dropped before the raw-text fallback.
+  let ticketNumber = extractTicketNumber(payload);
+  if (!ticketNumber) {
+    ticketNumber = await step.run("resolve-by-message-refs", async () =>
+      resolveTicketByMessageRefs(payload.headers),
+    );
+  }
+  if (!ticketNumber) {
+    ticketNumber = await step.run("resolve-by-subject-sender", async () =>
+      resolveTicketBySubjectSender(payload.fromEmail, payload.subject),
+    );
+  }
+  // The reply's own Message-ID — recorded against whichever ticket we resolve
+  // (or create) below so the NEXT reply in this thread also resolves.
+  const inboundMessageId = payload.headers["message-id"];
+
+  // 1. Filter (auto-reply/bounce/list defenses always apply; the empty-body
+  //    rule is lenient for a reply to a known ticket).
+  const decision = shouldAcceptInbound(
+    {
+      headers: new Map(Object.entries(payload.headers)),
+      subject: payload.subject,
+      text: payload.text,
+    },
+    { isReply: Boolean(ticketNumber) },
+  );
+  if (!decision.accept) {
+    console.info(
+      `[process-inbound-email] dropped (${decision.reason}) eventId=${eventId} from=${payload.fromEmail}`,
+    );
+    return { status: "dropped", reason: decision.reason };
+  }
+
+  // 2. No ticket token → fresh "email to support" → open a new ticket.
+  if (!ticketNumber) {
+    const result = await step.run("create-ticket-from-email", async () =>
+      createTicketFromInbound(payload, appUrl),
+    );
+    if (result.status === "created") {
+      // Index this email's Message-ID so a reply to it (or to the
+      // confirmation we send) threads back to THIS ticket rather than
+      // opening a duplicate.
+      await step.run("record-new-ticket-message-id", async () =>
+        recordInboundMessageId(result.ticketId, inboundMessageId),
+      );
+      // Attach any files that rode in on the email (forwarded or direct).
+      // Separate step from ticket creation so a retry here can't re-create
+      // the ticket. Best-effort inside the helper.
+      await step.run("ingest-new-ticket-attachments", async () =>
+        ingestInboundAttachments({
+          ticketId: result.ticketId,
+          messageId: result.messageId,
+          providerEmailId: payload.providerEmailId,
+          fromEmail: payload.fromEmail,
+        }),
+      );
+      // Alert staff (Coordinators / IT Directors / Super Admins) that a new
+      // email-originated ticket needs triage/assignment.
+      await step.run("notify-new-ticket-created", async () => {
+        await dispatchTicketCreated({
+          ticketId: result.ticketId,
+          ticketNumber: result.ticketNumber,
+          customerName: result.customerName,
+          subject: result.subject,
+          appUrl,
+        });
+      });
+    }
+    return result;
+  }
+
+  // 3. Look up
+  const [ticket] = await step.run("load-ticket", async () =>
+    db
+      .select({
+        id: tickets.id,
+        ticketNumber: tickets.ticketNumber,
+        status: tickets.status,
+        subject: tickets.subject,
+        customerEmail: tickets.customerEmail,
+        customerId: tickets.customerId,
+        customerName: tickets.customerName,
+        organizationId: tickets.organizationId,
+        assignedToId: tickets.assignedToId,
+      })
+      .from(tickets)
+      .where(eq(tickets.ticketNumber, ticketNumber))
+      .limit(1),
+  );
+
+  if (!ticket) {
+    await step.run("send-bounce-not-found", async () => {
+      try {
+        await sendEmail({
+          to: payload.fromEmail,
+          template: {
+            template: "inbound_bounce",
+            data: {
+              customerName: payload.fromName ?? payload.fromEmail,
+              newTicketUrl,
+            },
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[process-inbound-email] bounce (not-found) email failed:",
+          err,
+        );
+      }
+    });
+    return { status: "ticket-not-found", ticketNumber };
+  }
+
+  // Index this reply's Message-ID against the ticket so the NEXT reply in the
+  // thread resolves by header too (chains grow as the conversation does).
+  await step.run("record-reply-message-id", async () =>
+    recordInboundMessageId(ticket.id, inboundMessageId),
+  );
+
+  // 4. Closed
+  if (ticket.status === "closed") {
+    await step.run("send-closed-reply", async () => {
+      try {
+        await sendEmail({
+          to: payload.fromEmail,
+          template: {
+            template: "inbound_closed_ticket",
+            data: {
+              customerName: payload.fromName ?? payload.fromEmail,
+              ticketNumber: ticket.ticketNumber,
+              newTicketUrl,
+            },
+          },
+          ticketNumber: ticket.ticketNumber,
+        });
+      } catch (err) {
+        console.error(
+          "[process-inbound-email] closed-ticket email failed:",
+          err,
+        );
+      }
+    });
+    return { status: "ticket-closed", ticketNumber };
+  }
+
+  const fromEmail = payload.fromEmail.trim().toLowerCase();
+  const fromName = payload.fromName ?? payload.fromEmail;
+
+  // Classify the sender against the ticket's organization (req 5.2). We
+  // thread by the token but AUTHORIZE by domain: the original requester,
+  // recognized participants, and same-org colleagues post normally; anyone
+  // else is held for moderation below.
+  const classification = await step.run("classify-sender", async () => {
+    const base = await classifyInboundSender(
+      {
+        id: ticket.id,
+        customerEmail: ticket.customerEmail,
+        organizationId: ticket.organizationId,
+      },
+      fromEmail,
+    );
+    if (base === "foreign") {
+      return { relation: "foreign" as const, reason: "foreign-domain" as string };
+    }
+    // Anti-spoofing (req 5.2): the relation was derived from the FORGEABLE
+    // From: header. Before auto-posting, require a passing sender-auth verdict
+    // (DMARC/DKIM/SPF, from the provider's Authentication-Results); otherwise
+    // hold for moderation. Operators can relax via `inbound_require_auth`.
+    const requireAuth =
+      (await getSetting<boolean>("inbound_require_auth")) ?? true;
+    if (
+      requireAuth &&
+      senderAuthVerdict(payload.headers, fromEmail) !== "pass"
+    ) {
+      return { relation: "foreign" as const, reason: "unauthenticated" as string };
+    }
+    return { relation: base, reason: null as string | null };
+  });
+  const relation = classification.relation;
+
+  // Master switch (Super Admin): when moderation is OFF, an unrecognized
+  // ("foreign") sender's reply posts straight to the thread instead of being
+  // held (req 5.2 follow-up). Default ON.
+  const moderate = await step.run("moderation-enabled", async () =>
+    (await getSetting<boolean>("inbound_moderation_enabled")) ?? true,
+  );
+
+  // 5. Loop detection — same sender, same ticket, > threshold in window.
+  //    Case-insensitive so it counts historically mixed-case author rows.
+  const since = new Date(Date.now() - LOOP_WINDOW_MS);
+  const recent = await step.run("count-recent-from-sender", async () =>
+    db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.ticketId, ticket.id),
+          eq(sql`lower(${messages.authorEmail})`, fromEmail),
+          gt(messages.createdAt, since),
+        ),
+      ),
+  );
+  if (recent.length >= LOOP_THRESHOLD) {
+    console.warn(
+      `[process-inbound-email] loop detected: ${payload.fromEmail} on ${ticketNumber} (${recent.length} in ${LOOP_WINDOW_MS}ms)`,
+    );
+    return { status: "loop-detected", ticketNumber };
+  }
+
+  // 6. Build the body — raw-text fallback so an over-stripped reply is never
+  //    lost (req 5.1). Pass the subject so a forward keeps its forwarded body
+  //    instead of being truncated down to the forwarder's note (req 5.x).
+  const stripped = stripQuotesAndSignatures(payload.text ?? "", {
+    subject: payload.subject,
+  });
+  const messageBody = stripped.length > 0 ? stripped : (payload.text ?? "");
+
+  // Attribute to a known account when the sender has one.
+  const [knownUser] = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.email, fromEmail))
+    .limit(1);
+  const authorName = knownUser?.name ?? fromName;
+
+  // 6·staff. Staff reply by email (req 5.3). If the sender is one of OUR
+  // staff (a user holding any non-customer role), this email is an AGENT
+  // reply, not a customer message — record it as `agent` and deliver it to
+  // the customer, exactly like a portal reply. The From: header is forgeable,
+  // so we still require a passing sender-auth verdict (unless the operator
+  // turned `inbound_require_auth` off); a spoofed staff address falls through
+  // to the normal moderation path below instead of impersonating an agent.
+  const senderIsStaff = knownUser ? await isStaffUser(knownUser.id) : false;
+  if (knownUser && senderIsStaff) {
+    const requireAuthForStaff =
+      (await getSetting<boolean>("inbound_require_auth")) ?? true;
+    const staffAuthOk =
+      !requireAuthForStaff ||
+      senderAuthVerdict(payload.headers, fromEmail) === "pass";
+    if (staffAuthOk) {
+      const staffUser = knownUser;
+      const wasOpen = ticket.status === "open";
+      await step.run("insert-agent-reply", async () => {
+        await db.insert(messages).values({
+          ticketId: ticket.id,
+          authorId: staffUser.id,
+          authorEmail: fromEmail,
+          authorName,
+          authorType: "agent",
+          body: messageBody,
+          channel: "email",
+          moderationStatus: "approved",
+        });
+        // First agent reply stamps first_response_at (SLA, mirrors the
+        // portal reply path).
+        const update: Partial<typeof tickets.$inferInsert> = {
+          updatedAt: new Date(),
+        };
+        if (wasOpen) update.firstResponseAt = new Date();
+        await db
+          .update(tickets)
+          .set(update)
+          .where(eq(tickets.id, ticket.id));
+      });
+
+      await audit({
+        actorId: staffUser.id,
+        action: "ticket.reply",
+        targetType: "ticket",
+        targetId: ticket.ticketNumber,
+        after: { reply: messageBody, via: "email" },
+      });
+
+      // Deliver to the customer (+ external participants), same as a portal
+      // reply: registered customers go through the dispatcher, guests get a
+      // direct email. Best-effort — a send failure never fails the ingest.
+      await step.run("deliver-agent-reply", async () => {
+        try {
+          const trackingUrl = ticketTrackingUrl({
+            appUrl,
+            ticketNumber: ticket.ticketNumber,
+            customerEmail: ticket.customerEmail,
+            customerId: ticket.customerId,
+          });
+          if (ticket.customerId) {
+            await inngest.send({
+              name: "notification/dispatch",
+              data: {
+                type: "ticket.agent_replied",
+                recipientUserIds: [ticket.customerId],
+                ticketId: ticket.id,
+                ticketNumber: ticket.ticketNumber,
+                email: {
+                  template: {
+                    template: "ticket_reply",
+                    data: {
+                      ticketNumber: ticket.ticketNumber,
+                      customerName: ticket.customerName,
+                      subject: ticket.subject,
+                      agentName: authorName,
+                      body: messageBody,
+                      trackingUrl,
+                    },
+                  },
+                  ticketNumber: ticket.ticketNumber,
+                  replyToTicket: true,
+                },
+                sms: {
+                  template: {
+                    template: "agent_replied",
+                    data: {
+                      ticketNumber: ticket.ticketNumber,
+                      ticketUrl: trackingUrl,
+                    },
+                  },
+                },
+                inApp: {
+                  titleArgs: { ticketNumber: ticket.ticketNumber },
+                  bodyArgs: {},
+                  linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
+                },
+              },
+            });
+          } else {
+            await sendEmail({
+              to: ticket.customerEmail,
+              template: {
+                template: "ticket_reply",
+                data: {
+                  ticketNumber: ticket.ticketNumber,
+                  customerName: ticket.customerName,
+                  subject: ticket.subject,
+                  agentName: authorName,
+                  body: messageBody,
+                  trackingUrl,
+                },
+              },
+              ticketNumber: ticket.ticketNumber,
+              replyToTicket: true,
+              fromActorName: authorName,
+            });
+          }
+
+          // CC active external participants (same-org colleagues looped in).
+          const participants = await listActiveParticipants(ticket.id);
+          for (const p of participants) {
+            if (p.email === ticket.customerEmail.toLowerCase()) continue;
+            try {
+              await sendEmail({
+                to: p.email,
+                template: {
+                  template: "ticket_reply",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    customerName: p.name ?? p.email,
+                    subject: ticket.subject,
+                    agentName: authorName,
+                    body: messageBody,
+                    trackingUrl: guestTicketUrl(
+                      appUrl,
+                      ticket.ticketNumber,
+                      p.email,
+                    ),
+                  },
+                },
+                ticketNumber: ticket.ticketNumber,
+                replyToTicket: true,
+                fromActorName: authorName,
+              });
+            } catch (err) {
+              console.error(
+                `[process-inbound-email] staff-reply participant CC failed (${p.email}):`,
+                err,
+              );
+            }
+          }
+        } catch (err) {
+          console.error(
+            "[process-inbound-email] staff-reply delivery failed:",
+            err,
+          );
+        }
+      });
+
+      // Harvest the other recipients here too. This branch returns before
+      // the reply-path harvest below, so without this a technician who Cc's
+      // the customer's colleague to loop them in adds nobody — the colleague
+      // gets that one email and is then dropped from the thread, with no
+      // signal to the technician that it didn't take.
+      //
+      // `autoJoinOnly`: a staff Reply-All carries our own coworkers as well,
+      // and they must not each become a pending row for a coordinator to
+      // adjudicate. Addresses on the ticket's organization join; the rest are
+      // skipped.
+      await step.run("harvest-recipients-staff-reply", async () =>
+        harvestInboundRecipients({
+          ticket,
+          payload,
+          senderAuthenticated: true,
+          autoJoinOnly: true,
+        }),
+      );
+
+      return { status: "agent-reply", ticketNumber };
+    }
+    // Staff address but auth FAILED → treat as a potential spoof: fall
+    // through to the moderation path below (held, not posted as an agent).
+  }
+
+  // 6a. Foreign sender → HOLD for moderation (req 5.2), UNLESS the master
+  //     moderation switch is off (then it falls through and posts normally).
+  //     Stored but excluded from the conversation thread until a moderator
+  //     approves it; notify moderators; do NOT touch SLA or ingest attachments.
+  if (relation === "foreign" && moderate) {
+    await step.run("hold-message", async () =>
+      db.insert(messages).values({
+        ticketId: ticket.id,
+        authorId: knownUser?.id ?? null,
+        authorEmail: fromEmail,
+        authorName,
+        authorType: "customer",
+        body: messageBody,
+        channel: "email",
+        moderationStatus: "held",
+        heldReason: classification.reason ?? "foreign-domain",
+      }),
+    );
+    await audit({
+      actorId: null,
+      action: "ticket.inbound_email",
+      targetType: "ticket",
+      targetId: ticket.ticketNumber,
+      after: {
+        from: fromEmail,
+        length: messageBody.length,
+        held: true,
+        reason: classification.reason ?? "foreign-domain",
+      },
+    });
+    await step.run("notify-moderators", async () => {
+      try {
+        await inngest.send({
+          name: "notification/dispatch",
+          data: {
+            type: "ticket.message_held",
+            // Whoever moderates needs to see this: the Coordinator queue +
+            // Super Admins (oversight) + the ticket's own assignee (so a held
+            // reply on their ticket isn't missed). Previously Coordinators
+            // only — invisible to a Super Admin / the assignee.
+            recipientUserIds: ticket.assignedToId
+              ? [ticket.assignedToId]
+              : undefined,
+            recipientRoles: [...OVERSIGHT_ROLES],
+            ticketId: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            inApp: {
+              titleArgs: { ticketNumber: ticket.ticketNumber },
+              bodyArgs: { sender: fromEmail },
+              linkUrl: "/admin/moderation",
+            },
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[process-inbound-email] held-message notify failed:",
+          err,
+        );
+      }
+    });
+    return { status: "held", ticketNumber };
+  }
+
+  // 6b. Approved sender (original requester / participant / same-org
+  //     colleague) → post normally, attributed to the actual sender.
+  const [insertedMsg] = await step.run("insert-message", async () =>
+    db
+      .insert(messages)
+      .values({
+        ticketId: ticket.id,
+        authorId: knownUser?.id ?? null,
+        authorEmail: fromEmail,
+        authorName,
+        authorType: "customer",
+        body: messageBody,
+        channel: "email",
+        moderationStatus: "approved",
+      })
+      .returning({ id: messages.id }),
+  );
+
+  // A same-org colleague replying from a different address becomes an active
+  // participant so future updates reach them too (req 5.2).
+  if (relation === "org-domain") {
+    await step.run("add-participant", async () =>
+      // harvestParticipant, not upsertParticipant: an automatic path must
+      // never put back someone a human removed from the thread.
+      harvestParticipant({
+        ticketId: ticket.id,
+        email: fromEmail,
+        name: knownUser?.name ?? payload.fromName ?? null,
+        addedVia: "domain_auto",
+        status: "active",
+      }),
+    );
+  }
+
+  // 6a-ii. Harvest the OTHER recipients on this email (To + Cc).
+  //
+  // Guarded on `relation !== "foreign"`: a foreign sender only reaches here
+  // when moderation is switched off, and an untrusted stranger must never
+  // get to nominate who else joins the thread.
+  if (relation !== "foreign") {
+    await step.run("harvest-recipients", async () =>
+      harvestInboundRecipients({
+        ticket,
+        payload,
+        // The relation already passed the sender-auth gate above, so the
+        // From is as verified as this deployment requires.
+        senderAuthenticated: true,
+      }),
+    );
+  }
+
+  // 6b. Ingest attachments — pulled from Resend's Receiving API by the
+  // provider email id (the webhook is metadata-only), filtered (allowed MIME
+  // + size + magic-byte verify) and uploaded to R2. Per ARCHITECTURE §11.
+  await step.run("ingest-attachments", async () =>
+    ingestInboundAttachments({
+      ticketId: ticket.id,
+      messageId: insertedMsg.id,
+      providerEmailId: payload.providerEmailId,
+      fromEmail: payload.fromEmail,
+    }),
+  );
+
+  await step.run("touch-ticket", async () => {
+    // Re-read the SLA columns HERE rather than widening the memoized
+    // load-ticket step: Inngest JSON-serializes a step's return value, so
+    // Dates would come back as strings and the resume math would break.
+    const [fresh] = await db
+      .select({
+        status: tickets.status,
+        assignedToId: tickets.assignedToId,
+        slaPausedAt: tickets.slaPausedAt,
+        responseDueAt: tickets.responseDueAt,
+        resolutionDueAt: tickets.resolutionDueAt,
+      })
+      .from(tickets)
+      .where(eq(tickets.id, ticket.id))
+      .limit(1);
+    // An emailed reply is still the customer answering — unpark the ticket
+    // exactly like a portal reply does (lib/tickets/awaiting-customer.ts).
+    const resumePatch = fresh
+      ? resumeFromAwaitingCustomer(fresh, new Date())
+      : null;
+    await db
+      .update(tickets)
+      .set({ updatedAt: new Date(), ...(resumePatch ?? {}) })
+      .where(eq(tickets.id, ticket.id));
+  });
+
+  await audit({
+    actorId: null,
+    action: "ticket.inbound_email",
+    targetType: "ticket",
+    targetId: ticket.ticketNumber,
+    after: { from: fromEmail, length: messageBody.length, relation },
+  });
+
+  // Notify the assigned tech via the dispatch fan-out, plus Coordinator +
+  // Super Admin always so a reply never sits silently.
+  await step.run("notify-assignee", async () => {
+    try {
+      const customerName = authorName;
+      await inngest.send({
+        name: "notification/dispatch",
+        data: {
+          type: "ticket.customer_replied",
+          recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+          recipientRoles: [...OVERSIGHT_ROLES],
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          email: {
+            // Staff-voiced template — NOT the customer-facing `ticket_reply`,
+            // which would greet the technician by the customer's name (req 6.3).
+            template: {
+              template: "customer_replied_staff",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                customerName,
+                subject: ticket.subject,
+                body: messageBody,
+                ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+              },
+            },
+            ticketNumber: ticket.ticketNumber,
+            // Tag the alert so a technician can reply to it straight from
+            // their inbox and have it land on the ticket (req 5.3).
+            replyToTicket: true,
+          },
+          sms: {
+            template: {
+              template: "customer_replied",
+              data: {
+                ticketNumber: ticket.ticketNumber,
+                ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+              },
+            },
+          },
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { customerName },
+            linkUrl: `/admin/tickets/${ticket.id}`,
+          },
+        },
+      });
+    } catch (err) {
+      console.error(
+        "[process-inbound-email] dispatch failed:",
+        err,
+      );
+    }
+  });
+
+  return { status: "ok", ticketNumber };
+}
+
 export const processInboundEmail = inngest.createFunction(
   {
     id: "process-inbound-email",
@@ -245,679 +933,8 @@ export const processInboundEmail = inngest.createFunction(
     // enqueue retry (req 5.1 rollback path) can't double-post a reply.
     idempotency: "event.data.eventId",
   },
-  async ({ event, step }) => {
-    const eventData = event.data as EventData;
-    const { eventId } = eventData;
-    let payload = eventData.payload;
-
-    // The webhook route sends this event WITHOUT the body/headers — Resend's
-    // `email.received` webhook is metadata-only, and fetching+inlining the
-    // full content at webhook time used to blow past Inngest's per-event
-    // payload cap (256KiB-3MiB depending on plan) on long Outlook threads
-    // with several inline images, silently losing the reply (see
-    // app/api/email/inbound/route.ts). Fetch it here instead: a plain
-    // outbound fetch from a background function has no such ceiling, and a
-    // transient Resend API failure just retries this step (this function's
-    // `retries: 2`) rather than depending on Resend's own webhook redelivery.
-    if (payload.providerEmailId) {
-      const emailId = payload.providerEmailId;
-      const content = await step.run("fetch-email-content", async () => {
-        const fetched = await fetchResendInboundContent(emailId);
-        if (!fetched) {
-          throw new Error(
-            `failed to fetch content for inbound email ${emailId}`,
-          );
-        }
-        return fetched;
-      });
-      payload = {
-        ...payload,
-        text: content.text,
-        html: content.html,
-        headers: content.headers,
-      };
-    }
-
-    const appUrl = getAppUrl();
-    const newTicketUrl = `${appUrl}/portal/submit`;
-
-    // Resolve which ticket this email belongs to, cheapest signal first:
-    //   1. Ticket-number token in To (`ticket+NUM@`), subject, or refs — the
-    //      canonical handle, present when replying to one of our emails.
-    //   2. RFC Message-ID thread chain — the reply's In-Reply-To/References vs.
-    //      ids we recorded for a ticket. Catches a customer replying inside
-    //      their ORIGINAL mail thread, or to a staff Outlook reply, where no
-    //      number token exists (otherwise → duplicate ticket).
-    //   3. Same sender + same subject on a still-open ticket — a last-resort
-    //      fallback for threads that predate id capture.
-    // We never thread by sender identity alone (req 5.1/5.2). Knowing this is a
-    // reply also lets the filter keep quote-only replies that would otherwise
-    // be over-stripped to empty and dropped before the raw-text fallback.
-    let ticketNumber = extractTicketNumber(payload);
-    if (!ticketNumber) {
-      ticketNumber = await step.run("resolve-by-message-refs", async () =>
-        resolveTicketByMessageRefs(payload.headers),
-      );
-    }
-    if (!ticketNumber) {
-      ticketNumber = await step.run("resolve-by-subject-sender", async () =>
-        resolveTicketBySubjectSender(payload.fromEmail, payload.subject),
-      );
-    }
-    // The reply's own Message-ID — recorded against whichever ticket we resolve
-    // (or create) below so the NEXT reply in this thread also resolves.
-    const inboundMessageId = payload.headers["message-id"];
-
-    // 1. Filter (auto-reply/bounce/list defenses always apply; the empty-body
-    //    rule is lenient for a reply to a known ticket).
-    const decision = shouldAcceptInbound(
-      {
-        headers: new Map(Object.entries(payload.headers)),
-        subject: payload.subject,
-        text: payload.text,
-      },
-      { isReply: Boolean(ticketNumber) },
-    );
-    if (!decision.accept) {
-      console.info(
-        `[process-inbound-email] dropped (${decision.reason}) eventId=${eventId} from=${payload.fromEmail}`,
-      );
-      return { status: "dropped", reason: decision.reason };
-    }
-
-    // 2. No ticket token → fresh "email to support" → open a new ticket.
-    if (!ticketNumber) {
-      const result = await step.run("create-ticket-from-email", async () =>
-        createTicketFromInbound(payload, appUrl),
-      );
-      if (result.status === "created") {
-        // Index this email's Message-ID so a reply to it (or to the
-        // confirmation we send) threads back to THIS ticket rather than
-        // opening a duplicate.
-        await step.run("record-new-ticket-message-id", async () =>
-          recordInboundMessageId(result.ticketId, inboundMessageId),
-        );
-        // Attach any files that rode in on the email (forwarded or direct).
-        // Separate step from ticket creation so a retry here can't re-create
-        // the ticket. Best-effort inside the helper.
-        await step.run("ingest-new-ticket-attachments", async () =>
-          ingestInboundAttachments({
-            ticketId: result.ticketId,
-            messageId: result.messageId,
-            providerEmailId: payload.providerEmailId,
-            fromEmail: payload.fromEmail,
-          }),
-        );
-        // Alert staff (Coordinators / IT Directors / Super Admins) that a new
-        // email-originated ticket needs triage/assignment.
-        await step.run("notify-new-ticket-created", async () => {
-          await dispatchTicketCreated({
-            ticketId: result.ticketId,
-            ticketNumber: result.ticketNumber,
-            customerName: result.customerName,
-            subject: result.subject,
-            appUrl,
-          });
-        });
-      }
-      return result;
-    }
-
-    // 3. Look up
-    const [ticket] = await step.run("load-ticket", async () =>
-      db
-        .select({
-          id: tickets.id,
-          ticketNumber: tickets.ticketNumber,
-          status: tickets.status,
-          subject: tickets.subject,
-          customerEmail: tickets.customerEmail,
-          customerId: tickets.customerId,
-          customerName: tickets.customerName,
-          organizationId: tickets.organizationId,
-          assignedToId: tickets.assignedToId,
-        })
-        .from(tickets)
-        .where(eq(tickets.ticketNumber, ticketNumber))
-        .limit(1),
-    );
-
-    if (!ticket) {
-      await step.run("send-bounce-not-found", async () => {
-        try {
-          await sendEmail({
-            to: payload.fromEmail,
-            template: {
-              template: "inbound_bounce",
-              data: {
-                customerName: payload.fromName ?? payload.fromEmail,
-                newTicketUrl,
-              },
-            },
-          });
-        } catch (err) {
-          console.error(
-            "[process-inbound-email] bounce (not-found) email failed:",
-            err,
-          );
-        }
-      });
-      return { status: "ticket-not-found", ticketNumber };
-    }
-
-    // Index this reply's Message-ID against the ticket so the NEXT reply in the
-    // thread resolves by header too (chains grow as the conversation does).
-    await step.run("record-reply-message-id", async () =>
-      recordInboundMessageId(ticket.id, inboundMessageId),
-    );
-
-    // 4. Closed
-    if (ticket.status === "closed") {
-      await step.run("send-closed-reply", async () => {
-        try {
-          await sendEmail({
-            to: payload.fromEmail,
-            template: {
-              template: "inbound_closed_ticket",
-              data: {
-                customerName: payload.fromName ?? payload.fromEmail,
-                ticketNumber: ticket.ticketNumber,
-                newTicketUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-          });
-        } catch (err) {
-          console.error(
-            "[process-inbound-email] closed-ticket email failed:",
-            err,
-          );
-        }
-      });
-      return { status: "ticket-closed", ticketNumber };
-    }
-
-    const fromEmail = payload.fromEmail.trim().toLowerCase();
-    const fromName = payload.fromName ?? payload.fromEmail;
-
-    // Classify the sender against the ticket's organization (req 5.2). We
-    // thread by the token but AUTHORIZE by domain: the original requester,
-    // recognized participants, and same-org colleagues post normally; anyone
-    // else is held for moderation below.
-    const classification = await step.run("classify-sender", async () => {
-      const base = await classifyInboundSender(
-        {
-          id: ticket.id,
-          customerEmail: ticket.customerEmail,
-          organizationId: ticket.organizationId,
-        },
-        fromEmail,
-      );
-      if (base === "foreign") {
-        return { relation: "foreign" as const, reason: "foreign-domain" as string };
-      }
-      // Anti-spoofing (req 5.2): the relation was derived from the FORGEABLE
-      // From: header. Before auto-posting, require a passing sender-auth verdict
-      // (DMARC/DKIM/SPF, from the provider's Authentication-Results); otherwise
-      // hold for moderation. Operators can relax via `inbound_require_auth`.
-      const requireAuth =
-        (await getSetting<boolean>("inbound_require_auth")) ?? true;
-      if (
-        requireAuth &&
-        senderAuthVerdict(payload.headers, fromEmail) !== "pass"
-      ) {
-        return { relation: "foreign" as const, reason: "unauthenticated" as string };
-      }
-      return { relation: base, reason: null as string | null };
-    });
-    const relation = classification.relation;
-
-    // Master switch (Super Admin): when moderation is OFF, an unrecognized
-    // ("foreign") sender's reply posts straight to the thread instead of being
-    // held (req 5.2 follow-up). Default ON.
-    const moderate = await step.run("moderation-enabled", async () =>
-      (await getSetting<boolean>("inbound_moderation_enabled")) ?? true,
-    );
-
-    // 5. Loop detection — same sender, same ticket, > threshold in window.
-    //    Case-insensitive so it counts historically mixed-case author rows.
-    const since = new Date(Date.now() - LOOP_WINDOW_MS);
-    const recent = await step.run("count-recent-from-sender", async () =>
-      db
-        .select({ id: messages.id })
-        .from(messages)
-        .where(
-          and(
-            eq(messages.ticketId, ticket.id),
-            eq(sql`lower(${messages.authorEmail})`, fromEmail),
-            gt(messages.createdAt, since),
-          ),
-        ),
-    );
-    if (recent.length >= LOOP_THRESHOLD) {
-      console.warn(
-        `[process-inbound-email] loop detected: ${payload.fromEmail} on ${ticketNumber} (${recent.length} in ${LOOP_WINDOW_MS}ms)`,
-      );
-      return { status: "loop-detected", ticketNumber };
-    }
-
-    // 6. Build the body — raw-text fallback so an over-stripped reply is never
-    //    lost (req 5.1). Pass the subject so a forward keeps its forwarded body
-    //    instead of being truncated down to the forwarder's note (req 5.x).
-    const stripped = stripQuotesAndSignatures(payload.text ?? "", {
-      subject: payload.subject,
-    });
-    const messageBody = stripped.length > 0 ? stripped : (payload.text ?? "");
-
-    // Attribute to a known account when the sender has one.
-    const [knownUser] = await db
-      .select({ id: users.id, name: users.name })
-      .from(users)
-      .where(eq(users.email, fromEmail))
-      .limit(1);
-    const authorName = knownUser?.name ?? fromName;
-
-    // 6·staff. Staff reply by email (req 5.3). If the sender is one of OUR
-    // staff (a user holding any non-customer role), this email is an AGENT
-    // reply, not a customer message — record it as `agent` and deliver it to
-    // the customer, exactly like a portal reply. The From: header is forgeable,
-    // so we still require a passing sender-auth verdict (unless the operator
-    // turned `inbound_require_auth` off); a spoofed staff address falls through
-    // to the normal moderation path below instead of impersonating an agent.
-    const senderIsStaff = knownUser ? await isStaffUser(knownUser.id) : false;
-    if (knownUser && senderIsStaff) {
-      const requireAuthForStaff =
-        (await getSetting<boolean>("inbound_require_auth")) ?? true;
-      const staffAuthOk =
-        !requireAuthForStaff ||
-        senderAuthVerdict(payload.headers, fromEmail) === "pass";
-      if (staffAuthOk) {
-        const staffUser = knownUser;
-        const wasOpen = ticket.status === "open";
-        await step.run("insert-agent-reply", async () => {
-          await db.insert(messages).values({
-            ticketId: ticket.id,
-            authorId: staffUser.id,
-            authorEmail: fromEmail,
-            authorName,
-            authorType: "agent",
-            body: messageBody,
-            channel: "email",
-            moderationStatus: "approved",
-          });
-          // First agent reply stamps first_response_at (SLA, mirrors the
-          // portal reply path).
-          const update: Partial<typeof tickets.$inferInsert> = {
-            updatedAt: new Date(),
-          };
-          if (wasOpen) update.firstResponseAt = new Date();
-          await db
-            .update(tickets)
-            .set(update)
-            .where(eq(tickets.id, ticket.id));
-        });
-
-        await audit({
-          actorId: staffUser.id,
-          action: "ticket.reply",
-          targetType: "ticket",
-          targetId: ticket.ticketNumber,
-          after: { reply: messageBody, via: "email" },
-        });
-
-        // Deliver to the customer (+ external participants), same as a portal
-        // reply: registered customers go through the dispatcher, guests get a
-        // direct email. Best-effort — a send failure never fails the ingest.
-        await step.run("deliver-agent-reply", async () => {
-          try {
-            const trackingUrl = ticketTrackingUrl({
-              appUrl,
-              ticketNumber: ticket.ticketNumber,
-              customerEmail: ticket.customerEmail,
-              customerId: ticket.customerId,
-            });
-            if (ticket.customerId) {
-              await inngest.send({
-                name: "notification/dispatch",
-                data: {
-                  type: "ticket.agent_replied",
-                  recipientUserIds: [ticket.customerId],
-                  ticketId: ticket.id,
-                  ticketNumber: ticket.ticketNumber,
-                  email: {
-                    template: {
-                      template: "ticket_reply",
-                      data: {
-                        ticketNumber: ticket.ticketNumber,
-                        customerName: ticket.customerName,
-                        subject: ticket.subject,
-                        agentName: authorName,
-                        body: messageBody,
-                        trackingUrl,
-                      },
-                    },
-                    ticketNumber: ticket.ticketNumber,
-                    replyToTicket: true,
-                  },
-                  sms: {
-                    template: {
-                      template: "agent_replied",
-                      data: {
-                        ticketNumber: ticket.ticketNumber,
-                        ticketUrl: trackingUrl,
-                      },
-                    },
-                  },
-                  inApp: {
-                    titleArgs: { ticketNumber: ticket.ticketNumber },
-                    bodyArgs: {},
-                    linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-                  },
-                },
-              });
-            } else {
-              await sendEmail({
-                to: ticket.customerEmail,
-                template: {
-                  template: "ticket_reply",
-                  data: {
-                    ticketNumber: ticket.ticketNumber,
-                    customerName: ticket.customerName,
-                    subject: ticket.subject,
-                    agentName: authorName,
-                    body: messageBody,
-                    trackingUrl,
-                  },
-                },
-                ticketNumber: ticket.ticketNumber,
-                replyToTicket: true,
-                fromActorName: authorName,
-              });
-            }
-
-            // CC active external participants (same-org colleagues looped in).
-            const participants = await listActiveParticipants(ticket.id);
-            for (const p of participants) {
-              if (p.email === ticket.customerEmail.toLowerCase()) continue;
-              try {
-                await sendEmail({
-                  to: p.email,
-                  template: {
-                    template: "ticket_reply",
-                    data: {
-                      ticketNumber: ticket.ticketNumber,
-                      customerName: p.name ?? p.email,
-                      subject: ticket.subject,
-                      agentName: authorName,
-                      body: messageBody,
-                      trackingUrl: guestTicketUrl(
-                        appUrl,
-                        ticket.ticketNumber,
-                        p.email,
-                      ),
-                    },
-                  },
-                  ticketNumber: ticket.ticketNumber,
-                  replyToTicket: true,
-                  fromActorName: authorName,
-                });
-              } catch (err) {
-                console.error(
-                  `[process-inbound-email] staff-reply participant CC failed (${p.email}):`,
-                  err,
-                );
-              }
-            }
-          } catch (err) {
-            console.error(
-              "[process-inbound-email] staff-reply delivery failed:",
-              err,
-            );
-          }
-        });
-
-        // Harvest the other recipients here too. This branch returns before
-        // the reply-path harvest below, so without this a technician who Cc's
-        // the customer's colleague to loop them in adds nobody — the colleague
-        // gets that one email and is then dropped from the thread, with no
-        // signal to the technician that it didn't take.
-        //
-        // `autoJoinOnly`: a staff Reply-All carries our own coworkers as well,
-        // and they must not each become a pending row for a coordinator to
-        // adjudicate. Addresses on the ticket's organization join; the rest are
-        // skipped.
-        await step.run("harvest-recipients-staff-reply", async () =>
-          harvestInboundRecipients({
-            ticket,
-            payload,
-            senderAuthenticated: true,
-            autoJoinOnly: true,
-          }),
-        );
-
-        return { status: "agent-reply", ticketNumber };
-      }
-      // Staff address but auth FAILED → treat as a potential spoof: fall
-      // through to the moderation path below (held, not posted as an agent).
-    }
-
-    // 6a. Foreign sender → HOLD for moderation (req 5.2), UNLESS the master
-    //     moderation switch is off (then it falls through and posts normally).
-    //     Stored but excluded from the conversation thread until a moderator
-    //     approves it; notify moderators; do NOT touch SLA or ingest attachments.
-    if (relation === "foreign" && moderate) {
-      await step.run("hold-message", async () =>
-        db.insert(messages).values({
-          ticketId: ticket.id,
-          authorId: knownUser?.id ?? null,
-          authorEmail: fromEmail,
-          authorName,
-          authorType: "customer",
-          body: messageBody,
-          channel: "email",
-          moderationStatus: "held",
-          heldReason: classification.reason ?? "foreign-domain",
-        }),
-      );
-      await audit({
-        actorId: null,
-        action: "ticket.inbound_email",
-        targetType: "ticket",
-        targetId: ticket.ticketNumber,
-        after: {
-          from: fromEmail,
-          length: messageBody.length,
-          held: true,
-          reason: classification.reason ?? "foreign-domain",
-        },
-      });
-      await step.run("notify-moderators", async () => {
-        try {
-          await inngest.send({
-            name: "notification/dispatch",
-            data: {
-              type: "ticket.message_held",
-              // Whoever moderates needs to see this: the Coordinator queue +
-              // Super Admins (oversight) + the ticket's own assignee (so a held
-              // reply on their ticket isn't missed). Previously Coordinators
-              // only — invisible to a Super Admin / the assignee.
-              recipientUserIds: ticket.assignedToId
-                ? [ticket.assignedToId]
-                : undefined,
-              recipientRoles: [...OVERSIGHT_ROLES],
-              ticketId: ticket.id,
-              ticketNumber: ticket.ticketNumber,
-              inApp: {
-                titleArgs: { ticketNumber: ticket.ticketNumber },
-                bodyArgs: { sender: fromEmail },
-                linkUrl: "/admin/moderation",
-              },
-            },
-          });
-        } catch (err) {
-          console.error(
-            "[process-inbound-email] held-message notify failed:",
-            err,
-          );
-        }
-      });
-      return { status: "held", ticketNumber };
-    }
-
-    // 6b. Approved sender (original requester / participant / same-org
-    //     colleague) → post normally, attributed to the actual sender.
-    const [insertedMsg] = await step.run("insert-message", async () =>
-      db
-        .insert(messages)
-        .values({
-          ticketId: ticket.id,
-          authorId: knownUser?.id ?? null,
-          authorEmail: fromEmail,
-          authorName,
-          authorType: "customer",
-          body: messageBody,
-          channel: "email",
-          moderationStatus: "approved",
-        })
-        .returning({ id: messages.id }),
-    );
-
-    // A same-org colleague replying from a different address becomes an active
-    // participant so future updates reach them too (req 5.2).
-    if (relation === "org-domain") {
-      await step.run("add-participant", async () =>
-        // harvestParticipant, not upsertParticipant: an automatic path must
-        // never put back someone a human removed from the thread.
-        harvestParticipant({
-          ticketId: ticket.id,
-          email: fromEmail,
-          name: knownUser?.name ?? payload.fromName ?? null,
-          addedVia: "domain_auto",
-          status: "active",
-        }),
-      );
-    }
-
-    // 6a-ii. Harvest the OTHER recipients on this email (To + Cc).
-    //
-    // Guarded on `relation !== "foreign"`: a foreign sender only reaches here
-    // when moderation is switched off, and an untrusted stranger must never
-    // get to nominate who else joins the thread.
-    if (relation !== "foreign") {
-      await step.run("harvest-recipients", async () =>
-        harvestInboundRecipients({
-          ticket,
-          payload,
-          // The relation already passed the sender-auth gate above, so the
-          // From is as verified as this deployment requires.
-          senderAuthenticated: true,
-        }),
-      );
-    }
-
-    // 6b. Ingest attachments — pulled from Resend's Receiving API by the
-    // provider email id (the webhook is metadata-only), filtered (allowed MIME
-    // + size + magic-byte verify) and uploaded to R2. Per ARCHITECTURE §11.
-    await step.run("ingest-attachments", async () =>
-      ingestInboundAttachments({
-        ticketId: ticket.id,
-        messageId: insertedMsg.id,
-        providerEmailId: payload.providerEmailId,
-        fromEmail: payload.fromEmail,
-      }),
-    );
-
-    await step.run("touch-ticket", async () => {
-      // Re-read the SLA columns HERE rather than widening the memoized
-      // load-ticket step: Inngest JSON-serializes a step's return value, so
-      // Dates would come back as strings and the resume math would break.
-      const [fresh] = await db
-        .select({
-          status: tickets.status,
-          assignedToId: tickets.assignedToId,
-          slaPausedAt: tickets.slaPausedAt,
-          responseDueAt: tickets.responseDueAt,
-          resolutionDueAt: tickets.resolutionDueAt,
-        })
-        .from(tickets)
-        .where(eq(tickets.id, ticket.id))
-        .limit(1);
-      // An emailed reply is still the customer answering — unpark the ticket
-      // exactly like a portal reply does (lib/tickets/awaiting-customer.ts).
-      const resumePatch = fresh
-        ? resumeFromAwaitingCustomer(fresh, new Date())
-        : null;
-      await db
-        .update(tickets)
-        .set({ updatedAt: new Date(), ...(resumePatch ?? {}) })
-        .where(eq(tickets.id, ticket.id));
-    });
-
-    await audit({
-      actorId: null,
-      action: "ticket.inbound_email",
-      targetType: "ticket",
-      targetId: ticket.ticketNumber,
-      after: { from: fromEmail, length: messageBody.length, relation },
-    });
-
-    // Notify the assigned tech via the dispatch fan-out, plus Coordinator +
-    // Super Admin always so a reply never sits silently.
-    await step.run("notify-assignee", async () => {
-      try {
-        const customerName = authorName;
-        await inngest.send({
-          name: "notification/dispatch",
-          data: {
-            type: "ticket.customer_replied",
-            recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-            recipientRoles: [...OVERSIGHT_ROLES],
-            ticketId: ticket.id,
-            ticketNumber: ticket.ticketNumber,
-            email: {
-              // Staff-voiced template — NOT the customer-facing `ticket_reply`,
-              // which would greet the technician by the customer's name (req 6.3).
-              template: {
-                template: "customer_replied_staff",
-                data: {
-                  ticketNumber: ticket.ticketNumber,
-                  customerName,
-                  subject: ticket.subject,
-                  body: messageBody,
-                  ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-                },
-              },
-              ticketNumber: ticket.ticketNumber,
-              // Tag the alert so a technician can reply to it straight from
-              // their inbox and have it land on the ticket (req 5.3).
-              replyToTicket: true,
-            },
-            sms: {
-              template: {
-                template: "customer_replied",
-                data: {
-                  ticketNumber: ticket.ticketNumber,
-                  ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-                },
-              },
-            },
-            inApp: {
-              titleArgs: { ticketNumber: ticket.ticketNumber },
-              bodyArgs: { customerName },
-              linkUrl: `/admin/tickets/${ticket.id}`,
-            },
-          },
-        });
-      } catch (err) {
-        console.error(
-          "[process-inbound-email] dispatch failed:",
-          err,
-        );
-      }
-    });
-
-    return { status: "ok", ticketNumber };
-  },
+  async ({ event, step }) =>
+    runInboundEmail(event.data as EventData, step as unknown as InboundStep),
 );
 
 // ── New-ticket-from-inbound-email ──────────────────────────────────────

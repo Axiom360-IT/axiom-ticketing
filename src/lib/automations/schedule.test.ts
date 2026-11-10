@@ -7,7 +7,7 @@ import {
   safeLocalMoment,
 } from "./schedule";
 
-// The dispatcher wakes every five minutes. Everything that decides whether a
+// The dispatcher wakes every thirty minutes. Everything that decides whether a
 // report goes out — and whether it goes out TWELVE times — is in here, so this
 // is where the test effort belongs.
 

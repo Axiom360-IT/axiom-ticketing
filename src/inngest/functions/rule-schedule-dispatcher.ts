@@ -19,14 +19,15 @@ import { inngest } from "../client";
 // nobody has picked up" expressible. A one-email-per-day summary is what
 // scheduled reports are for, and they already exist.
 //
-// Five minutes, matching the report dispatcher, for the same reason: a rule
-// set for 08:00 should not wait until 08:10. `isReportDue` is reused verbatim
+// Every thirty minutes, matching the report dispatcher: a rule set for 08:00
+// runs between 08:00 and 08:30 (it was five minutes, which cost ~288
+// executions a day for rules that did not exist). `isReportDue` is reused verbatim
 // — the "at or after, once per local date" logic is identical and already
 // DST-tested, and a second copy would be a second thing to get wrong.
 export const ruleScheduleDispatcher = inngest.createFunction(
   {
     id: "rule-schedule-dispatcher",
-    triggers: cron("*/5 * * * *"),
+    triggers: cron("*/30 * * * *"),
   },
   async () =>
     withAutomationRun("rule-schedule-dispatcher", async () => {

@@ -252,12 +252,18 @@ Inngest:
 
 | function | trigger | job |
 |---|---|---|
-| `rule-event-dispatcher` | `*/2 * * * *` | drain the outbox, run `event` rules |
-| `rule-state-scanner` | `*/10 * * * *` | run `state` rules |
-| `rule-schedule-dispatcher` | `*/5 * * * *` | run `schedule` rules |
+| `rule-event-dispatcher` | `0 * * * *` | drain the outbox, run `event` rules |
+| `rule-state-scanner` | `0 * * * *` | run `state` rules |
+| `rule-schedule-dispatcher` | `*/30 * * * *` | run `schedule` rules |
 
 All three are registered in `AUTOMATIONS` so they get cards, run history,
 health badges and an off switch like everything else.
+
+> **Cadence was widened on 2026-11-10** (was `*/2`, `*/10`, `*/5`). Every wake-up
+> is a billable Inngest execution and the Hobby plan allows 50k a month; with no
+> rules defined these three alone were ~1,150 empty runs a day. An event rule now
+> reacts within the hour, a clock rule within 30 minutes. See `DECISIONS.md`
+> 2026-11-10. Tighten them again only together with a plan upgrade.
 
 ---
 

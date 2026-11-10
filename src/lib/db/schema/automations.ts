@@ -22,7 +22,7 @@ import { users } from "./auth";
 // `scheduled_reports` is the first automation a user can CREATE rather than
 // just configure. Deliberately NOT one Inngest cron per report — that would
 // need a code change and a deploy for every new schedule. One dispatcher runs
-// every five minutes and decides what is due.
+// every thirty minutes and decides what is due.
 
 export const automationRuns = pgTable(
   "automation_runs",
@@ -85,7 +85,7 @@ export const scheduledReports = pgTable(
       .default(sql`'[]'::jsonb`),
     enabled: boolean("enabled").notNull().default(true),
     /** The local date (YYYY-MM-DD) this last sent for. The double-send guard:
-     *  the dispatcher runs every five minutes, so without this a report due at
+     *  the dispatcher runs every thirty minutes, so without this a report due at
      *  19:00 would go out twelve times an hour. */
     lastRunOn: text("last_run_on"),
     lastStatus: text("last_status"),

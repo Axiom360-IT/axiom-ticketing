@@ -5,6 +5,117 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-10 · Inbound email no longer depends on Inngest to become a ticket
+
+**Why.** The Inngest outage entry above showed the real fault in the design: a
+metered third-party queue sat between "email received" and "ticket exists", and
+when it stopped running functions it did so silently — the webhook logged the
+email, Inngest accepted the event, nothing ever ran. Cutting the cron load fixes
+the *cause* of that outage; it does not remove the *dependency*.
+
+**What changed.**
+  * The processing body of `process-inbound-email` is now an exported function,
+    `runInboundEmail(data, step)`, written against `step.run`. The Inngest
+    function is a one-line wrapper around it.
+  * `lib/email/direct-step.ts` provides a stand-in `step` that runs inline with
+    the two behaviours the code relies on: per-step retry (3 attempts, matching
+    Inngest's `retries: 2`) and a JSON round-trip of step results (so a `Date`
+    comes back a string, exactly as under Inngest — the code is typed for that).
+  * The webhook answers 200 immediately and runs the pipeline in `after()`
+    (`maxDuration = 60`). Signature check, rate limit and the
+    `processed_webhook_events` idempotency row are unchanged and still happen
+    first, so a redelivery stays harmless.
+  * Inngest is now only the safety net, and only when that is provably safe:
+    if a direct run fails having completed nothing but READ steps
+    (`READ_ONLY_STEPS`), the whole email is re-enqueued; a replay cannot
+    duplicate anything because nothing was written. If a WRITE step had already
+    run, it is NOT replayed (that could post a second copy of a message); the
+    idempotency row is kept and an `inbound_email.process_failed` audit entry is
+    written. If the fallback enqueue itself fails, the idempotency row is
+    released so replaying the webhook from Resend's dashboard is processed
+    instead of being swallowed as a duplicate.
+
+**Trade-offs accepted, on purpose.**
+  * No cross-restart memoisation. If the serverless instance dies mid-way,
+    nothing resumes the half-done email. That is the price of not depending on a
+    queue; the audit entry and Resend's Receiving tab are the recovery path.
+  * A step id missing from `READ_ONLY_STEPS` is treated as a writer — the failure
+    mode of forgetting to update it is "less automatic recovery", never
+    "duplicate tickets".
+  * Everything the pipeline *emits* (notification fan-out, attachment virus-scan
+    events, billing events) still goes through Inngest. With Inngest degraded the
+    ticket and its message now exist immediately, but the staff notification and
+    the scan for its attachments wait for Inngest to run again. Attachments stay
+    downloadable meanwhile (only `quarantined` is blocked).
+
+**Verification.** Unit tests cover the step shim and the safe-to-replay rule.
+The end-to-end path (a real Resend webhook -> ticket) cannot be exercised
+without a deploy: send a test email after deploying and confirm the ticket
+appears and `[email/inbound] processed directly` is in the logs.
+
+---
+
+## 2026-11-10 · Inngest Hobby plan exhausted: background jobs widened, notification fan-out batched
+
+**Symptom.** Two customer emails on 2026-11-09 (09:54 and 11:00 ET) never became
+tickets; staff created them by hand. Every inbound email since 2026-11-08 ~17:08Z
+(18 of them) was affected, and so was every other background job.
+
+**Diagnosis, from evidence rather than assumption.** The Resend webhook logged
+each email in `processed_webhook_events`, and Inngest's own events API shows it
+*received* both `email/inbound.received` events — but its runs API shows zero
+`process-inbound-email` runs, zero failed runs, and ~98% of cron ticks dropped.
+`notification/dispatch` (29) and `billing/ticket.resolved` (7) events were also
+received and never run; no in-app notification row exists after 2026-11-08. The
+last full-cadence run was 2026-11-08 15:40Z. The app side was healthy (22/22
+functions synced). Inngest exposes no usage/billing endpoint, so "Hobby
+50k-executions/month cap reached" is the best-fitting explanation rather than a
+read-back — confirm on the dashboard's Usage page.
+
+**Where the executions went** (an execution = a function run + each step in it):
+  * the five newest polling crons — `rule-event-dispatcher` (*/2, 720/day),
+    `rule-schedule-dispatcher` (*/5, 288), `scheduled-report-dispatcher` (*/5,
+    288 runs x 3 executions because two config reads were `step.run`s),
+    `rule-state-scanner` (*/10, 144), `email-delivery-monitor` (*/10, 144) —
+    ~65k/month, added 2026-10-28/29, with **zero rules defined** so nearly every
+    pass was a no-op;
+  * notification fan-out: `dispatch-notification` made one `step.sendEvent` per
+    recipient per channel and each child event was its own function run (~14
+    steps for one alert to 8 staff; ~6.8k bell rows a month) — the biggest
+    event-driven consumer;
+  * inbound email (~25 steps each), scans, billing: smaller.
+
+**Changes.**
+  1. `rule-event-dispatcher` */2 -> hourly; `rule-state-scanner` */10 -> hourly;
+     `rule-schedule-dispatcher` */5 -> */30.
+  2. `scheduled-report-dispatcher` */5 -> */30, and its two idle `step.run` reads
+     became plain awaits (an idle pass is 1 execution, not 3). Reports now go out
+     within 30 minutes of their time instead of 5; the UI copy says so.
+  3. `email-delivery-monitor` */10 -> hourly.
+  4. `dispatch-notification` batches all email/SMS child events into one
+     `step.sendEvent` (chunked at 100) and inserts all bell rows with one bulk
+     `INSERT` in one `step.run` — no per-recipient step, no `notification/in-app`
+     event. `send-in-app-notification` stays registered (the customer-import job
+     still emits that event for its single "import finished" bell).
+  `registry.ts` is pinned to the real cron strings by `registry.test.ts`, so it
+  changed in lockstep.
+
+**Expected effect (estimates, +/-25%).** Cron executions ~77k -> ~17k a month;
+event-driven ~36-41k -> ~20-25k; total ~35-40k against the 50k cap.
+
+**What this does NOT do.** It does not un-cap the current billing cycle — that
+needs Inngest's monthly reset or an upgrade — and it does not recover the
+unprocessed emails/notifications (replay from the Inngest dashboard, or pull the
+emails from Resend's Receiving tab).
+
+**If usage is still too high**, the next levers are: moving `load-config` out of
+`step.run` in `unassigned-monitor` (~2k/month), and reducing the staff CC on
+every notification (`OVERSIGHT_ROLES`, 7-8 recipients per event — a product
+decision, so not touched here). Re-tighten the rule crons only alongside a plan
+upgrade.
+
+---
+
 ## 2026-10-06 · Automations panel, and scheduled reports
 
 Seventeen background jobs were already running. Their only trace was the

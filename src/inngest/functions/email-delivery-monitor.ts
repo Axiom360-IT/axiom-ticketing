@@ -25,7 +25,9 @@ import { inngest } from "../client";
 export const emailDeliveryMonitor = inngest.createFunction(
   {
     id: "email-delivery-monitor",
-    triggers: cron("*/10 * * * *"),
+    // Hourly (was every ten minutes): ~144 runs a day was a large share of the
+    // Hobby plan's execution allowance for a log that rarely has news in it.
+    triggers: cron("0 * * * *"),
   },
   async () =>
     withAutomationRun("email-delivery-monitor", async () => {

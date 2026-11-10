@@ -23,7 +23,7 @@ export type OccurrenceInput = {
    *  again counts as a NEW occurrence. */
   stateStartedAt?: Date | null;
   /** For a schedule rule: the local date, so one send per day survives a
-   *  dispatcher that wakes every five minutes. Same guard, and the same
+   *  dispatcher that wakes every thirty minutes. Same guard, and the same
    *  reasoning, as `scheduled_reports.last_run_on`. */
   localDate?: string;
 };

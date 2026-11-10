@@ -10,10 +10,11 @@ import { inngest } from "../client";
 // Runs the rules that watch for a ticket WAITING — "no owner for 30 minutes",
 // "nobody has answered for an hour".
 //
-// Ten minutes, not two. These rules are measured in tens of minutes and hours,
-// so finer granularity buys nothing an operator could notice while costing a
-// query per shape every pass. The same trade the SLA monitor made when it
-// widened to twenty.
+// Hourly (was every ten minutes). These rules are measured in tens of minutes
+// and hours, so finer granularity buys little an operator could notice while
+// costing a query per shape — and a billable Inngest execution — every pass.
+// The same trade the SLA monitor made when it widened to twenty. With no
+// rules defined, the old cadence was ~144 empty runs a day.
 //
 // Nothing here is per-rule: `findStateCandidates` issues ONE query per state
 // shape at the smallest threshold any rule asked for, and the engine narrows
@@ -22,7 +23,7 @@ import { inngest } from "../client";
 export const ruleStateScanner = inngest.createFunction(
   {
     id: "rule-state-scanner",
-    triggers: cron("*/10 * * * *"),
+    triggers: cron("0 * * * *"),
   },
   async () =>
     withAutomationRun("rule-state-scanner", async () => {

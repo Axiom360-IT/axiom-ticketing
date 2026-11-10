@@ -3112,7 +3112,7 @@
       },
       "scheduled-report-dispatcher": {
         "name": "Scheduled report sender",
-        "description": "Wakes every five minutes and sends any report whose time has come. This is the job that delivers the reports below."
+        "description": "Wakes every thirty minutes and sends any report whose time has come. This is the job that delivers the reports below."
       },
       "process-inbound-email": {
         "name": "Inbound email to ticket",
@@ -3140,7 +3140,7 @@
       },
       "send-in-app-notification": {
         "name": "In-app notification sender",
-        "description": "Puts one notification in the bell menu."
+        "description": "Puts a notification in the bell menu. Most bell notifications are now added directly by the notification sender; this one handles the rest (for example, a finished customer import)."
       },
       "billing-balance-monitor": {
         "name": "Support plan balance alerts",
@@ -3152,7 +3152,7 @@
       },
       "rule-event-dispatcher": {
         "name": "Rules that react to changes",
-        "description": "Watches every change to a ticket and runs the rules that care — a new ticket, a handover, a customer reply. This is what makes a rule feel instant."
+        "description": "Watches every change to a ticket and runs the rules that care — a new ticket, a handover, a customer reply. It checks once an hour, so a rule reacts within the hour."
       },
       "rule-state-scanner": {
         "name": "Rules that watch for waiting",
@@ -3160,7 +3160,7 @@
       },
       "rule-schedule-dispatcher": {
         "name": "Rules that run at a set time",
-        "description": "Wakes every five minutes and runs any rule whose time has come, checking it against every open ticket."
+        "description": "Wakes every thirty minutes and runs any rule whose time has come, checking it against every open ticket."
       },
       "email-delivery-monitor": {
         "name": "Email delivery check",
@@ -3190,7 +3190,7 @@
       "fieldName": "Name",
       "namePlaceholder": "Daily operations report",
       "fieldTime": "Send at ({timezone})",
-      "timeHint": "Sent within five minutes of this time — the sender wakes every five minutes.",
+      "timeHint": "Sent within thirty minutes of this time — the sender wakes every thirty minutes.",
       "fieldRange": "Days of data to include",
       "fieldFormat": "File format",
       "formatXlsx": "Excel (.xlsx)",
@@ -3421,7 +3421,7 @@
     "recheck": "Check again",
     "checking": "Checking…",
     "checked": "Checked just now.",
-    "autoCheck": "This also checks itself every 10 minutes.",
+    "autoCheck": "This also checks itself every hour.",
     "outcome": {
       "delivered": "It got through — this address is receiving our emails again.",
       "blocked": "Still blocked. Remove the address from Resend's block list (step 2 below), then try again.",

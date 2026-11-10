@@ -6,7 +6,7 @@
 // Why this exists at all, rather than one Inngest cron per report: a cron
 // expression is written in code and deployed. A report the IT Director can
 // create at 16:05 and expect at 19:00 the same day cannot be. So one
-// dispatcher wakes every five minutes and asks this function what is due.
+// dispatcher wakes every thirty minutes and asks this function what is due.
 //
 // All eight existing crons run in UTC — not one carries a `TZ=` prefix. The
 // dispatcher is no different, which means "19:00" has to be interpreted here,
@@ -102,9 +102,9 @@ export type DueVerdict =
 /**
  * Whether a report should go out at this instant.
  *
- * Deliberately "at or after", not "equals": the dispatcher fires every five
+ * Deliberately "at or after", not "equals": the dispatcher fires every thirty
  * minutes, so an exact match would miss a report scheduled at 19:02 forever.
- * `lastRunOn` is what keeps "at or after" from meaning "every five minutes
+ * `lastRunOn` is what keeps "at or after" from meaning "every thirty minutes
  * until midnight".
  *
  * A consequence worth stating: a report created at 19:30 for 19:00 goes out

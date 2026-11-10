@@ -9,16 +9,21 @@ import { scheduledReports } from "@/lib/db/schema/automations";
 import { getSetting } from "@/lib/settings";
 import { inngest } from "../client";
 
-// Every five minutes. The one job that drives every user-created schedule.
+// Every thirty minutes. The one job that drives every user-created schedule.
 //
 // Why a dispatcher instead of one Inngest cron per report: a cron expression
 // lives in code and ships in a deploy. A report the IT Director creates at
 // 16:05 and expects at 19:00 the same day cannot wait for a release. So this
-// wakes often, asks `isReportDue` what should go out, and sends it.
+// wakes regularly, asks `isReportDue` what should go out, and sends it.
 //
-// Five minutes is the resolution of the whole feature: a report set for 19:00
-// goes out between 19:00 and 19:05. Tightening it means more wake-ups for the
-// same work; the honest trade is stated in the UI rather than hidden.
+// Thirty minutes is the resolution of the whole feature: a report set for
+// 19:00 goes out between 19:00 and 19:30. It used to be five minutes, and the
+// two config reads below were each a `step.run`, so an idle pass cost three
+// Inngest executions — ~26k a month, more than half the Hobby plan's 50k. Both
+// are now plain awaits (they are cheap, idempotent reads, so there is nothing
+// to memoise), which makes an idle pass a single execution. The steps that DO
+// matter — claim, send, audit — are untouched and only run when a report is
+// due. The honest trade is stated in the UI rather than hidden.
 //
 // All eight sibling crons run in UTC and so does this one — the "19:00" is
 // interpreted against `business_hours.timezone` inside `isReportDue`, not by
@@ -31,32 +36,30 @@ export const scheduledReportDispatcher = inngest.createFunction(
     // stored date, so a retry is safe — but it would re-send to everyone who
     // already received it in the same run, so keep retries low.
     retries: 1,
-    triggers: cron("*/5 * * * *"),
+    triggers: cron("*/30 * * * *"),
   },
   async ({ step }) =>
     withAutomationRun("scheduled-report-dispatcher", async () => {
-      const cfg = await step.run("load-config", async () => {
-        const [enabled, timezone] = await Promise.all([
-          getSetting<boolean>("scheduled_reports.enabled"),
-          getSetting<string>("business_hours.timezone"),
-        ]);
-        return {
-          enabled: typeof enabled === "boolean" ? enabled : true,
-          timezone:
-            typeof timezone === "string" && timezone.trim()
-              ? timezone
-              : "UTC",
-        };
-      });
+      // Plain awaits, not `step.run`: each step is a billable execution, and
+      // these are cheap reads that are safe to repeat on a retry.
+      const [enabledSetting, timezoneSetting] = await Promise.all([
+        getSetting<boolean>("scheduled_reports.enabled"),
+        getSetting<string>("business_hours.timezone"),
+      ]);
+      const cfg = {
+        enabled: typeof enabledSetting === "boolean" ? enabledSetting : true,
+        timezone:
+          typeof timezoneSetting === "string" && timezoneSetting.trim()
+            ? timezoneSetting
+            : "UTC",
+      };
 
       if (!cfg.enabled) return { skipped: "disabled" as const };
 
-      const candidates = await step.run("load-schedules", async () =>
-        db
-          .select()
-          .from(scheduledReports)
-          .where(eq(scheduledReports.enabled, true)),
-      );
+      const candidates = await db
+        .select()
+        .from(scheduledReports)
+        .where(eq(scheduledReports.enabled, true));
 
       if (candidates.length === 0) {
         return { skipped: "no-schedules" as const };

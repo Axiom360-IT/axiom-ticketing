@@ -1,5 +1,4 @@
-import type { NextRequest } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { after, type NextRequest } from "next/server";
 import { db } from "@/lib/db/client";
 import { processedWebhookEvents } from "@/lib/db/schema/webhooks";
 import {
@@ -9,21 +8,32 @@ import {
 import { verifySvixSignature } from "@/lib/email/webhook-signature";
 import { checkRateLimit } from "@/lib/ratelimit";
 import { clientIp } from "@/lib/request";
-import { inngest } from "@/inngest/client";
+import { processInboundDirect } from "@/lib/email/process-inbound-direct";
 
 // Resend inbound webhook entry point. Configure the Resend dashboard to
-// POST here. We don't process the email synchronously — that work happens
-// in `inngest/functions/process-inbound-email.ts`. This handler:
+// POST here. This handler:
 //   1. Verifies the Svix signature against RESEND_WEBHOOK_SECRET
 //   2. Records the (provider, svix-id) tuple for idempotency
-//   3. Normalizes the provider payload and emits an Inngest event
+//   3. Normalizes the provider payload, answers 200 straight away, and then —
+//      in `after()`, once the response has gone — runs the full processing
+//      (`runInboundEmail`, shared with the Inngest function) IN THIS PROCESS.
 // Steps 1 and 2 must succeed before any state changes.
+//
+// Why processing is no longer queued through Inngest first: Inngest is metered,
+// and when its allowance ran out (2026-11-08) it kept accepting events while
+// running none of them, so inbound mail was received and logged but never
+// became a ticket. Ticket creation must not depend on a queue. Inngest is now
+// only the fallback (see lib/email/process-inbound-direct.ts for the exact
+// rules on when a failed email is handed to it).
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// The work after the response (fetch the email, create the ticket, upload
+// attachments to R2) can take several seconds; the platform clamps this to the
+// plan's ceiling.
+export const maxDuration = 60;
 
 const PROVIDER = "resend";
-const EVENT_NAME = "email/inbound.received";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
@@ -93,7 +103,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Resend's `email.received` webhook is metadata-only — the body, headers,
   // and attachments are NOT in this payload. We used to fetch them here
   // (GET /emails/receiving/{id}) and inline the full text/html into the
-  // Inngest event below — but Inngest caps event payload size (256KiB on
+  // Inngest event — but Inngest caps event payload size (256KiB on
   // Free, 512KiB on Basic, 3MiB on Pro), and a long Outlook thread carrying
   // several inline images routinely produces bloated HTML that blows past
   // that cap. When it does, `inngest.send()` rejects the event, this handler
@@ -103,35 +113,17 @@ export async function POST(request: NextRequest): Promise<Response> {
   // `process-inbound-email` itself (inside a retried `step.run`), since a
   // plain outbound fetch from a background function has no comparable size
   // ceiling. This handler only needs enough of the raw payload to confirm
-  // there's a real sender before enqueueing.
+  // there's a real sender before processing.
   const normalized = normalizeResendInbound(payload);
   if (!normalized) {
     console.warn("[email/inbound] payload has no usable sender; dropping");
     return new Response("OK", { status: 200 });
   }
 
-  try {
-    await inngest.send({
-      name: EVENT_NAME,
-      data: { payload: normalized, eventId: id },
-    });
-  } catch (err) {
-    // Enqueue failed AFTER we recorded the idempotency marker. Roll the marker
-    // back so Resend's retry (same svix-id) is reprocessed instead of being
-    // treated as a duplicate and silently lost — then 500 to trigger that
-    // retry. (req 5.1 — no inbound reply should be dropped on a transient.)
-    console.error("[email/inbound] enqueue failed; rolling back idempotency", err);
-    await db
-      .delete(processedWebhookEvents)
-      .where(
-        and(
-          eq(processedWebhookEvents.provider, PROVIDER),
-          eq(processedWebhookEvents.eventId, id),
-        ),
-      )
-      .catch(() => {});
-    return new Response("Enqueue failed", { status: 500 });
-  }
+  // Answer first, work after. The provider only needs to know we accepted it
+  // (the idempotency row above already makes a redelivery harmless), and a
+  // slow fetch/upload must not make it time out and redeliver.
+  after(() => processInboundDirect({ payload: normalized, eventId: id }));
 
   return new Response("OK", { status: 200 });
 }

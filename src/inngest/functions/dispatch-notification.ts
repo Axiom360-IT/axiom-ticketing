@@ -2,18 +2,35 @@ import { and, eq, inArray } from "drizzle-orm";
 import { eventType } from "inngest";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
-import { notificationPreferences } from "@/lib/db/schema/notifications";
+import {
+  notificationPreferences,
+  notifications,
+} from "@/lib/db/schema/notifications";
 import { roles, userRoles } from "@/lib/db/schema/rbac";
 import { inAppDescriptor } from "@/lib/notifications/registry";
 import { getSetting } from "@/lib/settings";
-import { inngest } from "../client";
+import { type Events, inngest } from "../client";
 
 const CUSTOMER_ROLE_NAME = "Customer";
 
 // Dispatcher: producer fires one `notification/dispatch`; we read prefs
-// and emit per-recipient child events. The actual sending lives in
-// send-email-notification, send-sms-notification,
-// send-in-app-notification — each independently retried.
+// and fan out. Email and SMS legs are emitted as child events handled by
+// send-email-notification / send-sms-notification (each independently
+// retried). The in-app (bell) rows are inserted right here.
+//
+// Why this is shaped the way it is: Inngest bills every step and every
+// function run as an "execution", and the Hobby plan allows 50k a month.
+// This used to call `step.sendEvent` once per recipient per channel — a
+// dispatch to 8 staff was ~16 steps, plus one extra run per child event, and
+// bell/SMS/email notifications were the single biggest consumer of the plan.
+// Now:
+//   • all email/SMS child events go out in ONE batched `step.sendEvent`
+//     (chunked, only to stay clear of request-size limits), and
+//   • all bell rows go in with ONE bulk insert inside ONE `step.run` — so no
+//     `notification/in-app` event and no `send-in-app-notification` run per
+//     recipient.
+// `send-in-app-notification` stays registered: the customer-import job still
+// emits `notification/in-app` for its single "import finished" bell.
 
 export const dispatchNotification = inngest.createFunction(
   {
@@ -118,6 +135,14 @@ export const dispatchNotification = inngest.createFunction(
 
     const descriptor = inAppDescriptor(data.type);
 
+    // Collect first, send after: the whole point is to pay for ONE step per
+    // channel instead of one per recipient.
+    const childEvents: Array<
+      | { name: "notification/email"; data: Events["notification/email"]["data"] }
+      | { name: "notification/sms"; data: Events["notification/sms"]["data"] }
+    > = [];
+    const inAppRows: Array<typeof notifications.$inferInsert> = [];
+
     let dispatched = 0;
     for (const r of recipients) {
       const pref = prefs.get(r.id);
@@ -134,7 +159,7 @@ export const dispatchNotification = inngest.createFunction(
         !customerIdSet.has(r.id) || customerSmsGloballyEnabled;
 
       if (data.email && emailOn && r.email) {
-        await step.sendEvent(`email-${r.id}`, {
+        childEvents.push({
           name: "notification/email",
           data: {
             to: r.email,
@@ -147,7 +172,7 @@ export const dispatchNotification = inngest.createFunction(
       }
 
       if (data.sms && smsOn && smsAllowedForRecipient && r.phone) {
-        await step.sendEvent(`sms-${r.id}`, {
+        childEvents.push({
           name: "notification/sms",
           data: {
             to: r.phone,
@@ -158,20 +183,36 @@ export const dispatchNotification = inngest.createFunction(
       }
 
       if (descriptor && inAppOn) {
-        await step.sendEvent(`inapp-${r.id}`, {
-          name: "notification/in-app",
-          data: {
-            userId: r.id,
-            eventType: data.type,
-            titleKey: descriptor.titleKey,
-            titleArgs: data.inApp?.titleArgs,
-            bodyKey: descriptor.bodyKey,
-            bodyArgs: data.inApp?.bodyArgs,
-            linkUrl: data.inApp?.linkUrl,
-          },
+        inAppRows.push({
+          userId: r.id,
+          eventType: data.type,
+          titleKey: descriptor.titleKey,
+          titleArgs: data.inApp?.titleArgs ?? null,
+          bodyKey: descriptor.bodyKey,
+          bodyArgs: data.inApp?.bodyArgs ?? null,
+          linkUrl: data.inApp?.linkUrl ?? null,
         });
       }
       dispatched++;
+    }
+
+    // Bell rows: one bulk insert, one step. Runs before the email/SMS fan-out
+    // so the in-app notification (the leg that never depends on a third-party
+    // provider) lands even if a later step has to retry.
+    if (inAppRows.length > 0) {
+      await step.run("insert-in-app", async () => {
+        await db.insert(notifications).values(inAppRows);
+      });
+    }
+
+    // Email + SMS: batched. 100 per call is far below any request-size limit
+    // and, for a normal dispatch (a handful of recipients), is exactly one step.
+    const BATCH = 100;
+    for (let i = 0; i < childEvents.length; i += BATCH) {
+      await step.sendEvent(
+        `fan-out-${i / BATCH}`,
+        childEvents.slice(i, i + BATCH),
+      );
     }
 
     return { recipients: recipients.length, dispatched };

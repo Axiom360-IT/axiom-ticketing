@@ -7,15 +7,14 @@ import { inngest } from "../client";
 
 // Drains the ticket change outbox and runs the rules that watch for events.
 //
-// Every two minutes, which is the tightest cadence of the three dispatchers
-// because this is the one an operator perceives as "instant": a rule saying
-// "when a critical ticket arrives, text the on-call technician" is judged on
-// how long that text takes.
-//
-// It is also the CHEAPEST of the three. A pass with an empty outbox is a
-// single indexed count against a partial index — unlike the scanner, which
-// has to look at tickets. That is what makes two minutes affordable on
-// Neon's compute budget when the SLA monitor needs twenty.
+// Hourly. This used to wake every two minutes so a rule felt "instant", but
+// every wake-up is a billable Inngest execution: at */2 this one job was ~720
+// runs a day (~21k a month) — most of the Hobby plan's 50k allowance — while
+// no rules existed at all, so every pass returned "nothing queued". The
+// outbox itself is unaffected (a Postgres trigger fills it regardless), so
+// nothing is lost by waking less often; an event rule simply reacts within
+// the hour instead of within two minutes. If rules become latency-sensitive,
+// tighten this (e.g. every 10–15 minutes) and re-check the plan's usage.
 //
 // Batching, not draining-to-empty, is deliberate: a backlog (a bulk import, a
 // migration touching every ticket) is worked through over several passes
@@ -23,7 +22,7 @@ import { inngest } from "../client";
 export const ruleEventDispatcher = inngest.createFunction(
   {
     id: "rule-event-dispatcher",
-    triggers: cron("*/2 * * * *"),
+    triggers: cron("0 * * * *"),
   },
   async () =>
     withAutomationRun("rule-event-dispatcher", async () => {
