@@ -157,6 +157,7 @@ profile, same as anyone else.
 `scan-attachment.ts` (quarantine), `process-inbound-email.ts` (inbound reply,
 held), `unassigned-monitor.ts` (unassigned reminder). The MCP write tools
 (`lib/mcp/tickets-write.ts`, `lib/mcp/procurement-write.ts`) mirror the
-Server Action producers for their respective events. All emit
-`notification/dispatch`; `dispatch-notification.ts` fans out to
-email/SMS/in-app.
+Server Action producers for their respective events. All call
+`emitNotification` (`lib/notifications/deliver.ts`), which sends
+email/SMS/in-app in-process; `dispatch-notification.ts` is only the Inngest
+fallback.

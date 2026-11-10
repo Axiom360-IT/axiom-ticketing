@@ -129,3 +129,16 @@ export const TOGGLEABLE_EVENT_TYPES: ReadonlySet<NotificationEventType> =
     ...STAFF_EVENT_TYPES,
     ...CUSTOMER_EVENT_TYPES,
   ]);
+
+/**
+ * The events an admin can mute for a whole organization, split by who they
+ * reach. Every one is already a per-person toggle; the organization switch sits
+ * on top of those. `automation.rule` is deliberately absent (see
+ * inngest/client.ts: a rule is an operator's explicit instruction).
+ */
+export const ORG_MUTABLE_EVENTS = {
+  /** Delivered to the organization's customers. */
+  customer: CUSTOMER_EVENT_TYPES,
+  /** Delivered to staff, about the organization's tickets. */
+  staff: STAFF_EVENT_TYPES,
+} as const;

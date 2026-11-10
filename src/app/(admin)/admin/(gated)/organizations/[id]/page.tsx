@@ -9,12 +9,14 @@ import {
 } from "@/components/ui/card";
 import { ExportMenu } from "@/components/shared/export-menu";
 import { AddHoursControl } from "@/components/organizations/add-hours-control";
+import { OrgNotificationSettings } from "@/components/organizations/org-notification-settings";
 import { OrganizationForm } from "@/components/organizations/organization-form";
 import { OrgUsageBreakdown } from "@/components/organizations/org-usage-breakdown";
 import { TrustedContacts } from "@/components/organizations/trusted-contacts";
 import {
   getOrganizationDetail,
   getOrganizationUsage,
+  listOrganizationNotificationSettings,
   listOrganizationTrustedContacts,
 } from "@/app/actions/organizations";
 import { can } from "@/lib/auth/can";
@@ -65,9 +67,11 @@ export default async function EditOrganizationPage({
 
   const usage = await getOrganizationUsage(id);
   const trustedContacts = await listOrganizationTrustedContacts(id);
+  const notificationSettings = await listOrganizationNotificationSettings(id);
 
   const t = await getTranslations("organizations.edit");
   const tTrusted = await getTranslations("organizations.trusted");
+  const tNotif = await getTranslations("organizations.notifications");
 
   const includedMinutes = org.monthlyMinutesIncluded ?? 0;
   const balanceMinutes = org.monthlyMinutesBalance ?? 0;
@@ -201,6 +205,25 @@ export default async function EditOrganizationPage({
         </CardHeader>
         <CardContent>
           <OrgUsageBreakdown usage={usage} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{tNotif("cardTitle")}</CardTitle>
+          <CardDescription>{tNotif("cardSubtitle")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!canUpdate ? (
+            <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
+              {tNotif("readOnly")}
+            </p>
+          ) : null}
+          <OrgNotificationSettings
+            organizationId={org.id}
+            initial={notificationSettings}
+            canEdit={canUpdate}
+          />
         </CardContent>
       </Card>
 

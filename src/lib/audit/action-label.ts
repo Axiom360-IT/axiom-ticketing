@@ -35,6 +35,8 @@ const ACTION_LABELS: Record<string, string> = {
   "organization.delete": "Deleted an organization",
   "organization.add_hours": "Added plan hours",
   "organization.untrust_contact": "Revoked a trusted contact",
+  "organization.notification_setting_changed":
+    "Changed an organization's notification settings",
   // Procurement
   "procurement.create": "Created a procurement request",
   "procurement.approve": "Approved a procurement request",

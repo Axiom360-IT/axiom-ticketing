@@ -305,7 +305,7 @@ Pure-logic modules ship with co-located vitest files: `crypto.test.ts`, `sla-com
 | `unassigned-ticket-monitor` | cron `*/20 * * * *` | Settings-driven (`unassigned_alert.*`): emails Coordinator/IT Director/Super Admin about any open ticket unassigned past a configurable threshold; re-nags on a configurable cadence; claim-then-check on `tickets.unassigned_reminder_at` prevents double-sends across overlapping runs |
 | `customer-followup-monitor` | cron `0 */6 * * *` | Settings-driven (`customer_followup.*`): a ticket sitting in `awaiting_customer_confirmation` with no customer reply since the agent's last message gets a one-time nudge email after `followup_days`, then auto-closes (`customer_no_response`) after `close_days` more. Clock resets whenever a fresh agent (or customer) message lands |
 | `cleanup-stale-drafts` | cron `15 4 * * *` | Deletes `draft`-status tickets (+ their R2 attachments) older than 24h — pre-submission drafts that let a customer attach files before the ticket is real, but leak ticket numbers/objects if abandoned |
-| `dispatch-notification` | event `notification/dispatch` | Resolves recipients from `recipientUserIds` ∪ `recipientRoles`, loads `notification_preferences`, fans out into per-recipient `notification/email` / `notification/sms` / `notification/in-app` events |
+| `dispatch-notification` | event `notification/dispatch` | **Fallback only** (producers send in-process via `emitNotification`, §14). Same decisions via `planDelivery`: resolves recipients, loads `notification_preferences`, bulk-inserts the bell rows and sends one batched `notification/email` / `notification/sms` event set |
 | `send-email-notification` | event `notification/email`, 3 retries | Calls `sendEmail` |
 | `send-sms-notification` | event `notification/sms`, 3 retries | Calls `sendSms` |
 | `send-in-app-notification` | event `notification/in-app`, 3 retries | Inserts into `notifications` with i18n keys + arg JSON |
@@ -471,13 +471,18 @@ An admin with `users.impersonate` can act-as another user. The active context li
 ## 14. Notification pipeline
 
 ```
-Server Action ── inngest.send('notification/dispatch') ──▶ dispatch-notification ──┐
-                                                                                    ├──▶ notification/email ──▶ send-email-notification (Resend)
-                                                                                    ├──▶ notification/sms   ──▶ send-sms-notification   (Twilio)
-                                                                                    └──▶ notification/in-app ──▶ send-in-app-notification (insert into `notifications`)
+Server Action ── emitNotification(payload) ──▶ resolve recipients ─▶ load prefs ─▶ planDelivery
+ (lib/notifications/deliver.ts, in-process)                                          │
+                                                   ┌─────────────────────────────────┤
+                                                   ▼                ▼                ▼
+                                          insert bell rows    sendEmail (Resend)  sendSms (Twilio)
+                                          (`notifications`)   3 tries each        3 tries each
+   if the READ phase fails (nothing sent yet) ──▶ inngest.send('notification/dispatch') ──▶ dispatch-notification (fallback)
 ```
 
-Producers fire one `notification/dispatch` with a `type: NotificationEventType` and optional `email` / `sms` / `inApp` payloads. The dispatcher resolves recipients from explicit ids + role broadcasts, loads `notification_preferences` per (user, event_type), and gates the email/SMS legs by the user's preferences (defaults: both on). The in-app insert happens whenever the registry has an entry for that event type.
+Producers call `emitNotification` with a `type: NotificationEventType` and optional `email` / `sms` / `inApp` payloads. It resolves recipients from explicit ids + role broadcasts, loads `notification_preferences` per (user, event_type), and gates the email/SMS legs by the user's preferences (defaults: both on) — that decision is the pure function `planDelivery` (`lib/notifications/plan.ts`, unit-tested), shared with the Inngest fallback. The in-app insert happens whenever the registry has an entry for that event type. **Sending does not depend on Inngest** (since 2026-11-10): each email/SMS is retried up to 3 times in-process (not for permanent failures such as a bad key or invalid address) and a send that still fails is recorded in `failed_notifications` (`inngest_event_id` = `direct:<uuid>`) and logged; it is never replayed, because the other recipients' copies have already gone out. Only a failure *before* anything was sent (e.g. a database blip) hands the whole event to Inngest.
+
+**Per-organization mutes.** An admin can switch off any event, per channel, for one organization (organization page → *Notification settings*; table `organization_notification_settings`, default all on). The organization is that of the ticket the notification is about, so customer-facing events mute the org's customers and staff-facing events mute staff about that org's tickets. It only subtracts (a person's own preference still applies), fails open if the lookup errors, and does not cover direct emails such as the ticket-received confirmation. See `DECISIONS.md` 2026-11-10.
 
 In-app rendering happens at READ time — the DB stores `titleKey`/`bodyKey` + JSON args so the user's current locale wins regardless of when the notification was created.
 

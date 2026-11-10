@@ -1,5 +1,5 @@
 "use server";
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -8,6 +8,7 @@ import { productionContext } from "@/lib/auth/can-context";
 import { requireSessionUser } from "@/lib/auth/session";
 import { db, transactional } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
+import { organizationNotificationSettings } from "@/lib/db/schema/organization-notification-settings";
 import { organizationTrustedEmails } from "@/lib/db/schema/organization-trusted-emails";
 import {
   organizationDomains,
@@ -16,6 +17,7 @@ import {
 import { tickets } from "@/lib/db/schema/tickets";
 import { workLogs } from "@/lib/db/schema/work-logs";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { TOGGLEABLE_EVENT_TYPES } from "@/lib/notifications/audience";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { notifyBalanceChanged } from "@/lib/billing/events";
 import {
@@ -880,5 +882,166 @@ export async function dismissTicketOrganization(
   revalidatePath("/admin/org-triage");
   revalidatePath("/admin/organizations");
   revalidatePath(`/admin/tickets/${ticketId}`);
+  return { ok: true };
+}
+
+// ── Per-organization notification mutes ─────────────────────────────
+
+export type OrgNotificationSettingRow = {
+  eventType: string;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  inAppEnabled: boolean;
+};
+
+/**
+ * The organization's saved switches. Only rows that differ from the default
+ * ("everything on") exist; the UI treats a missing event as all-on.
+ */
+export async function listOrganizationNotificationSettings(
+  organizationId: string,
+): Promise<OrgNotificationSettingRow[]> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "organizations.view", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  try {
+    return await db
+      .select({
+        eventType: organizationNotificationSettings.eventType,
+        emailEnabled: organizationNotificationSettings.emailEnabled,
+        smsEnabled: organizationNotificationSettings.smsEnabled,
+        inAppEnabled: organizationNotificationSettings.inAppEnabled,
+      })
+      .from(organizationNotificationSettings)
+      .where(eq(organizationNotificationSettings.organizationId, organizationId));
+  } catch (err) {
+    // Table not migrated yet: show the defaults rather than break the page.
+    console.warn("[organizations] could not read notification settings", err);
+    return [];
+  }
+}
+
+const orgNotificationSettingSchema = z.object({
+  eventType: z.string().refine((v) => TOGGLEABLE_EVENT_TYPES.has(v as never), {
+    message: "Unknown notification type.",
+  }),
+  emailEnabled: z.boolean(),
+  smsEnabled: z.boolean(),
+  inAppEnabled: z.boolean(),
+});
+
+const orgNotificationSettingsInput = z.object({
+  organizationId: z.string().uuid(),
+  // One element for a single toggle, many for "turn this whole group off".
+  settings: z.array(orgNotificationSettingSchema).min(1).max(40),
+});
+
+/**
+ * Set the three channels of one or more events for an organization. `false`
+ * mutes that channel for everyone the event would reach for the org's tickets;
+ * `true` simply allows it (a person's own preference still applies). A row
+ * whose channels are all allowed is removed, so the table only holds real
+ * mutes. One audit entry records the whole change.
+ */
+export async function setOrganizationNotificationSettings(
+  input: z.input<typeof orgNotificationSettingsInput>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const caller = await requireSessionUser();
+  if (
+    !(await can(caller, "organizations.update", { type: "global" }, productionContext))
+  ) {
+    throw new ForbiddenError();
+  }
+  const parsed = orgNotificationSettingsInput.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+  const { organizationId } = parsed.data;
+  // Last write wins if the same event is listed twice.
+  const settings = [
+    ...new Map(parsed.data.settings.map((s) => [s.eventType, s] as const)).values(),
+  ];
+
+  const [org] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (!org) return { ok: false, error: "Organization not found." };
+
+  const existing = await db
+    .select({
+      eventType: organizationNotificationSettings.eventType,
+      emailEnabled: organizationNotificationSettings.emailEnabled,
+      smsEnabled: organizationNotificationSettings.smsEnabled,
+      inAppEnabled: organizationNotificationSettings.inAppEnabled,
+    })
+    .from(organizationNotificationSettings)
+    .where(
+      and(
+        eq(organizationNotificationSettings.organizationId, organizationId),
+        inArray(
+          organizationNotificationSettings.eventType,
+          settings.map((s) => s.eventType),
+        ),
+      ),
+    );
+  const before = new Map(existing.map((r) => [r.eventType, r] as const));
+
+  const allowed = settings.filter(
+    (s) => s.emailEnabled && s.smsEnabled && s.inAppEnabled,
+  );
+  const muted = settings.filter(
+    (s) => !(s.emailEnabled && s.smsEnabled && s.inAppEnabled),
+  );
+
+  if (allowed.length > 0) {
+    await db.delete(organizationNotificationSettings).where(
+      and(
+        eq(organizationNotificationSettings.organizationId, organizationId),
+        inArray(
+          organizationNotificationSettings.eventType,
+          allowed.map((s) => s.eventType),
+        ),
+      ),
+    );
+  }
+  if (muted.length > 0) {
+    await db
+      .insert(organizationNotificationSettings)
+      .values(muted.map((s) => ({ organizationId, ...s })))
+      .onConflictDoUpdate({
+        target: [
+          organizationNotificationSettings.organizationId,
+          organizationNotificationSettings.eventType,
+        ],
+        set: {
+          emailEnabled: sql`excluded.email_enabled`,
+          smsEnabled: sql`excluded.sms_enabled`,
+          inAppEnabled: sql`excluded.in_app_enabled`,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+
+  const ALL_ON = { emailEnabled: true, smsEnabled: true, inAppEnabled: true };
+  await audit({
+    actorId: caller.id,
+    action: "organization.notification_setting_changed",
+    targetType: "organization",
+    targetId: organizationId,
+    before: {
+      settings: settings.map((s) => ({
+        eventType: s.eventType,
+        ...(before.get(s.eventType) ?? ALL_ON),
+      })),
+    },
+    after: { settings },
+  });
+
+  revalidatePath(`/admin/organizations/${organizationId}`);
   return { ok: true };
 }

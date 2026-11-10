@@ -5,6 +5,86 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-10 · Per-organization notification settings
+
+**Ask.** "Don't send this organization notifications for this and this" — for
+both customers and staff, default on.
+
+**Model.** `organization_notification_settings(organization_id, event_type,
+email_enabled, sms_enabled, in_app_enabled)`. One row per (org, event) that
+differs from the default; all-on rows are deleted, so a missing row means
+"everything allowed" and every existing organization behaves exactly as before.
+
+**Semantics (deliberate).**
+  * The organization of a notification is the organization of the TICKET it is
+    about (`ticketId`, else `ticketNumber`). So one event type covers both
+    audiences with no extra concept: customer-facing types
+    (`ticket.agent_replied`, …) mute the org's customers; staff-facing types
+    (`ticket.assigned`, `sla.*`, …) mute staff, about that org's tickets.
+  * It only SUBTRACTS. It sits on top of each person's own preference, so it can
+    silence a notification but never force one on (e.g. it cannot opt a customer
+    into SMS). Applied inside `planDelivery`, so the in-process path and the
+    Inngest fallback agree.
+  * Per channel (email / SMS / in-app), same shape as a person's preferences.
+  * `automation.rule` is not mutable: a rule is an operator's explicit
+    instruction (same reasoning as for per-person toggles).
+  * FAILS OPEN: if the lookup errors (e.g. the table is not migrated yet on a
+    deploy), nothing is muted. A surplus notification is a nuisance; a silently
+    missing one is the failure this work exists to remove.
+
+**Not covered.** Direct, non-dispatch emails — the "we received your ticket"
+confirmation, bounce/closed-ticket auto-replies, the invite email, accountant
+alerts and scheduled reports — are not notification events and are unaffected.
+Notifications with no ticket (none today among the mutable types) are never muted.
+
+**UI.** "Notification settings" card on the organization page, gated by
+`organizations.view` (read-only) / `organizations.update` (edit). Each change is
+audited (`organization.notification_setting_changed`).
+
+---
+
+## 2026-11-10 · Staff and customer notifications no longer depend on Inngest
+
+**Symptom.** Technicians reported no email when a ticket was assigned to them or
+when a client replied. Cause: same as the inbound-email outage — every
+notification was an Inngest `notification/dispatch` event, and Inngest (Hobby
+allowance exhausted 2026-11-08) accepted events but ran none of them. Tickets
+were being created (see the entry below) and nobody was being told.
+
+**What changed.**
+  * `lib/notifications/deliver.ts` — `emitNotification(payload)` replaces
+    `inngest.send({ name: "notification/dispatch", data })` at all ~35 producers
+    (server actions, MCP write tools, rules engine, monitors, inbound email,
+    CSAT, attachment scan). It resolves recipients, loads preferences, inserts
+    the bell rows and sends email + SMS in the same process, concurrently.
+  * `lib/notifications/plan.ts` — the "who gets what" rules extracted as the
+    pure `planDelivery`, unit-tested, and used by BOTH the in-process path and
+    the Inngest fallback so the two cannot drift apart.
+  * `emitEmail` replaces `notification/email` for an automation rule's
+    account-less recipients.
+
+**Failure handling (deliberate).**
+  * A send is retried 3x with backoff, except permanent failures (bad key,
+    exhausted quota, invalid address) which are reported once.
+  * A send that still fails is written to `failed_notifications` (previously an
+    orphan table nothing wrote to) with `inngest_event_id = direct:<uuid>`, and
+    logged. It is NOT replayed: the other recipients already have their copy, so
+    a replay of the whole event would duplicate.
+  * If the read phase fails (nothing sent) the event is handed to Inngest, as
+    before. Same rule as `isSafeToReenqueue` for inbound email: replay only when
+    it provably cannot duplicate.
+
+**Trade-offs.** The producing request now waits for the sends (a few hundred ms
+on top of the action) rather than for an enqueue. In exchange the result no
+longer depends on a quota. Events queued in Inngest during the outage may
+deliver late if/when Inngest resumes; those are stale and can be ignored.
+
+**Left on Inngest** (still metered, still halted while capped): attachment virus
+scans, billing balance/accountant alerts, scheduled reports, rule scanners, SLA
+and unassigned monitors (the *scheduling* — their notifications now send direct).
+
+---
+
 ## 2026-11-10 · Inbound email no longer depends on Inngest to become a ticket
 
 **Why.** The Inngest outage entry above showed the real fault in the design: a
