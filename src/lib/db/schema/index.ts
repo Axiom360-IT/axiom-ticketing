@@ -34,3 +34,4 @@ export * from "./holidays";
 export * from "./automations";
 export * from "./automation-rules";
 export * from "./email-delivery";
+export * from "./organization-notification-settings";

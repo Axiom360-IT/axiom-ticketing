@@ -1,5 +1,6 @@
 "use server";
 
+import { emitNotification } from "@/lib/notifications/deliver";
 import {
   and,
   asc,
@@ -31,7 +32,6 @@ import { sendEmail } from "@/lib/email/send";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { enforceUserRateLimit } from "@/lib/ratelimit";
 import { getAppUrl } from "@/lib/request";
-import { inngest } from "@/inngest/client";
 
 /** Accountant contacts configured in Settings (`billing.accountant_emails`, ±
  *  Super Admin copy) get CC'd by email on every procurement notification —
@@ -206,34 +206,31 @@ export async function createProcurementRequest(
     adminUrl: procurementAdminUrl,
   };
   try {
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "procurement.submitted",
-        recipientRoles: [...OVERSIGHT_ROLES],
-        ticketId: data.ticketId,
-        ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "procurement_submitted",
-            data: submittedEmailData,
-          },
+    await emitNotification({
+      type: "procurement.submitted",
+      recipientRoles: [...OVERSIGHT_ROLES],
+      ticketId: data.ticketId,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        template: {
+          template: "procurement_submitted",
+          data: submittedEmailData,
         },
-        sms: {
-          template: {
-            template: "procurement_submitted",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
-          },
+      },
+      sms: {
+        template: {
+          template: "procurement_submitted",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
         },
-        inApp: {
-          titleArgs: { itemName: data.itemName },
-          bodyArgs: {
-            requesterName: author?.name ?? caller.id,
-            quantity: data.quantity,
-            itemName: data.itemName,
-          },
-          linkUrl: `/admin/procurement/${row.id}`,
+      },
+      inApp: {
+        titleArgs: { itemName: data.itemName },
+        bodyArgs: {
+          requesterName: author?.name ?? caller.id,
+          quantity: data.quantity,
+          itemName: data.itemName,
         },
+        linkUrl: `/admin/procurement/${row.id}`,
       },
     });
   } catch (err) {
@@ -323,26 +320,23 @@ export async function setProcurementStatus(
       },
     } as const;
     try {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "procurement.delivered",
-          recipientUserIds: r.requestedById ? [r.requestedById] : [],
-          recipientRoles: [...OVERSIGHT_ROLES],
-          ticketId: r.ticketId,
-          ticketNumber,
-          email: { template: deliveredEmail },
-          sms: {
-            template: {
-              template: "procurement_delivered",
-              data: { ticketNumber, ticketUrl: adminUrl },
-            },
+      await emitNotification({
+        type: "procurement.delivered",
+        recipientUserIds: r.requestedById ? [r.requestedById] : [],
+        recipientRoles: [...OVERSIGHT_ROLES],
+        ticketId: r.ticketId,
+        ticketNumber,
+        email: { template: deliveredEmail },
+        sms: {
+          template: {
+            template: "procurement_delivered",
+            data: { ticketNumber, ticketUrl: adminUrl },
           },
-          inApp: {
-            titleArgs: { itemName: r.itemName },
-            bodyArgs: { quantity: r.quantity, itemName: r.itemName },
-            linkUrl: `/admin/procurement/${requestId}`,
-          },
+        },
+        inApp: {
+          titleArgs: { itemName: r.itemName },
+          bodyArgs: { quantity: r.quantity, itemName: r.itemName },
+          linkUrl: `/admin/procurement/${requestId}`,
         },
       });
       if (!r.requestedById && r.requestedByEmail) {

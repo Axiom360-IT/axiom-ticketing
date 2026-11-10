@@ -1,4 +1,5 @@
 "use server";
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
@@ -22,7 +23,6 @@ import {
   addOrgTrustedEmail,
   upsertParticipant,
 } from "@/lib/tickets/participants";
-import { inngest } from "@/inngest/client";
 import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 
 // Inbound-moderation queue (req 5.2). Email replies from senders whose domain
@@ -186,39 +186,36 @@ async function applyApproval(
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.customer_replied",
-        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: [...OVERSIGHT_ROLES],
-        ticketId: ticket.id,
+    await emitNotification({
+      type: "ticket.customer_replied",
+      recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+      recipientRoles: [...OVERSIGHT_ROLES],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
+        template: {
+          template: "customer_replied_staff",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: msg.authorName,
+            subject: ticket.subject,
+            body: msg.body,
+            ticketUrl,
+          },
+        },
         ticketNumber: ticket.ticketNumber,
-        email: {
-          // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
-          template: {
-            template: "customer_replied_staff",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              customerName: msg.authorName,
-              subject: ticket.subject,
-              body: msg.body,
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
+      },
+      sms: {
+        template: {
+          template: "customer_replied",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl },
         },
-        sms: {
-          template: {
-            template: "customer_replied",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { customerName: msg.authorName },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { customerName: msg.authorName },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {

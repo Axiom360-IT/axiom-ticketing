@@ -1,7 +1,5 @@
-import {
-  inngest,
-  type NotificationDispatchPayload,
-} from "@/inngest/client";
+import { emitNotification } from "@/lib/notifications/deliver";
+import type { NotificationDispatchPayload } from "@/inngest/client";
 import { SUPER_ADMIN_ROLE } from "@/lib/auth/rank";
 
 /**
@@ -26,6 +24,8 @@ export async function dispatchTicketCreated(args: {
 
   const data: NotificationDispatchPayload = {
     type: "ticket.created",
+    ticketId,
+    ticketNumber,
     recipientRoles: ["Coordinator", "IT Director", SUPER_ADMIN_ROLE],
     email: {
       template: {
@@ -47,5 +47,5 @@ export async function dispatchTicketCreated(args: {
     },
   };
 
-  await inngest.send({ name: "notification/dispatch", data });
+  await emitNotification(data);
 }

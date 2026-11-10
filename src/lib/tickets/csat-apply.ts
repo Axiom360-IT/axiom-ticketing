@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import "server-only";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, transactional, type Tx } from "@/lib/db/client";
@@ -11,7 +12,6 @@ import { dispatchTicketClosedStaff } from "@/lib/notifications/dispatch-ticket-c
 import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { getAppUrl } from "@/lib/request";
 import { ticketTrackingUrl } from "@/lib/tokens";
-import { inngest } from "@/inngest/client";
 import {
   type CsatRating,
   commentRequiredFor,
@@ -256,35 +256,34 @@ export async function recordCsatResponse(
   // back, honoring each recipient's notification preferences.
   try {
     const adminTicketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.csat_unsatisfied",
-        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: [...OVERSIGHT_ROLES],
-        email: {
-          template: {
-            template: "csat_unsatisfied_staff",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              subject: ticket.subject,
-              customerName: ticket.customerName,
-              ticketUrl: adminTicketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
-        },
-        sms: {
-          template: {
-            template: "csat_unsatisfied_staff",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl: adminTicketUrl },
+    await emitNotification({
+      type: "ticket.csat_unsatisfied",
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+      recipientRoles: [...OVERSIGHT_ROLES],
+      email: {
+        template: {
+          template: "csat_unsatisfied_staff",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            customerName: ticket.customerName,
+            ticketUrl: adminTicketUrl,
           },
         },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { customerName: ticket.customerName },
-          linkUrl: `/admin/tickets/${ticket.id}`,
+        ticketNumber: ticket.ticketNumber,
+      },
+      sms: {
+        template: {
+          template: "csat_unsatisfied_staff",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl: adminTicketUrl },
         },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { customerName: ticket.customerName },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {

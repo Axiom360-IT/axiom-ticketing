@@ -150,6 +150,9 @@ export type NotificationEventType =
 export type NotificationDispatchPayload = {
   /** Domain event being announced. */
   type: NotificationEventType;
+  /** The ticket this is about, when there is one (used for per-organization muting). */
+  ticketId?: string;
+  ticketNumber?: string;
   /** Explicit recipient user IDs (deduped against any role-resolved set). */
   recipientUserIds?: string[];
   /** Roles to broadcast to (e.g. ["IT Director", "Coordinator"]). */

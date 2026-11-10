@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -533,36 +534,33 @@ export async function replyToTicketViaMcp(
       customerId: ticket.customerId,
     });
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.agent_replied",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_reply",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                agentName: agent.name,
-                body: htmlToPlainText(cleanBody),
-                trackingUrl,
-              },
+      await emitNotification({
+        type: "ticket.agent_replied",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reply",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              agentName: agent.name,
+              body: htmlToPlainText(cleanBody),
+              trackingUrl,
             },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
           },
-          sms: {
-            template: { template: "agent_replied", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: {},
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+          ticketNumber: ticket.ticketNumber,
+          replyToTicket: true,
+        },
+        sms: {
+          template: { template: "agent_replied", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: {},
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -659,37 +657,34 @@ export async function resolveTicketViaMcp(
     const csatNeutralUrl = csatFeedbackUrl(appUrl, ticket.ticketNumber, "neutral");
     const csatUnhappyUrl = csatFeedbackUrl(appUrl, ticket.ticketNumber, "unhappy");
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.resolved",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_resolved",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                agentName: agent.name,
-                resolutionNote: note,
-                trackingUrl,
-                csatHappyUrl,
-                csatNeutralUrl,
-                csatUnhappyUrl,
-              },
+      await emitNotification({
+        type: "ticket.resolved",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_resolved",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              agentName: agent.name,
+              resolutionNote: note,
+              trackingUrl,
+              csatHappyUrl,
+              csatNeutralUrl,
+              csatUnhappyUrl,
             },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
           },
-          sms: { template: { template: "ticket_resolved", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } } },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: {},
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+          ticketNumber: ticket.ticketNumber,
+          replyToTicket: true,
+        },
+        sms: { template: { template: "ticket_resolved", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } } },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: {},
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -771,33 +766,30 @@ export async function reopenTicketViaMcp(
       customerId: ticket.customerId,
     });
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.reopened",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_reopened",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                reason: "agent",
-                trackingUrl,
-              },
+      await emitNotification({
+        type: "ticket.reopened",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reopened",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              reason: "agent",
+              trackingUrl,
             },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
           },
-          sms: { template: { template: "ticket_reopened", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } } },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { reason: "A team member has reopened your ticket." },
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+          ticketNumber: ticket.ticketNumber,
+          replyToTicket: true,
+        },
+        sms: { template: { template: "ticket_reopened", data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl } } },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { reason: "A team member has reopened your ticket." },
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -1015,39 +1007,36 @@ export async function escalateTicketViaMcp(
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     const technicianName = actor?.name ?? "An agent";
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.escalated",
-        recipientRoles: [
-          ...new Set([
-            ...(targetRoleClean ? [targetRoleClean] : ["IT Director", "Coordinator"]),
-            ...OVERSIGHT_ROLES,
-          ]),
-        ],
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "escalation_alert",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              recipientName: "Team",
-              subject: ticket.subject,
-              technicianName,
-              reason,
-              customerName: ticket.customerName,
-              ticketUrl,
-            },
+    await emitNotification({
+      type: "ticket.escalated",
+      recipientRoles: [
+        ...new Set([
+          ...(targetRoleClean ? [targetRoleClean] : ["IT Director", "Coordinator"]),
+          ...OVERSIGHT_ROLES,
+        ]),
+      ],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        template: {
+          template: "escalation_alert",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            recipientName: "Team",
+            subject: ticket.subject,
+            technicianName,
+            reason,
+            customerName: ticket.customerName,
+            ticketUrl,
           },
-          ticketNumber: ticket.ticketNumber,
         },
-        sms: { template: { template: "ticket_escalated", data: { ticketNumber: ticket.ticketNumber, ticketUrl } } },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { technicianName, subject: ticket.subject },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+        ticketNumber: ticket.ticketNumber,
+      },
+      sms: { template: { template: "ticket_escalated", data: { ticketNumber: ticket.ticketNumber, ticketUrl } } },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { technicianName, subject: ticket.subject },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {

@@ -82,6 +82,15 @@ export const DEPLOY_MIGRATIONS: readonly DeployMigration[] = [
         AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_delivery_issues_status_check')`,
   },
   {
+    // One new table, nothing else. Notification delivery reads it inside a
+    // try/catch that treats "missing" as "nothing muted", so a deploy that
+    // ships code before this runs cannot stop a notification.
+    id: "add-organization-notification-settings",
+    description: "organization_notification_settings: per-organization notification mutes",
+    appliedProbe: `
+      SELECT 1 WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'organization_notification_settings')`,
+  },
+  {
     // Copies the new technical permissions onto every role that already holds
     // settings.*, so splitting the permission changes nobody's access. A
     // plain INSERT … ON CONFLICT DO NOTHING: no probe, no lock, and cheap

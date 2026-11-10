@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import "server-only";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -11,7 +12,6 @@ import { tickets } from "@/lib/db/schema/tickets";
 import { sendEmail } from "@/lib/email/send";
 import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import { getAppUrl } from "@/lib/request";
-import { inngest } from "@/inngest/client";
 
 // Mirrors app/actions/procurement.ts's mutating actions, adapted to take an
 // explicit SessionUser and to resolve tickets by NUMBER instead of uuid.
@@ -100,37 +100,34 @@ export async function createProcurementRequestViaMcp(
 
   try {
     const procurementAdminUrl = `${getAppUrl()}/admin/procurement/${row.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "procurement.submitted",
-        recipientRoles: [...OVERSIGHT_ROLES],
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "procurement_submitted",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              ticketSubject: ticket.subject,
-              requesterName: author?.name ?? user.id,
-              itemName: input.itemName,
-              quantity,
-              adminUrl: procurementAdminUrl,
-            },
+    await emitNotification({
+      type: "procurement.submitted",
+      recipientRoles: [...OVERSIGHT_ROLES],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        template: {
+          template: "procurement_submitted",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            ticketSubject: ticket.subject,
+            requesterName: author?.name ?? user.id,
+            itemName: input.itemName,
+            quantity,
+            adminUrl: procurementAdminUrl,
           },
         },
-        sms: {
-          template: {
-            template: "procurement_submitted",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
-          },
+      },
+      sms: {
+        template: {
+          template: "procurement_submitted",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl: procurementAdminUrl },
         },
-        inApp: {
-          titleArgs: { itemName: input.itemName },
-          bodyArgs: { requesterName: author?.name ?? user.id, quantity, itemName: input.itemName },
-          linkUrl: `/admin/procurement/${row.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { itemName: input.itemName },
+        bodyArgs: { requesterName: author?.name ?? user.id, quantity, itemName: input.itemName },
+        linkUrl: `/admin/procurement/${row.id}`,
       },
     });
   } catch (err) {
@@ -175,26 +172,23 @@ export async function setProcurementStatusViaMcp(
       data: { ticketNumber, itemName: r.itemName, quantity: r.quantity, adminUrl },
     } as const;
     try {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "procurement.delivered",
-          recipientUserIds: r.requestedById ? [r.requestedById] : [],
-          recipientRoles: [...OVERSIGHT_ROLES],
-          ticketId: r.ticketId,
-          ticketNumber,
-          email: { template: deliveredEmail },
-          sms: {
-            template: {
-              template: "procurement_delivered",
-              data: { ticketNumber, ticketUrl: adminUrl },
-            },
+      await emitNotification({
+        type: "procurement.delivered",
+        recipientUserIds: r.requestedById ? [r.requestedById] : [],
+        recipientRoles: [...OVERSIGHT_ROLES],
+        ticketId: r.ticketId,
+        ticketNumber,
+        email: { template: deliveredEmail },
+        sms: {
+          template: {
+            template: "procurement_delivered",
+            data: { ticketNumber, ticketUrl: adminUrl },
           },
-          inApp: {
-            titleArgs: { itemName: r.itemName },
-            bodyArgs: { quantity: r.quantity, itemName: r.itemName },
-            linkUrl: `/admin/procurement/${requestId}`,
-          },
+        },
+        inApp: {
+          titleArgs: { itemName: r.itemName },
+          bodyArgs: { quantity: r.quantity, itemName: r.itemName },
+          linkUrl: `/admin/procurement/${requestId}`,
         },
       });
       if (!r.requestedById && r.requestedByEmail) {

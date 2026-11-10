@@ -1,5 +1,6 @@
 "use server";
 
+import { emitNotification } from "@/lib/notifications/deliver";
 import {
   type SQL,
   and,
@@ -816,41 +817,38 @@ export async function assignTicket(
       customerId: ticket.customerId,
     });
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          // Customer-facing assignment event — NEVER `ticket.assigned`, which
-          // renders the tech-oriented "assigned to you" copy in the bell
-          // (req 6.1). This one names the technician (req 6.2).
-          type: "ticket.assigned_customer",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
+      await emitNotification({
+        // Customer-facing assignment event — NEVER `ticket.assigned`, which
+        // renders the tech-oriented "assigned to you" copy in the bell
+        // (req 6.1). This one names the technician (req 6.2).
+        type: "ticket.assigned_customer",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_assigned",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              technicianName: tech.name,
+              trackingUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_assigned",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                technicianName: tech.name,
-                trackingUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
+          replyToTicket: true,
+        },
+        sms: {
+          template: {
+            template: "ticket_assigned_customer",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
           },
-          sms: {
-            template: {
-              template: "ticket_assigned_customer",
-              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { technicianName: tech.name },
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { technicianName: tech.name },
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -880,42 +878,39 @@ export async function assignTicket(
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.assigned",
-        recipientUserIds: [techId],
-        ticketId: ticket.id,
+    await emitNotification({
+      type: "ticket.assigned",
+      recipientUserIds: [techId],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        template: {
+          template: "new_assignment",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            technicianName: tech.name,
+            subject: ticket.subject,
+            priority: ticket.priority as
+              | "low"
+              | "medium"
+              | "high"
+              | "critical",
+            customerName: ticket.customerName,
+            ticketUrl,
+          },
+        },
         ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "new_assignment",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              technicianName: tech.name,
-              subject: ticket.subject,
-              priority: ticket.priority as
-                | "low"
-                | "medium"
-                | "high"
-                | "critical",
-              customerName: ticket.customerName,
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
+      },
+      sms: {
+        template: {
+          template: "ticket_assigned",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl },
         },
-        sms: {
-          template: {
-            template: "ticket_assigned",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { subject: ticket.subject },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { subject: ticket.subject },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {
@@ -944,39 +939,36 @@ export async function assignTicket(
       const fromTechName = prevTech?.name ?? "Unassigned";
       const toTechName = tech.name;
       const actorName = actor?.name ?? "A technician";
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.reassigned",
-          recipientRoles: [...OVERSIGHT_ROLES],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.reassigned",
+        recipientRoles: [...OVERSIGHT_ROLES],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reassigned",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              subject: ticket.subject,
+              fromTechName,
+              toTechName,
+              actorName,
+              customerName: ticket.customerName,
+              ticketUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_reassigned",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                subject: ticket.subject,
-                fromTechName,
-                toTechName,
-                actorName,
-                customerName: ticket.customerName,
-                ticketUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
+        },
+        sms: {
+          template: {
+            template: "ticket_reassigned",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
           },
-          sms: {
-            template: {
-              template: "ticket_reassigned",
-              data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { fromTechName, toTechName },
-            linkUrl: `/admin/tickets/${ticket.id}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { fromTechName, toTechName },
+          linkUrl: `/admin/tickets/${ticket.id}`,
         },
       });
     } catch (err) {
@@ -1569,39 +1561,36 @@ export async function replyToTicket(
       customerId: ticket.customerId,
     });
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.agent_replied",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.agent_replied",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reply",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              agentName: agent.name,
+              body: htmlToPlainText(cleanBody),
+              trackingUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_reply",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                agentName: agent.name,
-                body: htmlToPlainText(cleanBody),
-                trackingUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
+          replyToTicket: true,
+        },
+        sms: {
+          template: {
+            template: "agent_replied",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
           },
-          sms: {
-            template: {
-              template: "agent_replied",
-              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: {},
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: {},
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -1929,43 +1918,40 @@ export async function resolveTicket(
     if (ticket.customerId) {
       // Authenticated customer — dispatcher fans out email + SMS + in-app
       // based on their notification preferences.
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.resolved",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.resolved",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_resolved",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              agentName: agent.name,
+              resolutionNote:
+                parsed.data.kind === "note" ? parsed.data.note : "",
+              csatHappyUrl,
+              csatNeutralUrl,
+              csatUnhappyUrl,
+              trackingUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_resolved",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                agentName: agent.name,
-                resolutionNote:
-                  parsed.data.kind === "note" ? parsed.data.note : "",
-                csatHappyUrl,
-                csatNeutralUrl,
-                csatUnhappyUrl,
-                trackingUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
+          replyToTicket: true,
+        },
+        sms: {
+          template: {
+            template: "ticket_resolved",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
           },
-          sms: {
-            template: {
-              template: "ticket_resolved",
-              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: {},
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: {},
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -2051,40 +2037,37 @@ export async function closeTicket(ticketId: string): Promise<void> {
   // ticket (no account) falls back to a direct email.
   try {
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.closed",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.closed",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_closed",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              reason: "staff",
+              newTicketUrl: `${appUrl}/portal/submit`,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_closed",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                reason: "staff",
-                newTicketUrl: `${appUrl}/portal/submit`,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-          },
-          sms: {
-            template: {
-              template: "ticket_closed",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                ticketUrl: `${appUrl}/portal/tickets/${ticket.ticketNumber}`,
-              },
+        },
+        sms: {
+          template: {
+            template: "ticket_closed",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              ticketUrl: `${appUrl}/portal/tickets/${ticket.ticketNumber}`,
             },
           },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { reason: "Closed by the support team." },
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { reason: "Closed by the support team." },
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -2191,38 +2174,35 @@ export async function reopenTicket(ticketId: string): Promise<void> {
       customerId: ticket.customerId,
     });
     if (ticket.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.reopened",
-          recipientUserIds: [ticket.customerId],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.reopened",
+        recipientUserIds: [ticket.customerId],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_reopened",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName: ticket.customerName,
+              subject: ticket.subject,
+              reason: "agent",
+              trackingUrl,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_reopened",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName: ticket.customerName,
-                subject: ticket.subject,
-                reason: "agent",
-                trackingUrl,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-            replyToTicket: true,
+          replyToTicket: true,
+        },
+        sms: {
+          template: {
+            template: "ticket_reopened",
+            data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
           },
-          sms: {
-            template: {
-              template: "ticket_reopened",
-              data: { ticketNumber: ticket.ticketNumber, ticketUrl: trackingUrl },
-            },
-          },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { reason: "A team member has reopened your ticket." },
-            linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { reason: "A team member has reopened your ticket." },
+          linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
         },
       });
     } else {
@@ -2954,49 +2934,46 @@ export async function escalateTicket(
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
     const technicianName = actor?.name ?? "An agent";
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.escalated",
-        // Notify the role the ticket was escalated to (CR-14), or the standard
-        // supervisory pair when none was selected. Coordinator + Super Admin
-        // are ALWAYS included for oversight (deduped if also the chosen target).
-        recipientRoles: [
-          ...new Set([
-            ...(targetRoleClean
-              ? [targetRoleClean]
-              : ["IT Director", "Coordinator"]),
-            ...OVERSIGHT_ROLES,
-          ]),
-        ],
-        ticketId: ticket.id,
+    await emitNotification({
+      type: "ticket.escalated",
+      // Notify the role the ticket was escalated to (CR-14), or the standard
+      // supervisory pair when none was selected. Coordinator + Super Admin
+      // are ALWAYS included for oversight (deduped if also the chosen target).
+      recipientRoles: [
+        ...new Set([
+          ...(targetRoleClean
+            ? [targetRoleClean]
+            : ["IT Director", "Coordinator"]),
+          ...OVERSIGHT_ROLES,
+        ]),
+      ],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        template: {
+          template: "escalation_alert",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            recipientName: "Team",
+            subject: ticket.subject,
+            technicianName,
+            reason: parsed.data.reason,
+            customerName: ticket.customerName,
+            ticketUrl,
+          },
+        },
         ticketNumber: ticket.ticketNumber,
-        email: {
-          template: {
-            template: "escalation_alert",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              recipientName: "Team",
-              subject: ticket.subject,
-              technicianName,
-              reason: parsed.data.reason,
-              customerName: ticket.customerName,
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
+      },
+      sms: {
+        template: {
+          template: "ticket_escalated",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl },
         },
-        sms: {
-          template: {
-            template: "ticket_escalated",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { technicianName, subject: ticket.subject },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { technicianName, subject: ticket.subject },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {

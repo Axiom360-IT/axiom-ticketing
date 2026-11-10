@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import { eq } from "drizzle-orm";
 import { eventType } from "inngest";
 import { audit } from "@/lib/audit";
@@ -136,42 +137,41 @@ export const scanAttachment = inngest.createFunction(
           }
           const hasStaff = staffRecipients.size > 0;
 
-          await inngest.send({
-            name: "notification/dispatch",
-            data: {
-              type: "attachment.quarantined",
-              recipientUserIds: hasStaff ? [...staffRecipients] : undefined,
-              recipientRoles: [...OVERSIGHT_ROLES],
-              email: {
-                template: {
-                  template: "attachment_quarantined",
-                  // Shared across staff recipients, so address them
-                  // generically rather than by the uploader's name.
-                  data: {
-                    recipientName: "Team",
-                    ticketNumber: ticket.ticketNumber,
-                    ticketSubject: ticket.subject,
-                    fileName: row.fileName,
-                    signature: result.signature,
-                    ticketUrl,
-                  },
-                },
-                ticketNumber: ticket.ticketNumber,
-              },
-              sms: {
-                template: {
-                  template: "attachment_quarantined",
-                  data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-                },
-              },
-              inApp: {
-                titleArgs: { ticketNumber: ticket.ticketNumber },
-                bodyArgs: {
+          await emitNotification({
+            type: "attachment.quarantined",
+            ticketId: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            recipientUserIds: hasStaff ? [...staffRecipients] : undefined,
+            recipientRoles: [...OVERSIGHT_ROLES],
+            email: {
+              template: {
+                template: "attachment_quarantined",
+                // Shared across staff recipients, so address them
+                // generically rather than by the uploader's name.
+                data: {
+                  recipientName: "Team",
+                  ticketNumber: ticket.ticketNumber,
+                  ticketSubject: ticket.subject,
                   fileName: row.fileName,
                   signature: result.signature,
+                  ticketUrl,
                 },
-                linkUrl: `/admin/tickets/${ticket.id}`,
               },
+              ticketNumber: ticket.ticketNumber,
+            },
+            sms: {
+              template: {
+                template: "attachment_quarantined",
+                data: { ticketNumber: ticket.ticketNumber, ticketUrl },
+              },
+            },
+            inApp: {
+              titleArgs: { ticketNumber: ticket.ticketNumber },
+              bodyArgs: {
+                fileName: row.fileName,
+                signature: result.signature,
+              },
+              linkUrl: `/admin/tickets/${ticket.id}`,
             },
           });
 

@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { audit } from "@/lib/audit";
@@ -231,42 +232,41 @@ async function dispatch(
     type === "sla.warning_80" ? "sla_warning_80" : "sla_breached";
 
   try {
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type,
-        recipientUserIds,
-        recipientRoles,
-        ...(isBreach
-          ? {
-              email: {
-                template: {
-                  template: "sla_breached_staff",
-                  data: {
-                    ticketNumber: t.ticketNumber,
-                    kind,
-                    adminUrl: ticketUrl,
-                  },
-                },
-                ticketNumber: t.ticketNumber,
-              },
-            }
-          : {}),
-        ...(wantsSms
-          ? {
-              sms: {
-                template: {
-                  template: smsTemplate,
-                  data: { ticketNumber: t.ticketNumber, ticketUrl },
+    await emitNotification({
+      type,
+      ticketId: t.id,
+      ticketNumber: t.ticketNumber,
+      recipientUserIds,
+      recipientRoles,
+      ...(isBreach
+        ? {
+            email: {
+              template: {
+                template: "sla_breached_staff",
+                data: {
+                  ticketNumber: t.ticketNumber,
+                  kind,
+                  adminUrl: ticketUrl,
                 },
               },
-            }
-          : {}),
-        inApp: {
-          titleArgs: { ticketNumber: t.ticketNumber },
-          bodyArgs: { kind },
-          linkUrl: `/admin/tickets/${t.id}`,
-        },
+              ticketNumber: t.ticketNumber,
+            },
+          }
+        : {}),
+      ...(wantsSms
+        ? {
+            sms: {
+              template: {
+                template: smsTemplate,
+                data: { ticketNumber: t.ticketNumber, ticketUrl },
+              },
+            },
+          }
+        : {}),
+      inApp: {
+        titleArgs: { ticketNumber: t.ticketNumber },
+        bodyArgs: { kind },
+        linkUrl: `/admin/tickets/${t.id}`,
       },
     });
   } catch (err) {

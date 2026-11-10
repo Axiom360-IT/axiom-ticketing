@@ -1,7 +1,7 @@
+import { emitEmail, emitNotification } from "@/lib/notifications/deliver";
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { createHmac } from "node:crypto";
-import { inngest } from "@/inngest/client";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
@@ -278,50 +278,47 @@ async function doNotify(
   // preferences, and writes the in-app row. Rebuilding any of that here would
   // be a second, worse copy of req 6.x.
   if (who.userIds.length > 0 || who.roleNames.length > 0) {
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "automation.rule",
-        recipientUserIds: who.userIds.length > 0 ? who.userIds : undefined,
-        recipientRoles: who.roleNames.length > 0 ? who.roleNames : undefined,
-        ...(wantsEmail
-          ? {
-              email: {
-                template: {
-                  template: "automation_rule" as const,
-                  data: {
-                    ruleName: ctx.ruleName,
-                    subjectLine,
-                    message,
-                    ticketNumber: t.ticketNumber,
-                    ticketSubject: t.subject,
-                    adminUrl: url,
-                  },
-                },
-                ticketNumber: t.ticketNumber,
-              },
-            }
-          : {}),
-        ...(wantsSms
-          ? {
-              sms: {
-                template: {
-                  template: "automation_rule" as const,
-                  data: { message: renderSms(message, url) },
+    await emitNotification({
+      type: "automation.rule",
+      recipientUserIds: who.userIds.length > 0 ? who.userIds : undefined,
+      recipientRoles: who.roleNames.length > 0 ? who.roleNames : undefined,
+      ...(wantsEmail
+        ? {
+            email: {
+              template: {
+                template: "automation_rule" as const,
+                data: {
+                  ruleName: ctx.ruleName,
+                  subjectLine,
+                  message,
+                  ticketNumber: t.ticketNumber,
+                  ticketSubject: t.subject,
+                  adminUrl: url,
                 },
               },
-            }
-          : {}),
-        ...(wantsInApp
-          ? {
-              inApp: {
-                titleArgs: { title: subjectLine },
-                bodyArgs: { message },
-                linkUrl: `/admin/tickets/${t.id}`,
+              ticketNumber: t.ticketNumber,
+            },
+          }
+        : {}),
+      ...(wantsSms
+        ? {
+            sms: {
+              template: {
+                template: "automation_rule" as const,
+                data: { message: renderSms(message, url) },
               },
-            }
-          : {}),
-      },
+            },
+          }
+        : {}),
+      ...(wantsInApp
+        ? {
+            inApp: {
+              titleArgs: { title: subjectLine },
+              bodyArgs: { message },
+              linkUrl: `/admin/tickets/${t.id}`,
+            },
+          }
+        : {}),
     });
     sent += who.userIds.length + who.roleNames.length;
     notes.push(
@@ -337,25 +334,22 @@ async function doNotify(
   if (who.looseEmails.length > 0) {
     if (wantsEmail) {
       for (const to of who.looseEmails) {
-        await inngest.send({
-          name: "notification/email",
-          data: {
-            to,
-            locale: "en",
-            template: {
-              template: "automation_rule",
-              data: {
-                ruleName: ctx.ruleName,
-                subjectLine,
-                message,
-                ticketNumber: t.ticketNumber,
-                ticketSubject: t.subject,
-                adminUrl: url,
-              },
+        await emitEmail({
+          to,
+          locale: "en",
+          template: {
+            template: "automation_rule",
+            data: {
+              ruleName: ctx.ruleName,
+              subjectLine,
+              message,
+              ticketNumber: t.ticketNumber,
+              ticketSubject: t.subject,
+              adminUrl: url,
             },
-            ticketNumber: t.ticketNumber,
           },
-        });
+          ticketNumber: t.ticketNumber,
+        }, "automation.rule");
       }
       sent += who.looseEmails.length;
       notes.push(`${who.looseEmails.length} address(es) by email`);

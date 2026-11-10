@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { eventType } from "inngest";
 import { audit } from "@/lib/audit";
@@ -582,42 +583,39 @@ export async function runInboundEmail(
             customerId: ticket.customerId,
           });
           if (ticket.customerId) {
-            await inngest.send({
-              name: "notification/dispatch",
-              data: {
-                type: "ticket.agent_replied",
-                recipientUserIds: [ticket.customerId],
-                ticketId: ticket.id,
+            await emitNotification({
+              type: "ticket.agent_replied",
+              recipientUserIds: [ticket.customerId],
+              ticketId: ticket.id,
+              ticketNumber: ticket.ticketNumber,
+              email: {
+                template: {
+                  template: "ticket_reply",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    customerName: ticket.customerName,
+                    subject: ticket.subject,
+                    agentName: authorName,
+                    body: messageBody,
+                    trackingUrl,
+                  },
+                },
                 ticketNumber: ticket.ticketNumber,
-                email: {
-                  template: {
-                    template: "ticket_reply",
-                    data: {
-                      ticketNumber: ticket.ticketNumber,
-                      customerName: ticket.customerName,
-                      subject: ticket.subject,
-                      agentName: authorName,
-                      body: messageBody,
-                      trackingUrl,
-                    },
-                  },
-                  ticketNumber: ticket.ticketNumber,
-                  replyToTicket: true,
-                },
-                sms: {
-                  template: {
-                    template: "agent_replied",
-                    data: {
-                      ticketNumber: ticket.ticketNumber,
-                      ticketUrl: trackingUrl,
-                    },
+                replyToTicket: true,
+              },
+              sms: {
+                template: {
+                  template: "agent_replied",
+                  data: {
+                    ticketNumber: ticket.ticketNumber,
+                    ticketUrl: trackingUrl,
                   },
                 },
-                inApp: {
-                  titleArgs: { ticketNumber: ticket.ticketNumber },
-                  bodyArgs: {},
-                  linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
-                },
+              },
+              inApp: {
+                titleArgs: { ticketNumber: ticket.ticketNumber },
+                bodyArgs: {},
+                linkUrl: `/portal/tickets/${ticket.ticketNumber}`,
               },
             });
           } else {
@@ -738,25 +736,22 @@ export async function runInboundEmail(
     });
     await step.run("notify-moderators", async () => {
       try {
-        await inngest.send({
-          name: "notification/dispatch",
-          data: {
-            type: "ticket.message_held",
-            // Whoever moderates needs to see this: the Coordinator queue +
-            // Super Admins (oversight) + the ticket's own assignee (so a held
-            // reply on their ticket isn't missed). Previously Coordinators
-            // only — invisible to a Super Admin / the assignee.
-            recipientUserIds: ticket.assignedToId
-              ? [ticket.assignedToId]
-              : undefined,
-            recipientRoles: [...OVERSIGHT_ROLES],
-            ticketId: ticket.id,
-            ticketNumber: ticket.ticketNumber,
-            inApp: {
-              titleArgs: { ticketNumber: ticket.ticketNumber },
-              bodyArgs: { sender: fromEmail },
-              linkUrl: "/admin/moderation",
-            },
+        await emitNotification({
+          type: "ticket.message_held",
+          // Whoever moderates needs to see this: the Coordinator queue +
+          // Super Admins (oversight) + the ticket's own assignee (so a held
+          // reply on their ticket isn't missed). Previously Coordinators
+          // only — invisible to a Super Admin / the assignee.
+          recipientUserIds: ticket.assignedToId
+            ? [ticket.assignedToId]
+            : undefined,
+          recipientRoles: [...OVERSIGHT_ROLES],
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          inApp: {
+            titleArgs: { ticketNumber: ticket.ticketNumber },
+            bodyArgs: { sender: fromEmail },
+            linkUrl: "/admin/moderation",
           },
         });
       } catch (err) {
@@ -871,46 +866,43 @@ export async function runInboundEmail(
   await step.run("notify-assignee", async () => {
     try {
       const customerName = authorName;
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.customer_replied",
-          recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-          recipientRoles: [...OVERSIGHT_ROLES],
-          ticketId: ticket.id,
+      await emitNotification({
+        type: "ticket.customer_replied",
+        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+        recipientRoles: [...OVERSIGHT_ROLES],
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        email: {
+          // Staff-voiced template — NOT the customer-facing `ticket_reply`,
+          // which would greet the technician by the customer's name (req 6.3).
+          template: {
+            template: "customer_replied_staff",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              customerName,
+              subject: ticket.subject,
+              body: messageBody,
+              ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
+            },
+          },
           ticketNumber: ticket.ticketNumber,
-          email: {
-            // Staff-voiced template — NOT the customer-facing `ticket_reply`,
-            // which would greet the technician by the customer's name (req 6.3).
-            template: {
-              template: "customer_replied_staff",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                customerName,
-                subject: ticket.subject,
-                body: messageBody,
-                ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-              },
-            },
-            ticketNumber: ticket.ticketNumber,
-            // Tag the alert so a technician can reply to it straight from
-            // their inbox and have it land on the ticket (req 5.3).
-            replyToTicket: true,
-          },
-          sms: {
-            template: {
-              template: "customer_replied",
-              data: {
-                ticketNumber: ticket.ticketNumber,
-                ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
-              },
+          // Tag the alert so a technician can reply to it straight from
+          // their inbox and have it land on the ticket (req 5.3).
+          replyToTicket: true,
+        },
+        sms: {
+          template: {
+            template: "customer_replied",
+            data: {
+              ticketNumber: ticket.ticketNumber,
+              ticketUrl: `${appUrl}/admin/tickets/${ticket.id}`,
             },
           },
-          inApp: {
-            titleArgs: { ticketNumber: ticket.ticketNumber },
-            bodyArgs: { customerName },
-            linkUrl: `/admin/tickets/${ticket.id}`,
-          },
+        },
+        inApp: {
+          titleArgs: { ticketNumber: ticket.ticketNumber },
+          bodyArgs: { customerName },
+          linkUrl: `/admin/tickets/${ticket.id}`,
         },
       });
     } catch (err) {

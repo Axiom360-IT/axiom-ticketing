@@ -1,5 +1,6 @@
 "use server";
 
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -44,7 +45,6 @@ import {
   sanitizeMessageHtml,
 } from "@/lib/messages/sanitize";
 import { verifyCsatAccessToken, verifyGuestToken } from "@/lib/tokens";
-import { inngest } from "@/inngest/client";
 import { dispatchTicketCreated } from "@/lib/notifications/dispatch-ticket-created";
 import { OVERSIGHT_ROLES } from "@/lib/notifications/audience";
 import type { CsatRating } from "@/lib/tickets/csat";
@@ -400,42 +400,39 @@ export async function customerReply(
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.customer_replied",
-        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: [...OVERSIGHT_ROLES],
-        ticketId: ticket.id,
+    await emitNotification({
+      type: "ticket.customer_replied",
+      recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+      recipientRoles: [...OVERSIGHT_ROLES],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
+        template: {
+          template: "customer_replied_staff",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: profile.name,
+            subject: ticket.subject,
+            body: htmlToPlainText(cleanBody),
+            ticketUrl,
+          },
+        },
         ticketNumber: ticket.ticketNumber,
-        email: {
-          // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
-          template: {
-            template: "customer_replied_staff",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              customerName: profile.name,
-              subject: ticket.subject,
-              body: htmlToPlainText(cleanBody),
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
-          // Tag the alert so a technician can reply to it from their inbox
-          // and have it land on the ticket (req 5.3).
-          replyToTicket: true,
+        // Tag the alert so a technician can reply to it from their inbox
+        // and have it land on the ticket (req 5.3).
+        replyToTicket: true,
+      },
+      sms: {
+        template: {
+          template: "customer_replied",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl },
         },
-        sms: {
-          template: {
-            template: "customer_replied",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { customerName: profile.name },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { customerName: profile.name },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {
@@ -615,42 +612,39 @@ export async function guestReply(input: {
   try {
     const appUrl = getAppUrl();
     const ticketUrl = `${appUrl}/admin/tickets/${ticket.id}`;
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.customer_replied",
-        recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
-        recipientRoles: [...OVERSIGHT_ROLES],
-        ticketId: ticket.id,
+    await emitNotification({
+      type: "ticket.customer_replied",
+      recipientUserIds: ticket.assignedToId ? [ticket.assignedToId] : [],
+      recipientRoles: [...OVERSIGHT_ROLES],
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      email: {
+        // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
+        template: {
+          template: "customer_replied_staff",
+          data: {
+            ticketNumber: ticket.ticketNumber,
+            customerName: ticket.customerName,
+            subject: ticket.subject,
+            body: htmlToPlainText(cleanBody),
+            ticketUrl,
+          },
+        },
         ticketNumber: ticket.ticketNumber,
-        email: {
-          // Staff-voiced template — NOT customer-facing `ticket_reply` (req 6.3).
-          template: {
-            template: "customer_replied_staff",
-            data: {
-              ticketNumber: ticket.ticketNumber,
-              customerName: ticket.customerName,
-              subject: ticket.subject,
-              body: htmlToPlainText(cleanBody),
-              ticketUrl,
-            },
-          },
-          ticketNumber: ticket.ticketNumber,
-          // Tag the alert so a technician can reply to it from their inbox
-          // and have it land on the ticket (req 5.3).
-          replyToTicket: true,
+        // Tag the alert so a technician can reply to it from their inbox
+        // and have it land on the ticket (req 5.3).
+        replyToTicket: true,
+      },
+      sms: {
+        template: {
+          template: "customer_replied",
+          data: { ticketNumber: ticket.ticketNumber, ticketUrl },
         },
-        sms: {
-          template: {
-            template: "customer_replied",
-            data: { ticketNumber: ticket.ticketNumber, ticketUrl },
-          },
-        },
-        inApp: {
-          titleArgs: { ticketNumber: ticket.ticketNumber },
-          bodyArgs: { customerName: ticket.customerName },
-          linkUrl: `/admin/tickets/${ticket.id}`,
-        },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: ticket.ticketNumber },
+        bodyArgs: { customerName: ticket.customerName },
+        linkUrl: `/admin/tickets/${ticket.id}`,
       },
     });
   } catch (err) {

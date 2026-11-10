@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, eq, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { db } from "@/lib/db/client";
@@ -139,33 +140,32 @@ async function dispatch(t: {
   const appUrl = getAppUrl();
   const adminUrl = `${appUrl}/admin/tickets/${t.id}`;
   try {
-    await inngest.send({
-      name: "notification/dispatch",
-      data: {
-        type: "ticket.unassigned_reminder",
-        recipientRoles: ["Coordinator", "IT Director", SUPER_ADMIN_ROLE],
-        email: {
-          template: {
-            template: "ticket_unassigned_staff",
-            data: {
-              ticketNumber: t.ticketNumber,
-              subject: t.subject,
-              adminUrl,
-            },
-          },
-          ticketNumber: t.ticketNumber,
-        },
-        sms: {
-          template: {
-            template: "ticket_unassigned_reminder",
-            data: { ticketNumber: t.ticketNumber, ticketUrl: adminUrl },
+    await emitNotification({
+      type: "ticket.unassigned_reminder",
+      ticketId: t.id,
+      ticketNumber: t.ticketNumber,
+      recipientRoles: ["Coordinator", "IT Director", SUPER_ADMIN_ROLE],
+      email: {
+        template: {
+          template: "ticket_unassigned_staff",
+          data: {
+            ticketNumber: t.ticketNumber,
+            subject: t.subject,
+            adminUrl,
           },
         },
-        inApp: {
-          titleArgs: { ticketNumber: t.ticketNumber },
-          bodyArgs: { subject: t.subject },
-          linkUrl: `/admin/tickets/${t.id}`,
+        ticketNumber: t.ticketNumber,
+      },
+      sms: {
+        template: {
+          template: "ticket_unassigned_reminder",
+          data: { ticketNumber: t.ticketNumber, ticketUrl: adminUrl },
         },
+      },
+      inApp: {
+        titleArgs: { ticketNumber: t.ticketNumber },
+        bodyArgs: { subject: t.subject },
+        linkUrl: `/admin/tickets/${t.id}`,
       },
     });
   } catch (err) {

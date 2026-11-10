@@ -1,3 +1,4 @@
+import { emitNotification } from "@/lib/notifications/deliver";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { cron } from "inngest";
 import { audit } from "@/lib/audit";
@@ -323,42 +324,39 @@ async function notifyClosed(t: Candidate): Promise<void> {
   const appUrl = getAppUrl();
   try {
     if (t.customerId) {
-      await inngest.send({
-        name: "notification/dispatch",
-        data: {
-          type: "ticket.closed",
-          recipientUserIds: [t.customerId],
-          ticketId: t.id,
+      await emitNotification({
+        type: "ticket.closed",
+        recipientUserIds: [t.customerId],
+        ticketId: t.id,
+        ticketNumber: t.ticketNumber,
+        email: {
+          template: {
+            template: "ticket_closed",
+            data: {
+              ticketNumber: t.ticketNumber,
+              customerName: t.customerName,
+              subject: t.subject,
+              reason: "auto",
+              newTicketUrl: `${appUrl}/portal/submit`,
+            },
+          },
           ticketNumber: t.ticketNumber,
-          email: {
-            template: {
-              template: "ticket_closed",
-              data: {
-                ticketNumber: t.ticketNumber,
-                customerName: t.customerName,
-                subject: t.subject,
-                reason: "auto",
-                newTicketUrl: `${appUrl}/portal/submit`,
-              },
-            },
-            ticketNumber: t.ticketNumber,
-          },
-          sms: {
-            template: {
-              template: "ticket_closed",
-              data: {
-                ticketNumber: t.ticketNumber,
-                ticketUrl: `${appUrl}/portal/tickets/${t.ticketNumber}`,
-              },
+        },
+        sms: {
+          template: {
+            template: "ticket_closed",
+            data: {
+              ticketNumber: t.ticketNumber,
+              ticketUrl: `${appUrl}/portal/tickets/${t.ticketNumber}`,
             },
           },
-          inApp: {
-            titleArgs: { ticketNumber: t.ticketNumber },
-            bodyArgs: {
-              reason: "Auto-closed after no reply to our follow-up.",
-            },
-            linkUrl: `/portal/tickets/${t.ticketNumber}`,
+        },
+        inApp: {
+          titleArgs: { ticketNumber: t.ticketNumber },
+          bodyArgs: {
+            reason: "Auto-closed after no reply to our follow-up.",
           },
+          linkUrl: `/portal/tickets/${t.ticketNumber}`,
         },
       });
     } else {
