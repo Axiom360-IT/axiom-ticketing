@@ -7,7 +7,7 @@ import { DashboardChart } from "./charts";
 // Recharts sizes itself in the browser, so the chart types that depend on it are
 // covered by the browser walkthrough. These cover what renders as plain markup:
 // the ring, the number, the text table, and the empty states.
-const labels = { empty: "NOTHING", name: "Name", value: "Count", date: "Date", other: "Everyone else" };
+const labels = { empty: "NOTHING", name: "Name", value: "Count", date: "Date", other: "Everyone else", open: "Open", overdue: "Late", health: "Health", onTrack: "Fine", atRisk: "Wobbly", offTrack: "Bad" };
 const draw = (spec: ChartSpec, type: ChartType) =>
   renderToStaticMarkup(<DashboardChart spec={spec} type={type} labels={labels} title="Widget" />);
 
@@ -114,6 +114,44 @@ describe("pie and donut key", () => {
 
   it("the table still lists every name", () => {
     expect(draw(people, "table")).toContain("Person 12");
+  });
+});
+
+describe("health ring", () => {
+  const orgs = (rows: [string, number, number][]): ChartSpec => ({
+    kind: "category",
+    palette: "cycle",
+    data: rows.map(([name, value, overdue]) => ({ key: name, name, value, overdue })),
+  });
+  const rowOf = (html: string, name: string) => html.split("<tr").find((r) => r.includes(`>${name}<`))!;
+
+  it("tables every group with its open and overdue counts and its health", () => {
+    const html = draw(orgs([["Clinic", 4, 1], ["Registry", 2, 0], ["Board", 3, 2]]), "ring");
+    for (const h of ["Open", "Late", "Health"]) expect(html).toContain(`>${h}</th>`);
+    expect(rowOf(html, "Clinic")).toMatch(/>4<[\s\S]*>1<[\s\S]*Wobbly/);
+    expect(rowOf(html, "Registry")).toMatch(/>2<[\s\S]*>0<[\s\S]*Fine/);
+    expect(rowOf(html, "Board")).toMatch(/>3<[\s\S]*>2<[\s\S]*Bad/);
+    expect(html).toContain('aria-label="Widget"');
+  });
+
+  it("folds many groups into one Other that keeps their overdue count", () => {
+    const html = draw(orgs(Array.from({ length: 12 }, (_, i) => [`Org ${i}`, 20 - i, 1] as [string, number, number])), "ring");
+    expect(html.match(/<tr/g)).toHaveLength(1 + 8 + 1);
+    // the four smallest: 12+11+10+9 open, 4 overdue
+    expect(rowOf(html, "Everyone else")).toMatch(/>42<[\s\S]*>4</);
+  });
+
+  it("never colours a group red, which means overdue", () => {
+    const html = draw(orgs(Array.from({ length: 8 }, (_, i) => [`Org ${i}`, 5, 0] as [string, number, number])), "ring");
+    expect(html).not.toMatch(/#(dc2626|ef4444|ec4899)/);
+  });
+
+  it("is not the single-percentage ring", () => {
+    expect(draw(orgs([["Clinic", 4, 1]]), "ring")).toContain("<table");
+  });
+
+  it("says there is nothing to show when no tickets are open", () => {
+    expect(draw(orgs([["Clinic", 0, 0]]), "ring")).toContain("NOTHING");
   });
 });
 

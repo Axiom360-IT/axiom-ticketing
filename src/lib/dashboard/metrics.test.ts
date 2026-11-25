@@ -3,6 +3,7 @@ import {
   AGE_BUCKETS,
   ageSlices,
   fillTrend,
+  healthOf,
   minutesToHours,
   ratio,
   round1,
@@ -139,6 +140,16 @@ describe("topWithOther", () => {
     expect(out.map((x) => [x.key, x.value])).toEqual([["a", 2], ["b", 1], ["other", 20]]);
   });
 
+  it("adds up the overdue tickets it folds, and only when slices carry them", () => {
+    const withLate = [
+      { key: "a", name: "A", value: 9, overdue: 1 },
+      { key: "b", name: "B", value: 5, overdue: 2 },
+      { key: "c", name: "C", value: 4, overdue: 3 },
+    ];
+    expect(topWithOther(withLate, 1, "Other").at(-1)).toMatchObject({ value: 9, overdue: 5 });
+    expect(topWithOther([s("a", 9), s("b", 1)], 1, "Other").at(-1)).not.toHaveProperty("overdue");
+  });
+
   it("adds decimal hours without floating point noise", () => {
     const out = topWithOther([s("a", 5), s("b", 0.1), s("c", 0.2)], 1, "Other");
     expect(out.at(-1)!.value).toBe(0.3);
@@ -190,5 +201,24 @@ describe("ageSlices", () => {
     expect(out.map((s) => s.key)).toEqual([...AGE_BUCKETS]);
     expect(out.map((s) => s.value)).toEqual([4, 0, 2, 0, 0]);
     expect(out[0].name).toBe("Under a day");
+  });
+});
+
+describe("healthOf", () => {
+  it("is on track with nothing overdue, at risk up to half, off track beyond", () => {
+    expect(healthOf(4, 0)).toBe("onTrack");
+    expect(healthOf(4, 1)).toBe("atRisk");
+    expect(healthOf(4, 2)).toBe("atRisk");
+    expect(healthOf(4, 3)).toBe("offTrack");
+    expect(healthOf(1, 1)).toBe("offTrack");
+    expect(healthOf(0, 0)).toBe("onTrack");
+  });
+});
+
+describe("ageSlices with overdue counts", () => {
+  const names = { d0_1: "a", d1_3: "b", d3_7: "c", d7_14: "d", d14_plus: "e" };
+
+  it("carries them per bucket, zero where none", () => {
+    expect(ageSlices({ d1_3: 3 }, names, { d1_3: 2 }).map((x) => x.overdue)).toEqual([0, 2, 0, 0, 0]);
   });
 });

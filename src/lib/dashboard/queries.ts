@@ -1,10 +1,11 @@
 import "server-only";
-import { and, count, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
 import { workLogs } from "@/lib/db/schema/work-logs";
+import { slaRadarCondition } from "@/lib/tickets/ticket-filter-conditions";
 import type { AgeBucket } from "./metrics";
 
 // ── Dashboard widget queries ──────────────────────────────────────────────
@@ -21,69 +22,89 @@ const ACTIVE = and(
   notInArray(tickets.status, ["draft", "resolved", "closed"]),
 );
 
+// Overdue = past the SLA target, by the same rule as the dashboard's SLA card.
+const BREACHED = slaRadarCondition("breached");
+const overdueCount = () => sql<number>`count(*) filter (where ${BREACHED})`.mapWith(Number);
+
 const num = (n: unknown) => Number(n ?? 0);
 
 /** Active tickets per primary assignee; `userId: null` is the unassigned pile. */
 export async function activeByTechnician() {
   const rows = await db
-    .select({ userId: tickets.assignedToId, name: users.name, value: count() })
+    .select({ userId: tickets.assignedToId, name: users.name, value: count(), overdue: overdueCount() })
     .from(tickets)
     .leftJoin(users, eq(users.id, tickets.assignedToId))
     .where(ACTIVE)
     .groupBy(tickets.assignedToId, users.name)
     .orderBy(desc(count()));
-  return rows.map((r) => ({ userId: r.userId, name: r.name, value: num(r.value) }));
+  return rows.map((r) => ({ userId: r.userId, name: r.name, value: num(r.value), overdue: num(r.overdue) }));
 }
 
 /** Active tickets grouped by one of their own text columns. */
 export async function activeByColumn(column: "category" | "type" | "stream") {
   const col = tickets[column];
   const rows = await db
-    .select({ key: col, value: count() })
+    .select({ key: col, value: count(), overdue: overdueCount() })
     .from(tickets)
     .where(ACTIVE)
     .groupBy(col)
     .orderBy(desc(count()));
-  return rows.map((r) => ({ key: r.key, value: num(r.value) }));
+  return rows.map((r) => ({ key: r.key, value: num(r.value), overdue: num(r.overdue) }));
 }
 
 /** Active tickets per organization; `id: null` = tickets with no organization. */
 export async function activeByOrganization() {
   const rows = await db
-    .select({ id: tickets.organizationId, name: organizations.name, value: count() })
+    .select({ id: tickets.organizationId, name: organizations.name, value: count(), overdue: overdueCount() })
     .from(tickets)
     .leftJoin(organizations, eq(organizations.id, tickets.organizationId))
     .where(ACTIVE)
     .groupBy(tickets.organizationId, organizations.name)
     .orderBy(desc(count()));
-  return rows.map((r) => ({ id: r.id, name: r.name, value: num(r.value) }));
+  return rows.map((r) => ({ id: r.id, name: r.name, value: num(r.value), overdue: num(r.overdue) }));
 }
 
-/** Active tickets counted into age buckets by how long ago they were created. */
-export async function activeAgeCounts(): Promise<Record<AgeBucket, number>> {
+/** Active tickets, and the overdue ones among them, counted into age buckets by
+ *  how long ago they were created. */
+export async function activeAgeCounts(): Promise<
+  Record<"open" | "overdue", Record<AgeBucket, number>>
+> {
   const age = (lo: string | null, hi: string | null) => {
     const parts = [];
     if (lo) parts.push(sql`${tickets.createdAt} <= now() - ${sql.raw(`interval '${lo}'`)}`);
     if (hi) parts.push(sql`${tickets.createdAt} > now() - ${sql.raw(`interval '${hi}'`)}`);
     return sql.join(parts, sql` and `);
   };
-  const [row] = await db
-    .select({
-      d0_1: sql<number>`count(*) filter (where ${age(null, "1 day")})`.mapWith(Number),
-      d1_3: sql<number>`count(*) filter (where ${age("1 day", "3 days")})`.mapWith(Number),
-      d3_7: sql<number>`count(*) filter (where ${age("3 days", "7 days")})`.mapWith(Number),
-      d7_14: sql<number>`count(*) filter (where ${age("7 days", "14 days")})`.mapWith(Number),
-      d14_plus: sql<number>`count(*) filter (where ${age("14 days", null)})`.mapWith(Number),
-    })
-    .from(tickets)
-    .where(ACTIVE);
-  return {
-    d0_1: num(row?.d0_1),
-    d1_3: num(row?.d1_3),
-    d3_7: num(row?.d3_7),
-    d7_14: num(row?.d7_14),
-    d14_plus: num(row?.d14_plus),
+  const buckets: Record<AgeBucket, [string | null, string | null]> = {
+    d0_1: [null, "1 day"],
+    d1_3: ["1 day", "3 days"],
+    d3_7: ["3 days", "7 days"],
+    d7_14: ["7 days", "14 days"],
+    d14_plus: ["14 days", null],
   };
+  const countBuckets = async (only?: SQL) => {
+    const column = (k: AgeBucket) =>
+      sql<number>`count(*) filter (where ${age(...buckets[k])})`.mapWith(Number);
+    const [row] = await db
+      .select({
+        d0_1: column("d0_1"),
+        d1_3: column("d1_3"),
+        d3_7: column("d3_7"),
+        d7_14: column("d7_14"),
+        d14_plus: column("d14_plus"),
+      })
+      .from(tickets)
+      .where(and(ACTIVE, only));
+    return {
+      d0_1: num(row?.d0_1),
+      d1_3: num(row?.d1_3),
+      d3_7: num(row?.d3_7),
+      d7_14: num(row?.d7_14),
+      d14_plus: num(row?.d14_plus),
+    };
+  };
+  const [open, overdue] = await Promise.all([countBuckets(), countBuckets(BREACHED)]);
+  return { open, overdue };
 }
 
 /**

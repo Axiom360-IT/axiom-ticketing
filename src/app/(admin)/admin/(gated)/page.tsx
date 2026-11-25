@@ -650,6 +650,12 @@ export default async function AdminLanding() {
           value: t("chart.value"),
           date: t("chart.date"),
           other: t("metrics.other"),
+          open: t("chart.open"),
+          overdue: t("chart.overdue"),
+          health: t("chart.health"),
+          onTrack: t("chart.onTrack"),
+          atRisk: t("chart.atRisk"),
+          offTrack: t("chart.offTrack"),
         }}
       />
     </div>

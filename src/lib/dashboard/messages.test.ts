@@ -42,6 +42,12 @@ describe("dashboard messages", () => {
     }
   });
 
+  it("has every word the charts and the ring table use", () => {
+    for (const k of ["empty", "name", "value", "date", "open", "overdue", "health", "onTrack", "atRisk", "offTrack"]) {
+      expect(has("chart", k), k).toBe(true);
+    }
+  });
+
   it("has a message for every way saving can fail", () => {
     for (const k of ["saveInvalid", "saveUnavailable", "saveOffline"]) {
       expect(has("customize", k), k).toBe(true);

@@ -34,17 +34,20 @@ export type ChartType = (typeof CHART_TYPES)[number];
 
 /**
  * The shape of a chart widget's data decides which chart types make sense:
- *   category  one number per label (status, priority, per technician…)
+ *   category  one number per label (status, priority, hours per technician…)
+ *   tickets   active tickets per label, each knowing how many are overdue, so
+ *             it can also be drawn as a health ring
  *   trend     numbers over time, one or more series
  *   ratio     a single proportion (SLA compliance, escalation rate)
  * A pie of a time series, a line through unordered categories, or a bar chart of
  * one percentage would mislead — so a widget only ever offers the types listed
  * for its shape.
  */
-export type DatasetKind = "category" | "trend" | "ratio";
+export type DatasetKind = "category" | "tickets" | "trend" | "ratio";
 
 export const CHART_TYPES_BY_KIND: Record<DatasetKind, readonly ChartType[]> = {
   category: ["bar", "hbar", "donut", "pie", "table"],
+  tickets: ["bar", "hbar", "donut", "pie", "ring", "table"],
   trend: ["line", "area", "bar", "table"],
   ratio: ["ring", "number", "table"],
 };
@@ -211,12 +214,12 @@ export const WIDGETS: readonly WidgetDef[] = [
     isAvailable: oversight,
   },
   // ── Phase 2: ticket mix ──────────────────────────────────────────────
-  lazyChart("chart.byTechnician", "byTechnician", oversight, { w: 6, h: 8, minW: 3, minH: 6 }, "category", "hbar"),
-  lazyChart("chart.byCategory", "byCategory", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "donut"),
-  lazyChart("chart.byType", "byType", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "bar"),
-  lazyChart("chart.byStream", "byStream", oversight, { w: 4, h: 7, minW: 3, minH: 6 }, "category", "donut"),
-  lazyChart("chart.byOrganization", "byOrganization", orgOversight, { w: 6, h: 8, minW: 3, minH: 6 }, "category", "hbar"),
-  lazyChart("chart.age", "age", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "bar"),
+  lazyChart("chart.byTechnician", "byTechnician", oversight, { w: 6, h: 8, minW: 3, minH: 6 }, "tickets", "hbar"),
+  lazyChart("chart.byCategory", "byCategory", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "tickets", "donut"),
+  lazyChart("chart.byType", "byType", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "tickets", "bar"),
+  lazyChart("chart.byStream", "byStream", oversight, { w: 4, h: 7, minW: 3, minH: 6 }, "tickets", "donut"),
+  lazyChart("chart.byOrganization", "byOrganization", orgOversight, { w: 6, h: 8, minW: 3, minH: 6 }, "tickets", "hbar"),
+  lazyChart("chart.age", "age", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "tickets", "bar"),
   // ── Phase 2: over time ───────────────────────────────────────────────
   lazyChart("chart.backlog", "backlog", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "area"),
   lazyChart("chart.firstResponse", "firstResponse", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "line"),

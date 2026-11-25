@@ -5,6 +5,27 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-26 · A health ring for the ticket breakdowns
+
+**Ask.** A two-level ring chart with a table beside it, as in another product's
+"workspace health" panel: share per group inside, each group's split outside, and
+Open / Overdue / Health per row.
+
+**Decisions.**
+  * **A chart type, not a new widget.** "Ring" is offered by the six active-ticket
+    breakdowns, so the person chooses the grouping with the widget they add. The
+    default dashboard is unchanged.
+  * **Overdue means what the SLA card calls Breached** (`slaRadarCondition`), so
+    the two always agree. A paused ticket (awaiting customer / on hold) is open
+    but never overdue.
+  * **Health rule:** none overdue = On track; up to half = At risk; more than half
+    = Off track. Our choice: the example did not show its rule.
+  * **Red means overdue only**, so no group is drawn in red or pink.
+  * Like pie and donut it folds to 8 groups plus "Other", which keeps its overdue
+    count. No migration: counts are computed on read.
+
+---
+
 ## 2026-11-26 · Dashboard fixes found by testing in a real browser
 
 **Found** (isolated copy, local database, before release): a dropped connection

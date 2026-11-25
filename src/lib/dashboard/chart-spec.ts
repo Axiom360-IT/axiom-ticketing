@@ -5,8 +5,9 @@
 // server translates every label; colours are named tones the chart maps to hex,
 // so this file stays free of presentation.
 
-/** One labelled number: a status, a technician, an age bucket… */
-export type Slice = { key: string; name: string; value: number };
+/** One labelled number: a status, a technician, an age bucket… `overdue` is set
+ *  on ticket breakdowns: how many of `value` are past their SLA target. */
+export type Slice = { key: string; name: string; value: number; overdue?: number };
 
 /** Which colour map a category chart uses. `cycle` = a categorical rotation. */
 export type CategoryPalette = "status" | "priority" | "cycle";
@@ -30,8 +31,15 @@ export type ChartLabels = {
   name: string;
   value: string;
   date: string;
-  /** The slice a pie or donut folds its smallest names into. */
+  /** The slice a pie, donut or ring folds its smallest names into. */
   other: string;
+  /** The ring chart's table: column headings and health states. */
+  open: string;
+  overdue: string;
+  health: string;
+  onTrack: string;
+  atRisk: string;
+  offTrack: string;
 };
 
 /** What the server sends back for a widget's data. */

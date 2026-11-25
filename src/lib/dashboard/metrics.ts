@@ -80,7 +80,20 @@ export function topWithOther(
   const remainder = [...rest.slice(room), ...others];
   if (remainder.length === 0) return shown;
   const value = round1(remainder.reduce((s, x) => s + x.value, 0));
-  return [...shown, { key: "other", name: otherName, value }];
+  const other: Slice = { key: "other", name: otherName, value };
+  if (remainder.some((s) => s.overdue !== undefined)) {
+    other.overdue = remainder.reduce((s, x) => s + (x.overdue ?? 0), 0);
+  }
+  return [...shown, other];
+}
+
+export type Health = "onTrack" | "atRisk" | "offTrack";
+
+/** How a group of tickets is doing: nothing overdue is on track, up to half
+ *  overdue is at risk, more than half is off track. */
+export function healthOf(open: number, overdue: number): Health {
+  if (overdue <= 0) return "onTrack";
+  return overdue * 2 > open ? "offTrack" : "atRisk";
 }
 
 /** A proportion in 0..1, or null when there is nothing to measure. */
@@ -121,6 +134,12 @@ export type AgeBucket = (typeof AGE_BUCKETS)[number];
 export function ageSlices(
   counts: Partial<Record<AgeBucket, number>>,
   names: Record<AgeBucket, string>,
+  overdue?: Partial<Record<AgeBucket, number>>,
 ): Slice[] {
-  return AGE_BUCKETS.map((key) => ({ key, name: names[key], value: counts[key] ?? 0 }));
+  return AGE_BUCKETS.map((key) => ({
+    key,
+    name: names[key],
+    value: counts[key] ?? 0,
+    ...(overdue ? { overdue: overdue[key] ?? 0 } : {}),
+  }));
 }

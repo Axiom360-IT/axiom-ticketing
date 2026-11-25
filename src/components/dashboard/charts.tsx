@@ -35,6 +35,7 @@ import {
   shorten,
 } from "@/lib/dashboard/chart-fit";
 import type { ChartType } from "@/lib/dashboard/widgets";
+import { HealthRing } from "./health-ring";
 
 // ── Dashboard charts ──────────────────────────────────────────────────────
 //
@@ -485,6 +486,9 @@ export function DashboardChart({
     );
   }
   if (type === "table") return <DataTable spec={spec} labels={labels} />;
+  if (spec.kind === "category" && type === "ring") {
+    return <HealthRing data={spec.data} labels={labels} title={title} />;
+  }
 
   if (spec.kind === "ratio") {
     return (

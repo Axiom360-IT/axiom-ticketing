@@ -2731,7 +2731,13 @@
         "empty": "No data to chart yet",
         "name": "Name",
         "value": "Tickets",
-        "date": "Date"
+        "date": "Date",
+        "open": "Open",
+        "overdue": "Overdue",
+        "health": "Health",
+        "onTrack": "On track",
+        "atRisk": "At risk",
+        "offTrack": "Off track"
       },
       "metrics": {
         "unassigned": "Unassigned",

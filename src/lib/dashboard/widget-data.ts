@@ -66,6 +66,7 @@ export async function loadWidgetData(
         key: r.userId ?? "unassigned",
         name: r.name ?? t("unassigned"),
         value: r.value,
+        overdue: r.overdue,
       }));
       return {
         subtitle: subtitle(),
@@ -78,6 +79,7 @@ export async function loadWidgetData(
         key: r.key,
         name: labels.get(r.key) ?? r.key,
         value: r.value,
+        overdue: r.overdue,
       }));
       return { subtitle: subtitle(), spec: { kind: "category", palette: "cycle", data: topWithOther(slices, TOP_N, t("other")) } };
     }
@@ -87,6 +89,7 @@ export async function loadWidgetData(
         key: r.key,
         name: labels.get(r.key) ?? r.key,
         value: r.value,
+        overdue: r.overdue,
       }));
       return { subtitle: subtitle(), spec: { kind: "category", palette: "cycle", data: topWithOther(slices, TOP_N, t("other")) } };
     }
@@ -95,6 +98,7 @@ export async function loadWidgetData(
         key: r.key,
         name: r.key === "internal" || r.key === "external" ? t(`stream.${r.key}`) : r.key,
         value: r.value,
+        overdue: r.overdue,
       }));
       return { subtitle: subtitle(), spec: { kind: "category", palette: "cycle", data: slices } };
     }
@@ -103,6 +107,7 @@ export async function loadWidgetData(
         key: r.id ?? "none",
         name: r.name ?? t("noOrganization"),
         value: r.value,
+        overdue: r.overdue,
       }));
       return {
         subtitle: subtitle({ n: TOP_N }),
@@ -111,9 +116,10 @@ export async function loadWidgetData(
     }
     case "chart.age": {
       const names = Object.fromEntries(AGE_BUCKETS.map((k) => [k, t(`age.${k}`)])) as Record<AgeBucket, string>;
+      const { open, overdue } = await q.activeAgeCounts();
       return {
         subtitle: subtitle(),
-        spec: { kind: "category", palette: "cycle", data: ageSlices(await q.activeAgeCounts(), names) },
+        spec: { kind: "category", palette: "cycle", data: ageSlices(open, names, overdue) },
       };
     }
 

@@ -269,7 +269,12 @@ export function DashboardGrid({
           </CardHeader>
           <CardContent
             className="min-h-0 flex-1 overflow-y-auto"
-            style={stacked ? { height: STACK_CHART_HEIGHT, flex: "none" } : undefined}
+            style={
+              stacked
+                ? // a health ring and its table take the height they need
+                  { height: def.chart?.kind === "tickets" && type === "ring" ? "auto" : STACK_CHART_HEIGHT, flex: "none" }
+                : undefined
+            }
           >
             {loaded ? (
               <DashboardChart spec={loaded} type={type} labels={chartLabels} title={slot.title} />

@@ -480,3 +480,27 @@ describe("tall dashboards", () => {
     expect(sanitizeLayout(everything, ADMIN)).toEqual(everything);
   });
 });
+
+describe("health ring choice", () => {
+  it("is offered by the ticket breakdowns, and not where nothing can be overdue", () => {
+    const offering = WIDGETS.filter((w) => w.chart?.kind === "tickets");
+    expect(offering.map((w) => w.id)).toEqual([
+      "chart.byTechnician", "chart.byCategory", "chart.byType",
+      "chart.byStream", "chart.byOrganization", "chart.age",
+    ]);
+    for (const w of offering) expect(allowedChartTypes(w)).toContain("ring");
+    for (const id of ["chart.hoursByTechnician", "chart.hoursByBilling", "chart.status", "chart.priority"]) {
+      expect(allowedChartTypes(getWidget(id)!)).not.toContain("ring");
+    }
+  });
+
+  it("survives a save, and is discarded where it is not offered", () => {
+    const item = (id: string) => ({ id, x: 0, y: 0, w: 6, h: 7, chart: "ring" });
+    const out = sanitizeLayout(
+      { version: 1, items: [item("chart.byOrganization"), item("chart.hoursByBilling")] },
+      ADMIN,
+    )!;
+    expect(out.items[0].chart).toBe("ring");
+    expect(out.items[1]).not.toHaveProperty("chart");
+  });
+});
