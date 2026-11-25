@@ -5,6 +5,41 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-26 · Dashboard fixes found by testing in a real browser
+
+**Found** (isolated copy, local database, before release): a dropped connection
+while saving replaced the dashboard with the error screen, and while adding a
+widget left it loading forever; number axes cut the first digit off ("20" read as
+"0"); panels were cut off at their starting height; and with a dozen names,
+labels overlapped, pie legends were clipped and two people shared a colour. The
+earlier browser check had replaced the server actions with stand-ins, so it could
+not see the first of these.
+
+**Decisions.**
+  * **A rejected server action is an ordinary failure** (`reachServer`). The
+    arrangement stays on screen; nothing reaches the error boundary.
+  * **Panels follow their content** instead of a better guess at a height: their
+    lists change daily, so any fixed number is wrong. Resizing one pins its height
+    (`fixedHeight` on that layout item); changing only its width does not. *Reset
+    to default* un-pins. No migration: the layout is jsonb.
+  * **Pie and donut fold to 8 names plus "Other"**, as many as there are colours.
+    Nothing is lost: bar and table views list everyone. "Unassigned" and "No
+    organization" are never folded.
+  * **A real "Other" ticket category merges with the remainder**, so a chart
+    never has two "Other" entries.
+  * **Positions are no longer capped at row 60.** Found while retesting: the
+    default dashboard is already about 55 rows, so saving after adding a couple of
+    charts piled everything below row 60 together and lost the arrangement.
+  * **Small widgets stay readable.** The chart-type picker drops under the title
+    instead of squeezing it; names shorten further in a short chart; a chart keeps
+    a minimum height and the widget scrolls rather than flattening it. Minimum
+    heights went up one row (charts 6, single-number widgets 5).
+  * **Chart-type choices were not restricted.** Fitting the labels to the space
+    was enough, so no option had to be removed. The trade-off: at the smallest
+    sizes vertical bars name only some bars, briefly (the tooltip names them all).
+
+---
+
 ## 2026-11-25 · Dashboard phase 2: fourteen on-demand chart widgets
 
 **What.** Per person, per category, per type, per stream, per organization; ticket

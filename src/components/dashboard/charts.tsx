@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -26,6 +27,13 @@ import type {
   TrendRow,
   TrendSeries,
 } from "@/lib/dashboard/chart-spec";
+import {
+  fitBarLabels,
+  fitNameAxis,
+  HBAR_ROW_HEIGHT,
+  ringSlices,
+  shorten,
+} from "@/lib/dashboard/chart-fit";
 import type { ChartType } from "@/lib/dashboard/widgets";
 
 // ── Dashboard charts ──────────────────────────────────────────────────────
@@ -35,7 +43,8 @@ import type { ChartType } from "@/lib/dashboard/widgets";
 // server passes translation-ready data and stays colour-agnostic; colours live
 // here, keyed by the stable `key` or a named tone. Identity is never
 // colour-alone: every chart carries a legend or axis labels plus a tooltip, and
-// the "table" type is the fully text alternative.
+// the "table" type is the fully text alternative. How many slices are drawn and
+// how names are written depends on the room available (lib/dashboard/chart-fit.ts).
 
 // Stable status/priority → colour maps. These mirror the reports page palette
 // and are validated CVD-safe.
@@ -71,7 +80,12 @@ const TONES: Record<Tone, string> = {
 
 const AXIS = { tickLine: false, axisLine: false, fontSize: 12 } as const;
 const GRID = "rgba(113,113,122,0.2)";
-const MARGIN = { top: 8, right: 12, left: -12, bottom: 0 };
+// Names are already shortened to fit (chart-fit.ts). Left to itself the library
+// also wraps them onto a second line, which runs into the neighbouring name.
+const ONE_LINE = { width: 1000 };
+// No negative left margin, and number axes size themselves (`width="auto"`):
+// a fixed width cuts the first digit off "20" or "100".
+const MARGIN = { top: 8, right: 12, left: 0, bottom: 0 };
 
 function colorFor(palette: CategoryPalette, key: string, index: number): string {
   if (palette === "cycle") return key === "other" ? "#a1a1aa" : CYCLE[index % CYCLE.length];
@@ -88,66 +102,131 @@ function CategoryChart({
   palette,
   type,
   unit,
+  otherName,
 }: {
   data: Slice[];
   palette: CategoryPalette;
   type: ChartType;
   unit?: string;
+  otherName: string;
 }) {
-  const cells = data.map((d, i) => <Cell key={d.key} fill={colorFor(palette, d.key, i)} />);
+  // The chart's size in pixels (0 until measured): names are fitted to it.
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const measured = (width: number, height: number) => setSize({ width, height });
   const tip = <Tooltip formatter={(v) => withUnit(v, unit)} cursor={{ fill: "rgba(113,113,122,0.08)" }} />;
 
   if (type === "donut" || type === "pie") {
+    const slices = ringSlices(data, otherName);
     return (
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            innerRadius={type === "donut" ? "55%" : 0}
-            outerRadius="85%"
-            paddingAngle={type === "donut" ? 2 : 0}
-            stroke="none"
-          >
-            {cells}
-          </Pie>
-          {tip}
-          <Legend verticalAlign="bottom" height={28} iconType="circle" />
-        </PieChart>
-      </ResponsiveContainer>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={[...slices]}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={type === "donut" ? "55%" : 0}
+                outerRadius="85%"
+                paddingAngle={type === "donut" ? 2 : 0}
+                stroke="none"
+              >
+                {slices.map((d, i) => (
+                  <Cell key={d.key} fill={colorFor(palette, d.key, i)} />
+                ))}
+              </Pie>
+              {tip}
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <SliceLegend slices={slices} palette={palette} />
+      </div>
     );
   }
 
+  // Bars are named on the axis, so colour carries nothing there. Once there are
+  // more names than colours, one colour avoids two people appearing to match.
+  const repeats = palette === "cycle" && data.filter((d) => d.key !== "other").length > CYCLE.length;
+  const cells = data.map((d, i) => (
+    <Cell key={d.key} fill={repeats && d.key !== "other" ? TONES.blue : colorFor(palette, d.key, i)} />
+  ));
+  const names = data.map((d) => d.name);
+
   if (type === "hbar") {
+    const axis = fitNameAxis(names, size.width);
     return (
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 4, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
-          <XAxis type="number" allowDecimals={unit === "h"} {...AXIS} />
-          <YAxis type="category" dataKey="name" width={110} interval={0} {...AXIS} />
-          {tip}
-          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={36}>
-            {cells}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      // Too short for one line per name? Scroll rather than print them on top of each other.
+      <div className="h-full overflow-y-auto">
+        <div className="h-full" style={{ minHeight: data.length * HBAR_ROW_HEIGHT + 36 }}>
+          <ResponsiveContainer width="100%" height="100%" onResize={measured}>
+            <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 4, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+              <XAxis type="number" allowDecimals={unit === "h"} {...AXIS} />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={axis.width}
+                interval={0}
+                tickFormatter={(v) => shorten(String(v), axis.maxChars)}
+                tick={ONE_LINE}
+                {...AXIS}
+              />
+              {tip}
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={36}>
+                {cells}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     );
   }
 
   // "bar" (and the safe default for anything else)
+  const labelFit = fitBarLabels(names, size.width, size.height);
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={MARGIN}>
+    <ResponsiveContainer width="100%" height="100%" onResize={measured}>
+      <BarChart data={data} margin={{ ...MARGIN, left: labelFit.paddingLeft }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis dataKey="name" interval={0} {...AXIS} />
-        <YAxis allowDecimals={unit === "h"} width={28} {...AXIS} />
+        <XAxis
+          dataKey="name"
+          interval={labelFit.showAll ? 0 : "preserveStartEnd"}
+          height={labelFit.height}
+          angle={labelFit.angled ? -45 : 0}
+          textAnchor={labelFit.angled ? "end" : "middle"}
+          tickFormatter={(v) => shorten(String(v), labelFit.maxChars)}
+          tick={ONE_LINE}
+          {...AXIS}
+        />
+        <YAxis allowDecimals={unit === "h"} width="auto" {...AXIS} />
         {tip}
         <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={72}>
           {cells}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+/**
+ * The pie/donut key, as ordinary text under the chart: it wraps, and scrolls if
+ * it is taller than its share of the widget. A legend drawn inside the chart had
+ * a fixed height and cut long lists off.
+ */
+function SliceLegend({ slices, palette }: { slices: readonly Slice[]; palette: CategoryPalette }) {
+  return (
+    <ul className="flex max-h-[45%] shrink-0 flex-wrap content-start justify-center gap-x-3 gap-y-1 overflow-y-auto pt-2 text-xs text-zinc-600 dark:text-zinc-300">
+      {slices.map((d, i) => (
+        <li key={d.key} className="flex items-center gap-1.5">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: colorFor(palette, d.key, i) }}
+            aria-hidden="true"
+          />
+          {d.name}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -171,7 +250,7 @@ function TrendChart({
     <>
       <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
       <XAxis dataKey="date" interval="preserveStartEnd" minTickGap={24} {...AXIS} />
-      <YAxis allowDecimals={unit === "h"} width={unit ? 36 : 28} {...AXIS} />
+      <YAxis allowDecimals={unit === "h"} width="auto" {...AXIS} />
       <Tooltip formatter={(v) => withUnit(v, unit)} />
       {series.length > 1 ? (
         <Legend verticalAlign="top" height={28} iconType={type === "line" ? "plainline" : "circle"} />
@@ -272,8 +351,10 @@ function RatioView({
   const r = 50;
   const c = 2 * Math.PI * r;
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2">
-      <svg viewBox="0 0 120 120" className="min-h-0 w-auto flex-1 max-h-56" aria-hidden="true">
+    // "safe" centring: in a tiny widget the ring stays reachable by scrolling
+    // instead of being cut off above the top.
+    <div className="flex h-full min-h-0 flex-col items-center gap-2 [justify-content:safe_center]">
+      <svg viewBox="0 0 120 120" className="max-h-56 min-h-16 w-auto flex-1" aria-hidden="true">
         <circle cx="60" cy="60" r={r} fill="none" strokeWidth="12" className="stroke-zinc-200 dark:stroke-zinc-800" />
         <circle
           cx="60"
@@ -413,10 +494,19 @@ export function DashboardChart({
     );
   }
 
+  // Below this height a chart stops being readable, so a tiny widget scrolls
+  // instead (a pie or donut also needs room for its key).
+  const minHeight = type === "donut" || type === "pie" ? "min-h-44" : "min-h-40";
   return (
-    <div role="img" aria-label={title} className="h-full min-h-0 w-full">
+    <div role="img" aria-label={title} className={`h-full w-full ${minHeight}`}>
       {spec.kind === "category" ? (
-        <CategoryChart data={spec.data} palette={spec.palette} type={type} unit={spec.unit} />
+        <CategoryChart
+          data={spec.data}
+          palette={spec.palette}
+          type={type}
+          unit={spec.unit}
+          otherName={labels.other}
+        />
       ) : (
         <TrendChart data={spec.data} series={spec.series} type={type} unit={spec.unit} />
       )}

@@ -126,6 +126,23 @@ describe("topWithOther", () => {
   it("adds no Other slice when nothing is folded (exact fit)", () => {
     expect(topWithOther([s("a", 1), s("b", 2)], 2, "Other")).toHaveLength(2);
   });
+
+  it("merges a slice already called other into the remainder, so there is only one", () => {
+    // ticket categories include a real "Other"
+    const out = topWithOther([s("a", 9), s("other", 20), s("b", 5), s("c", 1)], 2, "Other");
+    expect(out.map((x) => x.key)).toEqual(["a", "b", "other"]);
+    expect(out.at(-1)!.value).toBe(21);
+  });
+
+  it("an existing other slice takes no place and goes last when everything else fits", () => {
+    const out = topWithOther([s("other", 20), s("a", 2), s("b", 1)], 2, "Rest");
+    expect(out.map((x) => [x.key, x.value])).toEqual([["a", 2], ["b", 1], ["other", 20]]);
+  });
+
+  it("adds decimal hours without floating point noise", () => {
+    const out = topWithOther([s("a", 5), s("b", 0.1), s("c", 0.2)], 1, "Other");
+    expect(out.at(-1)!.value).toBe(0.3);
+  });
 });
 
 describe("ratio and conversions", () => {

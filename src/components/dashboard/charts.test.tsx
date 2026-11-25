@@ -7,7 +7,7 @@ import { DashboardChart } from "./charts";
 // Recharts sizes itself in the browser, so the chart types that depend on it are
 // covered by the browser walkthrough. These cover what renders as plain markup:
 // the ring, the number, the text table, and the empty states.
-const labels = { empty: "NOTHING", name: "Name", value: "Count", date: "Date" };
+const labels = { empty: "NOTHING", name: "Name", value: "Count", date: "Date", other: "Everyone else" };
 const draw = (spec: ChartSpec, type: ChartType) =>
   renderToStaticMarkup(<DashboardChart spec={spec} type={type} labels={labels} title="Widget" />);
 
@@ -88,6 +88,32 @@ describe("tables", () => {
     );
     expect(html).toContain("Created");
     expect(html).toContain("Resolved");
+  });
+});
+
+describe("pie and donut key", () => {
+  const people: ChartSpec = {
+    kind: "category",
+    palette: "cycle",
+    data: Array.from({ length: 13 }, (_, i) => ({ key: `p${i}`, name: `Person ${i}`, value: 20 - i })),
+  };
+  const swatches = (html: string) => [...html.matchAll(/background-color:(#\w+)/g)].map((m) => m[1]);
+
+  it("lists each drawn slice as text, folding the rest into one Other", () => {
+    const html = draw(people, "donut");
+    expect(html.match(/<li/g)).toHaveLength(9);
+    expect(html).toContain("Person 7");
+    expect(html).not.toContain("Person 8");
+    expect(html).toContain("Everyone else");
+  });
+
+  it("gives no two slices the same colour", () => {
+    const colours = swatches(draw(people, "pie"));
+    expect(new Set(colours).size).toBe(colours.length);
+  });
+
+  it("the table still lists every name", () => {
+    expect(draw(people, "table")).toContain("Person 12");
   });
 });
 

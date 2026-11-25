@@ -192,45 +192,53 @@ export const WIDGETS: readonly WidgetDef[] = [
   {
     id: "chart.trend",
     group: "charts",
-    size: { w: 12, h: 7, minW: 4, minH: 5 },
+    size: { w: 12, h: 7, minW: 4, minH: 6 },
     chart: { kind: "trend", default: "line" },
     isAvailable: oversight,
   },
   {
     id: "chart.status",
     group: "charts",
-    size: { w: 6, h: 7, minW: 3, minH: 5 },
+    size: { w: 6, h: 7, minW: 3, minH: 6 },
     chart: { kind: "category", default: "donut" },
     isAvailable: oversight,
   },
   {
     id: "chart.priority",
     group: "charts",
-    size: { w: 6, h: 7, minW: 3, minH: 5 },
+    size: { w: 6, h: 7, minW: 3, minH: 6 },
     chart: { kind: "category", default: "bar" },
     isAvailable: oversight,
   },
   // ── Phase 2: ticket mix ──────────────────────────────────────────────
-  lazyChart("chart.byTechnician", "byTechnician", oversight, { w: 6, h: 8, minW: 3, minH: 5 }, "category", "hbar"),
-  lazyChart("chart.byCategory", "byCategory", oversight, { w: 6, h: 7, minW: 3, minH: 5 }, "category", "donut"),
-  lazyChart("chart.byType", "byType", oversight, { w: 6, h: 7, minW: 3, minH: 5 }, "category", "bar"),
-  lazyChart("chart.byStream", "byStream", oversight, { w: 4, h: 7, minW: 3, minH: 5 }, "category", "donut"),
-  lazyChart("chart.byOrganization", "byOrganization", orgOversight, { w: 6, h: 8, minW: 3, minH: 5 }, "category", "hbar"),
-  lazyChart("chart.age", "age", oversight, { w: 6, h: 7, minW: 3, minH: 5 }, "category", "bar"),
+  lazyChart("chart.byTechnician", "byTechnician", oversight, { w: 6, h: 8, minW: 3, minH: 6 }, "category", "hbar"),
+  lazyChart("chart.byCategory", "byCategory", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "donut"),
+  lazyChart("chart.byType", "byType", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "bar"),
+  lazyChart("chart.byStream", "byStream", oversight, { w: 4, h: 7, minW: 3, minH: 6 }, "category", "donut"),
+  lazyChart("chart.byOrganization", "byOrganization", orgOversight, { w: 6, h: 8, minW: 3, minH: 6 }, "category", "hbar"),
+  lazyChart("chart.age", "age", oversight, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "bar"),
   // ── Phase 2: over time ───────────────────────────────────────────────
-  lazyChart("chart.backlog", "backlog", oversight, { w: 6, h: 7, minW: 4, minH: 5 }, "trend", "area"),
-  lazyChart("chart.firstResponse", "firstResponse", oversight, { w: 6, h: 7, minW: 4, minH: 5 }, "trend", "line"),
-  lazyChart("chart.resolutionTime", "resolutionTime", oversight, { w: 6, h: 7, minW: 4, minH: 5 }, "trend", "line"),
-  lazyChart("chart.csatTrend", "csatTrend", oversight, { w: 6, h: 7, minW: 4, minH: 5 }, "trend", "line"),
+  lazyChart("chart.backlog", "backlog", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "area"),
+  lazyChart("chart.firstResponse", "firstResponse", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "line"),
+  lazyChart("chart.resolutionTime", "resolutionTime", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "line"),
+  lazyChart("chart.csatTrend", "csatTrend", oversight, { w: 6, h: 7, minW: 4, minH: 6 }, "trend", "line"),
   // ── Phase 2: single numbers ──────────────────────────────────────────
-  lazyChart("ratio.sla", "sla", oversight, { w: 3, h: 6, minW: 2, minH: 4 }, "ratio", "ring"),
-  lazyChart("ratio.escalation", "escalation", oversight, { w: 3, h: 6, minW: 2, minH: 4 }, "ratio", "ring"),
+  lazyChart("ratio.sla", "sla", oversight, { w: 3, h: 6, minW: 2, minH: 5 }, "ratio", "ring"),
+  lazyChart("ratio.escalation", "escalation", oversight, { w: 3, h: 6, minW: 2, minH: 5 }, "ratio", "ring"),
   // ── Phase 2: time logged (commercially sensitive: needs worklog.view_all) ─
-  lazyChart("chart.hoursByTechnician", "hoursByTechnician", hoursViewer, { w: 6, h: 8, minW: 3, minH: 5 }, "category", "hbar"),
-  lazyChart("chart.hoursByBilling", "hoursByBilling", hoursViewer, { w: 6, h: 7, minW: 3, minH: 5 }, "category", "donut"),
+  lazyChart("chart.hoursByTechnician", "hoursByTechnician", hoursViewer, { w: 6, h: 8, minW: 3, minH: 6 }, "category", "hbar"),
+  lazyChart("chart.hoursByBilling", "hoursByBilling", hoursViewer, { w: 6, h: 7, minW: 3, minH: 6 }, "category", "donut"),
 ];
 
 const BY_ID = new Map<string, WidgetDef>(WIDGETS.map((w) => [w.id, w]));
+
+/**
+ * Panels are lists whose length changes daily, so no starting height is right for
+ * them: their height follows their content until the person resizes one.
+ */
+export function fitsContent(def: WidgetDef): boolean {
+  return def.group === "panels";
+}
 
 /** Widgets whose data is loaded on demand rather than with the page. */
 export function isLazyWidget(id: string): boolean {

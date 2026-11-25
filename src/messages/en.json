@@ -2722,6 +2722,7 @@
         "emptyDashboard": "Your dashboard has no widgets. Choose Customize, then Add widget.",
         "saveInvalid": "That arrangement could not be saved. Please try again.",
         "saveUnavailable": "Your dashboard could not be saved right now. Please try again later.",
+        "saveOffline": "Your dashboard was not saved because the request did not go through. Check your connection and try again.",
         "loadingWidget": "Loading…",
         "widgetFailed": "This widget could not be loaded.",
         "tryAgain": "Try again"

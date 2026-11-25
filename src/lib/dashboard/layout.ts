@@ -3,8 +3,10 @@ import {
   allowedChartTypes,
   availableWidgets,
   CHART_TYPES,
+  fitsContent,
   GRID_COLS,
   getWidget,
+  WIDGET_IDS,
   type ChartType,
   type Viewer,
   type WidgetDef,
@@ -24,7 +26,11 @@ import {
 // returns widgets the viewer is allowed and sizes the grid can draw.
 
 export const LAYOUT_VERSION = 1;
-const MAX_ROWS = 60; // generous ceiling on y / h, so a bad value can't make a giant page
+// Ceilings so a bad value can't make a giant page. The one on position has to
+// clear the tallest real dashboard (every widget stacked at full height): a lower
+// one silently piles the bottom widgets onto the same row when saving.
+const MAX_HEIGHT = 60;
+const MAX_Y = MAX_HEIGHT * WIDGET_IDS.length;
 
 export type LayoutItem = {
   id: WidgetId;
@@ -34,6 +40,8 @@ export type LayoutItem = {
   h: number;
   /** Chart widgets only; absent = the widget's default type. */
   chart?: ChartType;
+  /** Content-fitting widgets only: the person resized it, so `h` is used as is. */
+  fixedHeight?: true;
 };
 
 export type DashboardLayout = {
@@ -56,6 +64,7 @@ const layoutSchema = z.object({
         w: z.number().finite(),
         h: z.number().finite(),
         chart: CHART_TYPE.optional(),
+        fixedHeight: z.boolean().optional(),
       }),
     )
     .max(100),
@@ -84,15 +93,16 @@ export function sanitizeLayout(raw: unknown, viewer: Viewer): DashboardLayout | 
     seen.add(def.id);
 
     const w = clamp(it.w, def.size.minW, GRID_COLS);
-    const h = clamp(it.h, def.size.minH, MAX_ROWS);
+    const h = clamp(it.h, def.size.minH, MAX_HEIGHT);
     const item: LayoutItem = {
       id: def.id,
       w,
       h,
       x: clamp(it.x, 0, GRID_COLS - w),
-      y: clamp(it.y, 0, MAX_ROWS),
+      y: clamp(it.y, 0, MAX_Y),
     };
     if (it.chart && allowedChartTypes(def).includes(it.chart)) item.chart = it.chart;
+    if (it.fixedHeight && fitsContent(def)) item.fixedHeight = true;
     items.push(item);
   }
   return { version: LAYOUT_VERSION, items };
@@ -223,6 +233,39 @@ export function applyGridPositions(
   // Same object back when nothing moved, so a no-op report from the grid (it
   // fires on mount and after every compaction) does not cause a re-render.
   return changed ? { ...layout, items } : layout;
+}
+
+/** Whole grid rows needed to hold `px` of content (rows are separated by `gap`). */
+export function rowsForHeight(px: number, rowHeight: number, gap: number): number {
+  return clamp(Math.ceil((px + gap) / (rowHeight + gap)), 1, MAX_HEIGHT);
+}
+
+/**
+ * The height to draw a widget at. A content-fitting widget uses the rows its
+ * content needs; one the person resized, or not measured yet, uses its own `h`.
+ */
+export function displayHeight(
+  def: WidgetDef,
+  item: LayoutItem,
+  contentRows: number | undefined,
+): number {
+  if (!fitsContent(def) || item.fixedHeight || !contentRows) return item.h;
+  return contentRows;
+}
+
+/** Record a height the person chose by resizing; the widget stops following its content. */
+export function setFixedHeight(
+  layout: DashboardLayout,
+  id: string,
+  h: number,
+): DashboardLayout {
+  return {
+    ...layout,
+    items: layout.items.map((i) => {
+      const def = getWidget(i.id);
+      return i.id === id && def && fitsContent(def) ? { ...i, h, fixedHeight: true } : i;
+    }),
+  };
 }
 
 /** Reading order for a single-column (phone) view: top to bottom, left to right. */

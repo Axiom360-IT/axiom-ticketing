@@ -53,8 +53,12 @@ export function fillTrend(
 /**
  * Keep the `limit` largest slices and fold the rest into one "other" slice, so a
  * chart of 80 organizations stays readable. Ties keep their input order. The
- * "other" slice is added only when something was folded, and always goes last
- * whatever its size — it is a remainder, not a competitor.
+ * "other" slice is added only when there is something to put in it, and always
+ * goes last whatever its size — it is a remainder, not a competitor.
+ *
+ * A slice already keyed "other" (ticket categories include a real "Other", and a
+ * grouped dataset may be grouped again) is part of that remainder: it takes no
+ * place, and there is only ever one "other".
  *
  * `keep` names slices that must never be folded away however small (the
  * "Unassigned" pile on a per-technician chart is exactly what someone is looking
@@ -67,16 +71,16 @@ export function topWithOther(
   keep: readonly string[] = [],
 ): Slice[] {
   const byValue = (a: Slice, b: Slice) => b.value - a.value;
-  const kept = slices.filter((s) => keep.includes(s.key));
-  const rest = slices.filter((s) => !keep.includes(s.key)).sort(byValue);
+  const others = slices.filter((s) => s.key === "other");
+  const named = slices.filter((s) => s.key !== "other");
+  const kept = named.filter((s) => keep.includes(s.key));
+  const rest = named.filter((s) => !keep.includes(s.key)).sort(byValue);
   const room = Math.max(0, limit - kept.length);
   const shown = [...kept, ...rest.slice(0, room)].sort(byValue);
-  const folded = rest.slice(room);
-  if (folded.length === 0) return shown;
-  return [
-    ...shown,
-    { key: "other", name: otherName, value: folded.reduce((s, x) => s + x.value, 0) },
-  ];
+  const remainder = [...rest.slice(room), ...others];
+  if (remainder.length === 0) return shown;
+  const value = round1(remainder.reduce((s, x) => s + x.value, 0));
+  return [...shown, { key: "other", name: otherName, value }];
 }
 
 /** A proportion in 0..1, or null when there is nothing to measure. */

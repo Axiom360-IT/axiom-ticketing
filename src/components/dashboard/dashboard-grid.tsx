@@ -1,13 +1,20 @@
 "use client";
 
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useTranslations } from "next-intl";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { GripVertical, Plus, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -19,13 +26,18 @@ import {
   addWidget,
   applyGridPositions,
   chartTypeFor,
+  displayHeight,
   removeWidget,
+  rowsForHeight,
   setChartType,
+  setFixedHeight,
   stackOrder,
   type DashboardLayout,
 } from "@/lib/dashboard/layout";
+import { reachServer } from "@/lib/dashboard/requests";
 import {
   allowedChartTypes,
+  fitsContent,
   getWidget,
   GRID_COLS,
   type ChartType,
@@ -48,6 +60,9 @@ import { DashboardChart } from "./charts";
 // changes away. The one exception is the chart-type picker in viewing mode,
 // which saves straight away — it is a display preference, not a rearrangement.
 //
+// Panels (lists such as My Queue) are as tall as their content until someone
+// resizes one: each reports its height and its grid cell is sized to match.
+//
 // Below the `md` breakpoint (and before the first width measurement, so the
 // server-rendered page is never blank) widgets stack in one column in reading
 // order. Dragging and resizing are not offered on a phone.
@@ -57,6 +72,8 @@ const MARGIN: [number, number] = [16, 16];
 const STACK_BELOW = 768;
 // Height of a chart in the stacked (phone) view, where no grid height exists.
 const STACK_CHART_HEIGHT = 300;
+// Room the title bar takes above a widget while customizing (Tailwind `pt-8`).
+const EDIT_BAR_HEIGHT = 32;
 
 export type DashboardSlot = {
   id: WidgetId;
@@ -105,6 +122,11 @@ export function DashboardGrid({
     Partial<Record<WidgetId, { subtitle?: string; spec: ChartSpec } | "error">>
   >({});
   const [loadingIds, setLoadingIds] = useState<ReadonlySet<WidgetId>>(new Set());
+  // Pixel height of each content-fitting widget's content, as last measured.
+  const [contentHeights, setContentHeights] = useState<Partial<Record<WidgetId, number>>>({});
+  const reportHeight = useCallback((id: WidgetId, px: number) => {
+    setContentHeights((h) => (h[id] === px ? h : { ...h, [id]: px }));
+  }, []);
 
   const layout = editing ? draft : saved;
   const slotById = useMemo(() => new Map(slots.map((s) => [s.id, s])), [slots]);
@@ -124,13 +146,19 @@ export function DashboardGrid({
   function persist(next: DashboardLayout, onSaved: () => void, onFailed?: () => void) {
     setError(null);
     startTransition(async () => {
-      const res = await saveDashboardLayout(next);
+      const res = await reachServer(() => saveDashboardLayout(next));
       if (res.ok) {
         onSaved();
-      } else {
-        onFailed?.();
-        setError(res.reason === "invalid" ? t("saveInvalid") : t("saveUnavailable"));
+        return;
       }
+      onFailed?.();
+      setError(
+        res.reason === "invalid"
+          ? t("saveInvalid")
+          : res.reason === "offline"
+            ? t("saveOffline")
+            : t("saveUnavailable"),
+      );
     });
   }
 
@@ -180,7 +208,7 @@ export function DashboardGrid({
     const have = fetched[id];
     if (have && have !== "error") return;
     setLoadingIds((s) => new Set(s).add(id));
-    const res = await loadDashboardWidget(id);
+    const res = await reachServer(() => loadDashboardWidget(id));
     setFetched((f) => ({
       ...f,
       [id]: res.ok ? { subtitle: res.subtitle, spec: res.spec } : "error",
@@ -215,21 +243,32 @@ export function DashboardGrid({
       return (
         <Card className="h-full">
           <CardHeader>
-            <CardTitle className="text-base">{slot.title}</CardTitle>
-            {subtitle ? <CardDescription>{subtitle}</CardDescription> : null}
-            {!editing && loaded ? (
-              <CardAction>
+            {/* In a narrow widget the picker drops under the title rather than
+                squeezing it into a one-word column that pushes the chart out. */}
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+              <div className="min-w-0 grow basis-40 space-y-1">
+                <CardTitle className="line-clamp-2 text-base">{slot.title}</CardTitle>
+                {subtitle ? (
+                  <CardDescription
+                    title={subtitle}
+                    className="line-clamp-2 @max-[13rem]/card-header:hidden"
+                  >
+                    {subtitle}
+                  </CardDescription>
+                ) : null}
+              </div>
+              {!editing && loaded ? (
                 <ChartTypeSelect
                   id={id}
                   title={slot.title}
                   value={type}
                   onChange={(v) => changeChart(id, v)}
                 />
-              </CardAction>
-            ) : null}
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent
-            className="min-h-0 flex-1"
+            className="min-h-0 flex-1 overflow-y-auto"
             style={stacked ? { height: STACK_CHART_HEIGHT, flex: "none" } : undefined}
           >
             {loaded ? (
@@ -264,7 +303,9 @@ export function DashboardGrid({
 
     // Panels and stat tiles: grow to fill the widget, scroll if the content is taller.
     return (
-      <div className="h-full overflow-auto [&>*]:min-h-full">{slot.node}</div>
+      <PanelBody id={id} onHeight={!stacked && fitsContent(def) ? reportHeight : undefined}>
+        {slot.node}
+      </PanelBody>
     );
   }
 
@@ -336,14 +377,22 @@ export function DashboardGrid({
 
   const gridLayout = shown.map((i) => {
     const def = getWidget(i.id)!;
+    const px = slotById.get(i.id)!.empty ? undefined : contentHeights[i.id];
+    const contentRows =
+      px === undefined
+        ? undefined
+        : rowsForHeight(px + (editing ? EDIT_BAR_HEIGHT : 0), ROW_HEIGHT, MARGIN[1]);
+    const h = displayHeight(def, i, contentRows);
     return {
       i: i.id,
       x: i.x,
       y: i.y,
       w: i.w,
-      h: i.h,
+      h,
       minW: def.size.minW,
-      minH: def.size.minH,
+      // A short list may need fewer rows than the usual minimum; don't let that
+      // minimum turn a change of width into a change of height.
+      minH: Math.min(def.size.minH, h),
     };
   });
 
@@ -391,6 +440,12 @@ export function DashboardGrid({
             dragConfig={{ enabled: editing, handle: ".dash-drag-handle", cancel: "select, option" }}
             resizeConfig={{ enabled: editing }}
             onLayoutChange={onGridChange}
+            onResizeStop={(_all, before, after) => {
+              // Changing the height is the person choosing it; changing only the
+              // width leaves a panel following its content.
+              if (!before || !after || before.h === after.h) return;
+              setDraft((d) => setFixedHeight(d, after.i as WidgetId, after.h));
+            }}
           >
             {shown.map((i) => (
               <div key={i.id}>
@@ -427,6 +482,48 @@ export function DashboardGrid({
 }
 
 // ── small parts ───────────────────────────────────────────────────────────
+
+/**
+ * A server-rendered panel or stat tile. It stretches to fill its widget; given
+ * `onHeight`, it also reports how tall its content is without that stretching.
+ */
+function PanelBody({
+  id,
+  onHeight,
+  children,
+}: {
+  id: WidgetId;
+  onHeight?: (id: WidgetId, px: number) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const box = ref.current;
+    const content = box?.firstElementChild as HTMLElement | null | undefined;
+    if (!box || !content || !onHeight) return;
+    const measure = () => {
+      // Lift the stretch for the instant of measuring, or the answer would only
+      // ever be "as tall as the widget already is" and it could never shrink.
+      content.style.minHeight = "0px";
+      const px = content.offsetHeight;
+      content.style.minHeight = "";
+      if (px > 0) onHeight(id, px);
+    };
+    measure();
+    // The box changes when the widget's width does (text re-wraps).
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [id, onHeight, children]);
+
+  return (
+    <div ref={ref} className="h-full overflow-auto [&>*]:min-h-full">
+      {children}
+    </div>
+  );
+}
 
 function isCompact(id: WidgetId): boolean {
   return getWidget(id)?.group === "stats";

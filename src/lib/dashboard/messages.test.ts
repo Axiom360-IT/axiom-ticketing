@@ -42,6 +42,12 @@ describe("dashboard messages", () => {
     }
   });
 
+  it("has a message for every way saving can fail", () => {
+    for (const k of ["saveInvalid", "saveUnavailable", "saveOffline"]) {
+      expect(has("customize", k), k).toBe(true);
+    }
+  });
+
   it("names every chart type and widget group in the picker", () => {
     for (const t of CHART_TYPES) expect(has("customize", "chartType", t), t).toBe(true);
     for (const g of ["stats", "charts", "panels"]) expect(has("customize", "group", g), g).toBe(true);

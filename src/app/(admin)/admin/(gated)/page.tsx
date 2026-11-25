@@ -649,6 +649,7 @@ export default async function AdminLanding() {
           name: t("chart.name"),
           value: t("chart.value"),
           date: t("chart.date"),
+          other: t("metrics.other"),
         }}
       />
     </div>

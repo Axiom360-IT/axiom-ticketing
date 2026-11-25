@@ -4,10 +4,13 @@ import {
   applyGridPositions,
   chartTypeFor,
   defaultLayout,
+  displayHeight,
   hiddenWidgets,
   removeWidget,
+  rowsForHeight,
   sanitizeLayout,
   setChartType,
+  setFixedHeight,
   stackOrder,
   type DashboardLayout,
 } from "./layout";
@@ -15,6 +18,7 @@ import {
   allowedChartTypes,
   availableWidgets,
   CHART_TYPES_BY_KIND,
+  fitsContent,
   getWidget,
   GRID_COLS,
   isLazyWidget,
@@ -408,5 +412,71 @@ describe("editing a layout", () => {
       ],
     };
     expect(stackOrder(l).map((i) => i.id)).toEqual(["stat.total", "stat.open", "chart.status"]);
+  });
+});
+
+describe("panels fit their content", () => {
+  const myQueue = getWidget("myQueue")!;
+  const item = (extra = {}) => ({ id: "myQueue" as const, x: 0, y: 0, w: 12, h: 5, ...extra });
+
+  it("applies to the panels only", () => {
+    expect(WIDGETS.filter(fitsContent).map((w) => w.id)).toEqual([
+      "myQueue", "sla", "escalations", "triage", "planWatch", "csat",
+    ]);
+  });
+
+  it("counts whole rows, including the gaps between them", () => {
+    // 40px rows, 16px gaps: n rows are 56n - 16 px tall
+    expect(rowsForHeight(264, 40, 16)).toBe(5);
+    expect(rowsForHeight(265, 40, 16)).toBe(6);
+    expect(rowsForHeight(1, 40, 16)).toBe(1);
+    expect(rowsForHeight(100_000, 40, 16)).toBe(60);
+  });
+
+  it("follows the content, taller or shorter than the starting size", () => {
+    expect(displayHeight(myQueue, item(), 9)).toBe(9);
+    expect(displayHeight(myQueue, item(), 2)).toBe(2);
+  });
+
+  it("uses the stored height until measured, and once the person has resized it", () => {
+    expect(displayHeight(myQueue, item(), undefined)).toBe(5);
+    expect(displayHeight(myQueue, item({ fixedHeight: true }), 9)).toBe(5);
+  });
+
+  it("never resizes a chart to its content", () => {
+    const chart = getWidget("chart.status")!;
+    expect(displayHeight(chart, { id: "chart.status", x: 0, y: 0, w: 6, h: 7 }, 20)).toBe(7);
+  });
+
+  it("remembers a chosen height, for panels only, through a save", () => {
+    const start = defaultLayout(ADMIN);
+    expect(start.items.some((i) => i.fixedHeight)).toBe(false);
+    const resized = setFixedHeight(setFixedHeight(start, "sla", 6), "chart.status", 9);
+    expect(resized.items.find((i) => i.id === "sla")).toMatchObject({ h: 6, fixedHeight: true });
+    expect(resized.items.find((i) => i.id === "chart.status")).toEqual(
+      start.items.find((i) => i.id === "chart.status"),
+    );
+    expect(sanitizeLayout(resized, ADMIN)).toEqual(resized);
+  });
+
+  it("drops the flag from a widget that cannot fit its content", () => {
+    const forged = { version: 1, items: [{ id: "chart.status", x: 0, y: 0, w: 6, h: 7, fixedHeight: true }] };
+    expect(sanitizeLayout(forged, ADMIN)!.items[0]).not.toHaveProperty("fixedHeight");
+  });
+
+  it("keeps the flag when the grid reports a move", () => {
+    const l = setFixedHeight(defaultLayout(ADMIN), "sla", 6);
+    const moved = applyGridPositions(l, [{ i: "sla", x: 0, y: 30, w: 12, h: 6 }]);
+    expect(moved.items.find((i) => i.id === "sla")).toMatchObject({ y: 30, fixedHeight: true });
+  });
+});
+
+describe("tall dashboards", () => {
+  it("a dashboard holding every widget is saved exactly where it was arranged", () => {
+    const everything = availableWidgets(ADMIN)
+      .filter((w) => w.lazy)
+      .reduce(addWidget, defaultLayout(ADMIN));
+    expect(Math.max(...everything.items.map((i) => i.y))).toBeGreaterThan(60);
+    expect(sanitizeLayout(everything, ADMIN)).toEqual(everything);
   });
 });

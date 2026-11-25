@@ -30,6 +30,8 @@ export type ChartLabels = {
   name: string;
   value: string;
   date: string;
+  /** The slice a pie or donut folds its smallest names into. */
+  other: string;
 };
 
 /** What the server sends back for a widget's data. */
