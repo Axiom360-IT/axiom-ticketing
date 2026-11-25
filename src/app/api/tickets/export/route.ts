@@ -24,7 +24,11 @@ import { exportResponse } from "@/lib/export/respond";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
 import { loadAllTicketCategories } from "@/lib/tickets/categories";
 import { loadAllTicketTypes } from "@/lib/tickets/types";
-import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
+import {
+  billingFilterCondition,
+  SLA_FILTER_VALUES,
+  slaRadarCondition,
+} from "@/lib/tickets/ticket-filter-conditions";
 import { CSAT_RATINGS } from "@/lib/tickets/csat-display";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +128,9 @@ export async function GET(request: Request): Promise<Response> {
   const fOrg = sp.get("org")?.trim() || undefined;
   const fCustomer = sp.get("customer")?.trim() || undefined;
   const fCsat = enumCsv(sp.get("csat"), CSAT_RATINGS);
+  // SLA view from the dashboard card — replaces the Active/Closed tab scope,
+  // exactly as on the list page.
+  const fSla = enumCsv(sp.get("sla"), SLA_FILTER_VALUES)?.[0];
 
   const conditions: SQL[] = [ticketsVisibilityCondition(user)];
   if (search) {
@@ -135,11 +142,13 @@ export async function GET(request: Request): Promise<Response> {
     );
     if (orClause) conditions.push(orClause);
   }
-  if (view === "closed") conditions.push(eq(tickets.status, "closed"));
+  if (fSla) conditions.push(slaRadarCondition(fSla));
+  else if (view === "closed") conditions.push(eq(tickets.status, "closed"));
   else if (view === "active") conditions.push(ne(tickets.status, "closed"));
   if (fStatus) {
-    const scoped =
-      view === "closed"
+    const scoped = fSla
+      ? fStatus
+      : view === "closed"
         ? fStatus.filter((s) => s === "closed")
         : view === "active"
           ? fStatus.filter((s) => s !== "closed")

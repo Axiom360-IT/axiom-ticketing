@@ -1,10 +1,11 @@
-import { and, eq, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/can";
 import { ticketsVisibilityCondition } from "@/lib/auth/scope";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema/auth";
 import { organizations } from "@/lib/db/schema/organizations";
 import { tickets } from "@/lib/db/schema/tickets";
+import { slaRadarCondition } from "./ticket-filter-conditions";
 
 // ── SLA deadline board — the oversight companion to "My Queue" ────────────
 //
@@ -45,18 +46,11 @@ export type SlaBoard = {
 const SLA_BOARD_LIMIT = 6;
 
 export async function loadSlaBoard(user: SessionUser): Promise<SlaBoard> {
-  // On the radar = in-flight (not resolved/closed; drafts + soft-deletes are
-  // already excluded by the visibility condition) AND either breached or in the
-  // 80% warning band. The stamp columns persist after resolution, so the
-  // status exclusion is what keeps the board to still-actionable tickets.
-  const onRadar = and(
-    ticketsVisibilityCondition(user),
-    notInArray(tickets.status, ["resolved", "closed"]),
-    // Paused tickets (Awaiting customer / On hold) are off the SLA clock —
-    // keep them off the radar so waiting time isn't flagged as at-risk.
-    isNull(tickets.slaPausedAt),
-    or(isNotNull(tickets.slaBreachedAt), isNotNull(tickets.slaWarning80At)),
-  );
+  // On the radar = in-flight AND either breached or in the 80% warning band
+  // (drafts + soft-deletes are already excluded by the visibility condition).
+  // The predicate lives in ticket-filter-conditions.ts because the tickets list
+  // filters with the very same one when a count here is clicked (`?sla=`).
+  const onRadar = and(ticketsVisibilityCondition(user), slaRadarCondition());
 
   // The SLA stamps refer to whichever target the monitor is tracking: the
   // response target while the ticket is still unanswered, otherwise the

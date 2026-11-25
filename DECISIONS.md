@@ -57,6 +57,34 @@ staff are quiet (SLA alerts only).
 
 ---
 
+## 2026-11-24 · The SLA deadlines card links to the tickets it counts
+
+**Report.** The dashboard card showed "35 Breached · 3 At risk" but nothing was
+clickable and only 6 tickets were listed, so 29 breached tickets could not be
+reached from the alert. "Open queue" went to the unfiltered list, which had no
+SLA filter.
+
+**Change.** `/admin/tickets?sla=breached|at_risk`. The two count chips and the
+header link point at it; the export honours it.
+
+**One predicate, on purpose.** The card's counts and the list's filter both use
+`slaRadarCondition()` (`lib/tickets/ticket-filter-conditions.ts`). The card used
+to hold the definition inline; moving it means "35 on the card" and "35 rows
+after the click" cannot drift apart. A test renders the SQL and pins which
+columns each state reads.
+
+**The filter replaces the Active/Closed tab, it does not refine it.** The card
+counts any in-flight status (including `escalation`), while the default Active
+tab is `open`/`in_progress` only, so applying both would silently drop tickets
+the card had just counted. No tab is lit in this view and choosing a tab leaves
+it. The Status column filter still narrows within it.
+
+**Not changed.** Paused tickets (awaiting customer / on hold) stay off the
+radar, as before — waiting time is not a breach. The card still previews 6.
+A zero count is not a link: the list behind it would be empty.
+
+---
+
 ## 2026-11-10 · Per-organization notification settings
 
 **Ask.** "Don't send this organization notifications for this and this" — for

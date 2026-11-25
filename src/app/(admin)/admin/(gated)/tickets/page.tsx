@@ -15,6 +15,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { X } from "lucide-react";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { ExportMenu } from "@/components/shared/export-menu";
@@ -41,7 +42,11 @@ import { listAssignableTechnicians } from "@/lib/tickets/load";
 import { loadAllTicketCategories } from "@/lib/tickets/categories";
 import { loadAllTicketTypes } from "@/lib/tickets/types";
 import { BILLING_FILTER_VALUES } from "@/lib/tickets/billing-status";
-import { billingFilterCondition } from "@/lib/tickets/ticket-filter-conditions";
+import {
+  billingFilterCondition,
+  SLA_FILTER_VALUES,
+  slaRadarCondition,
+} from "@/lib/tickets/ticket-filter-conditions";
 import { parseCsv, parseSort } from "@/lib/data-table";
 import { CSAT_RATINGS } from "@/lib/tickets/csat-display";
 import { cn } from "@/lib/utils";
@@ -53,6 +58,8 @@ import { cn } from "@/lib/utils";
 //   &category=hardware,network         CSV multi-select
 //   &assignee=<uuid>|unassigned        single-select
 //   &escalated=1                       presence = true
+//   &sla=breached|at_risk              the dashboard's SLA card, as a list;
+//                                      replaces the Active/Closed tab scope
 //   &from=YYYY-MM-DD                   created on/after this date
 //   &to=YYYY-MM-DD                     created on/before this date
 type SearchParams = Promise<{
@@ -76,6 +83,8 @@ type SearchParams = Promise<{
   customer?: string;
   /** CSV multi-select of CSAT ratings (happy,neutral,unhappy). */
   csat?: string;
+  /** SLA state flagged by the monitor: breached | at_risk (single-select). */
+  sla?: string;
   /** `<column>:<asc|desc>` — column-header sort. */
   sort?: string;
   page?: string;
@@ -158,12 +167,18 @@ export default async function TicketsPage({
   const typeValues = allTypes.map((t) => t.value);
 
   const filterStatus = parseEnumCsv(sp.status, TICKET_STATUSES);
+  // The dashboard's "SLA deadlines" card links here. It REPLACES the tab scope
+  // rather than refining it: the card counts tickets in any in-flight status,
+  // while the default Active tab shows only open/in_progress, so honouring both
+  // would drop tickets the card just counted.
+  const filterSla = parseEnumCsv(sp.sla, SLA_FILTER_VALUES)?.[0];
   // Which of the 5 tab-row segments is in effect. A single recognized status
   // chip (Awaiting Customer / On Hold) always wins over the view scope — the
   // tab hrefs never set both `view` and `status` at once, but this is
   // computed from the params directly (not trusted as an invariant) so a
   // hand-edited URL still resolves to exactly one sensible scope.
   const chipStatus: "awaiting_customer_confirmation" | "on_hold" | null =
+    !filterSla &&
     filterStatus?.length === 1 &&
     (filterStatus[0] === "awaiting_customer_confirmation" ||
       filterStatus[0] === "on_hold")
@@ -266,14 +281,17 @@ export default async function TicketsPage({
   // separate Status column-filter selection refines further within
   // whichever of those applies — an out-of-scope status is simply ignored
   // rather than escaping the tab.
-  if (chipStatus) {
+  if (filterSla) {
+    // SLA view: its own in-flight scope (see slaRadarCondition), no tab.
+    conditions.push(slaRadarCondition(filterSla));
+  } else if (chipStatus) {
     conditions.push(eq(tickets.status, chipStatus));
   } else if (view === "active" || view === "closed") {
     conditions.push(inArray(tickets.status, VIEW_STATUSES[view]));
   }
   if (filterStatus && !chipStatus) {
     const scoped =
-      view === "active" || view === "closed"
+      !filterSla && (view === "active" || view === "closed")
         ? filterStatus.filter((s) => (VIEW_STATUSES[view] as readonly string[]).includes(s))
         : filterStatus;
     if (scoped.length > 0) conditions.push(inArray(tickets.status, scoped));
@@ -329,6 +347,7 @@ export default async function TicketsPage({
     (filterType ? 1 : 0) +
     (filterAssignee.length ? 1 : 0) +
     (filterEscalated ? 1 : 0) +
+    (filterSla ? 1 : 0) +
     (filterFrom || filterTo ? 1 : 0) +
     (filterBilling ? 1 : 0) +
     (filterOrg.length ? 1 : 0) +
@@ -441,6 +460,8 @@ export default async function TicketsPage({
         v.length > 0 &&
         k !== "view" &&
         k !== "status" &&
+        // Picking a tab leaves the SLA view; it would otherwise ignore the tab.
+        k !== "sla" &&
         k !== "page",
     ) as [string, string][],
   );
@@ -459,7 +480,20 @@ export default async function TicketsPage({
 
   // Which single segment is lit: chipStatus (computed above, alongside the
   // WHERE clause) wins whenever it applies; otherwise the view tab.
-  const activeTabId: string = chipStatus ?? view;
+  // No tab is lit in the SLA view: it replaces the tab scope.
+  const activeTabId: string = filterSla ? "" : (chipStatus ?? view);
+
+  // Same list without the SLA filter (back to the default Active tab).
+  const clearSlaHref = (() => {
+    const p = new URLSearchParams(
+      Object.entries(sp).filter(
+        ([k, v]) =>
+          typeof v === "string" && v.length > 0 && k !== "sla" && k !== "page",
+      ) as [string, string][],
+    );
+    const qs = p.toString();
+    return qs ? `/admin/tickets?${qs}` : "/admin/tickets";
+  })();
 
   // One combined tab strip, in display order. Active is the default scope,
   // so its two immediate refinements — Awaiting Customer / On Hold, both
@@ -489,6 +523,7 @@ export default async function TicketsPage({
     "stream",
     "assignee",
     "escalated",
+    "sla",
     "from",
     "to",
     "billing",
@@ -593,6 +628,16 @@ export default async function TicketsPage({
           options={[{ value: "1", label: tFilters("escalatedOnly") }]}
           triggerClassName="h-9! w-40"
         />
+        {filterSla ? (
+          <Link
+            href={clearSlaHref}
+            aria-label={tFilters("slaClear")}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
+          >
+            {tFilters(filterSla === "breached" ? "slaBreached" : "slaAtRisk")}
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
 
       <TicketsTable
