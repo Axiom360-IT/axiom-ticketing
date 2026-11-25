@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /* eslint-disable i18next/no-literal-string */
 // global-error.tsx replaces the root layout when a render fault escapes
 // every nested error boundary. It MUST render its own <html> and <body>
@@ -7,11 +9,18 @@
 // is also out of scope here, so the copy is a hard-coded English fallback.
 
 export default function GlobalError({
+  error,
   unstable_retry,
 }: {
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  // This screen used to log nothing, so a failure that reached it left no trace
+  // in the browser console. `digest` matches the server-side log line.
+  useEffect(() => {
+    console.error("[global-error]", error.digest ?? "(no digest)", error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body

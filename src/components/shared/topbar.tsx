@@ -25,7 +25,12 @@ type TopbarProps = {
 };
 
 export async function Topbar({ user, branding, permissions, ticketTypes }: TopbarProps) {
-  const initialNotifications = await getRecentNotifications();
+  // The bell is a convenience: if its query fails the page should still load
+  // (it polls every 30s and will recover on its own).
+  const initialNotifications = await getRecentNotifications().catch((err) => {
+    console.error("[topbar] could not load notifications", err);
+    return { unreadCount: 0, items: [] };
+  });
   return (
     <header className="h-14 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 sticky top-0 z-10">
       {/* Desktop: collapse the sidebar to an icon rail. Below `md` the sidebar

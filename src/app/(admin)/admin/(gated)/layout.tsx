@@ -12,6 +12,7 @@ import { SidebarProvider } from "@/components/shared/sidebar-context";
 import { SkipLink } from "@/components/shared/skip-link";
 import { Topbar } from "@/components/shared/topbar";
 import { loadBranding } from "@/lib/branding/load";
+import { DEFAULT_BRANDING } from "@/lib/branding/presets";
 import { getAvatarSignedUrl } from "@/lib/storage/signed-urls";
 import { loadActiveTicketTypes } from "@/lib/tickets/types";
 
@@ -74,18 +75,33 @@ export default async function AdminGatedLayout({
       displayImageKey = t.image ?? null;
     }
   }
+  // Everything below is decoration (avatar, brand colours, sidebar sub-links).
+  // The session and permissions above are what make the page safe to show; if
+  // one of these fails, the shell should still render without it — and say why
+  // in the log — rather than throw. An error thrown HERE is not caught by this
+  // segment's error.tsx (a boundary only covers its children), so it used to
+  // fall through to the blank global-error page.
   const displayAvatarUrl = displayImageKey
-    ? await getAvatarSignedUrl(displayImageKey)
+    ? await getAvatarSignedUrl(displayImageKey).catch((err) => {
+        console.error("[admin/layout] avatar url failed", err);
+        return null;
+      })
     : null;
-  const branding = await loadBranding();
+  const branding = await loadBranding().catch((err) => {
+    console.error("[admin/layout] branding failed; using defaults", err);
+    return DEFAULT_BRANDING;
+  });
   // Sidebar sub-nav under "Tickets" (one link per active ticket type, §6.1)
   // — only worth the query for a user who can actually see the Tickets link.
   const ticketTypes = user.permissions.has("tickets.view")
-    ? (await loadActiveTicketTypes()).map((t) => ({
-        value: t.value,
-        label: t.label,
-        icon: t.icon,
-      }))
+    ? await loadActiveTicketTypes()
+        .then((types) =>
+          types.map((t) => ({ value: t.value, label: t.label, icon: t.icon })),
+        )
+        .catch((err) => {
+          console.error("[admin/layout] ticket types failed", err);
+          return [];
+        })
     : [];
 
   return (
