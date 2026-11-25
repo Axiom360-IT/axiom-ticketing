@@ -2610,7 +2610,8 @@
       "slaBoard": {
         "title": "SLA deadlines",
         "subtitle": "In-flight tickets breaching or near their target",
-        "viewAll": "Open queue",
+        "viewBreached": "View all breached",
+        "viewAtRisk": "View all at risk",
         "breached": "Breached",
         "atRisk": "At risk",
         "unassigned": "Unassigned",
@@ -2688,7 +2689,137 @@
       "cardSettingsTitle": "Settings",
       "cardSettingsDescription": "SLA targets, business hours, email, security.",
       "cardAuditTitle": "Audit log",
-      "cardAuditDescription": "Append-only record of every privileged action."
+      "cardAuditDescription": "Append-only record of every privileged action.",
+      "customize": {
+        "customize": "Customize",
+        "hint": "Drag a widget by its handle to move it, or drag its corner to resize it. Nothing is saved until you press Save.",
+        "addWidget": "Add widget",
+        "addWidgetNone": "Every widget is already on your dashboard.",
+        "reset": "Reset to default",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…",
+        "dragHandle": "Move {title}",
+        "remove": "Hide {title}",
+        "chartTypeFor": "Chart type for {title}",
+        "chartType": {
+          "bar": "Bar",
+          "hbar": "Horizontal bar",
+          "donut": "Donut",
+          "pie": "Pie",
+          "line": "Line",
+          "area": "Area",
+          "table": "Table",
+          "ring": "Ring",
+          "number": "Number"
+        },
+        "group": {
+          "stats": "Quick stats",
+          "charts": "Charts",
+          "panels": "Panels"
+        },
+        "emptyWidget": "{title}: nothing to show right now. It will appear here when there is.",
+        "emptyDashboard": "Your dashboard has no widgets. Choose Customize, then Add widget.",
+        "saveInvalid": "That arrangement could not be saved. Please try again.",
+        "saveUnavailable": "Your dashboard could not be saved right now. Please try again later.",
+        "loadingWidget": "Loading…",
+        "widgetFailed": "This widget could not be loaded.",
+        "tryAgain": "Try again"
+      },
+      "chart": {
+        "empty": "No data to chart yet",
+        "name": "Name",
+        "value": "Tickets",
+        "date": "Date"
+      },
+      "metrics": {
+        "unassigned": "Unassigned",
+        "other": "Other",
+        "noOrganization": "No organization",
+        "unknownTechnician": "Unknown",
+        "stream": {
+          "internal": "Internal",
+          "external": "External"
+        },
+        "age": {
+          "d0_1": "Under a day",
+          "d1_3": "1–3 days",
+          "d3_7": "3–7 days",
+          "d7_14": "1–2 weeks",
+          "d14_plus": "Over 2 weeks",
+          "title": "How old active tickets are",
+          "subtitle": "Time since each active ticket was created"
+        },
+        "billing": {
+          "hourly_regular": "Billable (Regular)",
+          "hourly_premium": "Billable (Premium)",
+          "no": "Non-billable",
+          "monthly_plan": "Monthly plan",
+          "project": "Project",
+          "rework": "Rework",
+          "unset": "Not set"
+        },
+        "byTechnician": {
+          "title": "Active tickets per person",
+          "subtitle": "Tickets not yet resolved or closed, by assigned technician"
+        },
+        "byCategory": {
+          "title": "Active tickets by category",
+          "subtitle": "Tickets not yet resolved or closed"
+        },
+        "byType": {
+          "title": "Active tickets by type",
+          "subtitle": "Tickets not yet resolved or closed"
+        },
+        "byStream": {
+          "title": "Internal vs external",
+          "subtitle": "Active tickets by where they come from"
+        },
+        "byOrganization": {
+          "title": "Active tickets by organization",
+          "subtitle": "The {n} organizations with the most open tickets"
+        },
+        "backlog": {
+          "title": "Open backlog",
+          "subtitle": "Tickets still open at the end of each day, last {days} days",
+          "series": "Open tickets"
+        },
+        "firstResponse": {
+          "title": "First response time",
+          "subtitle": "Average hours from creation to first reply, by day, last {days} days (calendar hours)",
+          "series": "Average hours"
+        },
+        "resolutionTime": {
+          "title": "Time to resolve",
+          "subtitle": "Average hours from creation to resolution, by day resolved, last {days} days (calendar hours)",
+          "series": "Average hours"
+        },
+        "csatTrend": {
+          "title": "Customer satisfaction trend",
+          "subtitle": "Share of positive ratings by month, last {months} months",
+          "series": "Positive ratings"
+        },
+        "sla": {
+          "title": "SLA compliance",
+          "subtitle": "Tickets resolved in the last {days} days",
+          "label": "resolved within SLA",
+          "detail": "{met} of {total} tickets"
+        },
+        "escalation": {
+          "title": "Escalation rate",
+          "subtitle": "Tickets created in the last {days} days",
+          "label": "escalated",
+          "detail": "{escalated} of {total} tickets"
+        },
+        "hoursByTechnician": {
+          "title": "Hours logged per person",
+          "subtitle": "Time entries, last {days} days"
+        },
+        "hoursByBilling": {
+          "title": "Hours logged by billing type",
+          "subtitle": "Time entries, last {days} days"
+        }
+      }
     },
     "comingSoon": {
       "buildsIn": "Builds in {module}"

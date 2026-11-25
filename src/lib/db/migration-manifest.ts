@@ -91,6 +91,15 @@ export const DEPLOY_MIGRATIONS: readonly DeployMigration[] = [
       SELECT 1 WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'organization_notification_settings')`,
   },
   {
+    // One new table, nothing else. The dashboard reads it inside a try/catch
+    // that treats "missing" as "use the default layout", so a deploy that ships
+    // code before this runs cannot break the page.
+    id: "add-dashboard-layouts",
+    description: "dashboard_layouts: each person's saved admin dashboard arrangement",
+    appliedProbe: `
+      SELECT 1 WHERE EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'dashboard_layouts')`,
+  },
+  {
     // Copies the new technical permissions onto every role that already holds
     // settings.*, so splitting the permission changes nobody's access. A
     // plain INSERT … ON CONFLICT DO NOTHING: no probe, no lock, and cheap

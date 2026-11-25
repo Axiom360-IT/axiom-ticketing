@@ -32,6 +32,7 @@ export * from "./holidays";
 // `automations` was absent until the rule engine landed; nobody had run
 // `db:push` since, which is the only reason it went unnoticed.
 export * from "./automations";
+export * from "./dashboard-layouts";
 export * from "./automation-rules";
 export * from "./email-delivery";
 export * from "./organization-notification-settings";

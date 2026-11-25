@@ -34,10 +34,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  PriorityBar,
-  StatusDonut,
-  TrendLineChart,
-} from "@/components/dashboard/charts";
+  DashboardGrid,
+  type DashboardSlot,
+} from "@/components/dashboard/dashboard-grid";
 import {
   EscalatedBadge,
   PriorityBadge,
@@ -46,6 +45,10 @@ import { isStrictTechnician } from "@/lib/auth/can";
 import { getSessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema/tickets";
+import { defaultLayout } from "@/lib/dashboard/layout";
+import { loadDashboardLayout, viewerOf } from "@/lib/dashboard/store";
+import { loadWidgetData } from "@/lib/dashboard/widget-data";
+import { availableWidgets, getWidget, isLazyWidget, type WidgetId } from "@/lib/dashboard/widgets";
 import { loadMyQueue, type MyQueue as MyQueueData } from "@/lib/tickets/my-queue";
 import { loadSlaBoard, type SlaBoard as SlaBoardData } from "@/lib/tickets/sla-board";
 import {
@@ -258,6 +261,26 @@ export default async function AdminLanding() {
   // permission (organizations.view, which no Technician role holds).
   const canViewOrgs = user.permissions.has("organizations.view");
 
+  // Read the saved arrangement alongside the data (it never throws; see store.ts).
+  const layoutPromise = loadDashboardLayout(user);
+  // On-demand chart widgets are loaded only if they are on this person's
+  // dashboard, in parallel with everything else. A failure leaves that one
+  // widget showing "try again" rather than breaking the page.
+  const lazyPromise = layoutPromise.then(({ layout }) =>
+    Promise.all(
+      layout.items
+        .filter((i) => isLazyWidget(i.id))
+        .map(async (i) => {
+          try {
+            return [i.id, await loadWidgetData(i.id, user)] as const;
+          } catch (err) {
+            console.error("[dashboard] widget data failed", i.id, err);
+            return [i.id, null] as const;
+          }
+        }),
+    ),
+  );
+
   const [stats, chart, myQueue, slaBoard, escalations, triage, planWatch, csat] =
     await Promise.all([
       strictTech ? Promise.resolve(null) : getStats(user.permissions),
@@ -369,105 +392,89 @@ export default async function AdminLanding() {
 
   // Charts are noise on an empty system — only show once tickets exist.
   const showCharts = !strictTech && chart !== null && (stats?.total ?? 0) > 0;
+  const showCsat = !!csat && csat.breakdown.total > 0;
 
-  return (
-    <div className="space-y-8">
-      {/* ── Welcome strip ───────────────────────────────────────── */}
-      <header>
-        <h1 className="text-2xl font-semibold mb-1">{t("welcome")}</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          {t("rolesPrefix")} <span className="font-medium">{displayRoles}</span>
-        </p>
-      </header>
+  // ── Widgets ────────────────────────────────────────────────────────────
+  // Every widget this person may have, its content already rendered here on the
+  // server. WHICH ones appear, where and how big is their saved layout (or the
+  // default); <DashboardGrid> draws that. A widget with nothing to show right now
+  // (a clean SLA day, no held replies…) is marked `empty` rather than left out:
+  // the grid hides it and closes the gap while viewing, but it can still be
+  // moved or hidden while customizing.
+  const { layout } = await layoutPromise;
+  const lazyData = new Map(await lazyPromise);
+  const viewer = viewerOf(user);
 
-      {/* ── My Queue (personal, role-aware work surface) ────────── */}
-      {showMyQueue && myQueue ? (
-        <MyQueue data={myQueue} userId={user.id} t={t} />
-      ) : null}
+  const statDefs: Partial<
+    Record<
+      WidgetId,
+      {
+        title: string;
+        value: number | null;
+        href: string;
+        icon: typeof TicketIcon;
+        tone: keyof typeof STAT_TONES;
+        accent?: "warning";
+      }
+    >
+  > = {
+    "stat.total": { title: t("statTotal"), value: stats?.total ?? null, href: "/admin/tickets?view=all", icon: TicketIcon, tone: "blue" },
+    "stat.open": { title: t("statOpenTickets"), value: stats?.openTickets ?? null, href: "/admin/tickets?status=open,in_progress", icon: CircleDot, tone: "amber" },
+    "stat.unassigned": {
+      title: t("statUnassigned"),
+      value: stats?.unassigned ?? null,
+      href: "/admin/tickets?status=open&assignee=unassigned",
+      icon: UserPlus,
+      tone: "rose",
+      accent: stats?.unassigned != null && stats.unassigned > 0 ? "warning" : undefined,
+    },
+    "stat.awaiting": { title: t("statAwaiting"), value: stats?.awaiting ?? null, href: "/admin/tickets?status=awaiting_customer_confirmation", icon: Hourglass, tone: "purple" },
+    "stat.onHold": { title: t("statOnHold"), value: stats?.onHold ?? null, href: "/admin/tickets?status=on_hold", icon: PauseCircle, tone: "slate" },
+    "stat.resolved": { title: t("statResolved"), value: stats?.resolved ?? null, href: "/admin/tickets?status=resolved", icon: CircleCheck, tone: "emerald" },
+  };
 
-      {/* ── SLA deadlines (oversight; hidden when nothing at risk) ─ */}
-      {showSlaBoard && slaBoard ? (
-        <SlaBoard data={slaBoard} t={t} formatter={formatter} />
-      ) : null}
-
-      {/* ── Open escalations (oversight; hidden when none open) ──── */}
-      {showEscalations && escalations ? (
-        <EscalationsBoard
-          data={escalations}
-          t={t}
-          formatter={formatter}
-          reasonLabels={escalationReasonLabels}
-        />
-      ) : null}
-
-      {/* ── Triage (held replies + unverified orgs; hidden at zero) ─ */}
-      {showTriage && triage ? <TriagePanel data={triage} t={t} /> : null}
-
-      {/* ── Monthly-plan watch (hidden when no org is low) ────────── */}
-      {showPlanWatch && planWatch ? (
-        <PlanWatchPanel data={planWatch} t={t} />
-      ) : null}
-
-      {/* ── Global health (hidden for strict Technicians) ───────── */}
-      {!strictTech && stats ? (
-        <section
-          aria-label={t("quickStatsLabel")}
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
-        >
-          <StatCard
-            label={t("statTotal")}
-            value={stats.total}
-            href="/admin/tickets?view=all"
-            icon={TicketIcon}
-            tone="blue"
-          />
-          <StatCard
-            label={t("statOpenTickets")}
-            value={stats.openTickets}
-            href="/admin/tickets?status=open,in_progress"
-            icon={CircleDot}
-            tone="amber"
-          />
-          <StatCard
-            label={t("statUnassigned")}
-            value={stats.unassigned}
-            href="/admin/tickets?status=open&assignee=unassigned"
-            icon={UserPlus}
-            tone="rose"
-            accent={
-              stats.unassigned !== null && stats.unassigned > 0
-                ? "warning"
-                : undefined
-            }
-          />
-          <StatCard
-            label={t("statAwaiting")}
-            value={stats.awaiting}
-            href="/admin/tickets?status=awaiting_customer_confirmation"
-            icon={Hourglass}
-            tone="purple"
-          />
-          <StatCard
-            label={t("statOnHold")}
-            value={stats.onHold}
-            href="/admin/tickets?status=on_hold"
-            icon={PauseCircle}
-            tone="slate"
-          />
-          <StatCard
-            label={t("statResolved")}
-            value={stats.resolved}
-            href="/admin/tickets?status=resolved"
-            icon={CircleCheck}
-            tone="emerald"
-          />
-        </section>
-      ) : null}
-
-      {/* ── Customer satisfaction (hidden until there's feedback) ── */}
-      {csat && csat.breakdown.total > 0 ? (
-        <section aria-label={t("csatLabel")}>
-          <Card>
+  const slotFor = (id: WidgetId): DashboardSlot => {
+    switch (id) {
+      case "myQueue":
+        return {
+          kind: "node", id, title: t("myQueue.title"),
+          empty: !(showMyQueue && myQueue),
+          node: showMyQueue && myQueue ? <MyQueue data={myQueue} userId={user.id} t={t} /> : null,
+        };
+      case "sla":
+        return {
+          kind: "node", id, title: t("slaBoard.title"),
+          empty: !(showSlaBoard && slaBoard),
+          node: showSlaBoard && slaBoard ? <SlaBoard data={slaBoard} t={t} formatter={formatter} /> : null,
+        };
+      case "escalations":
+        return {
+          kind: "node", id, title: t("escalations.title"),
+          empty: !(showEscalations && escalations),
+          node:
+            showEscalations && escalations ? (
+              <EscalationsBoard data={escalations} t={t} formatter={formatter} reasonLabels={escalationReasonLabels} />
+            ) : null,
+        };
+      case "triage":
+        return {
+          kind: "node", id, title: t("triage.title"),
+          empty: !(showTriage && triage),
+          node: showTriage && triage ? <TriagePanel data={triage} t={t} /> : null,
+        };
+      case "planWatch":
+        return {
+          kind: "node", id, title: t("planWatch.title"),
+          empty: !(showPlanWatch && planWatch),
+          node: showPlanWatch && planWatch ? <PlanWatchPanel data={planWatch} t={t} /> : null,
+        };
+      case "csat":
+        return {
+          kind: "node", id, title: t("csatTitle"),
+          empty: !showCsat,
+          node: showCsat && csat ? (
+            <section aria-label={t("csatLabel")} className="flex flex-col">
+          <Card className="flex-1">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">{t("csatTitle")}</CardTitle>
               <CardDescription>
@@ -566,48 +573,84 @@ export default async function AdminLanding() {
               ) : null}
             </CardContent>
           </Card>
-        </section>
-      ) : null}
+        </section> ) : null,
+        };
+      case "chart.trend":
+        return {
+          kind: "chart", id, title: t("chartTrendTitle"),
+          subtitle: t("chartTrendSubtitle", { days: TREND_DAYS }),
+          empty: !showCharts,
+          spec: {
+            kind: "trend",
+            series: [
+              { key: "created", name: t("trendCreated"), tone: "blue" },
+              { key: "resolved", name: t("trendResolved"), tone: "green" },
+            ],
+            data: trendData,
+          },
+        };
+      case "chart.status":
+        return {
+          kind: "chart", id, title: t("chartStatusTitle"),
+          empty: !showCharts,
+          spec: { kind: "category", palette: "status", data: statusData },
+        };
+      case "chart.priority":
+        return {
+          kind: "chart", id, title: t("chartPriorityTitle"),
+          subtitle: t("chartPrioritySubtitle"),
+          empty: !showCharts,
+          spec: { kind: "category", palette: "priority", data: priorityData },
+        };
+      default: {
+        const lazyDef = getWidget(id);
+        if (lazyDef?.lazy && lazyDef.metricKey) {
+          const data = lazyData.get(id) ?? null;
+          return {
+            kind: "chart", id,
+            title: t(`metrics.${lazyDef.metricKey}.title`),
+            subtitle: data?.subtitle,
+            spec: data?.spec ?? null,
+          };
+        }
+        const s = statDefs[id];
+        return {
+          kind: "node", id, title: s?.title ?? id,
+          empty: !s || s.value === null,
+          node:
+            s && s.value !== null ? (
+              <StatCard label={s.title} value={s.value} href={s.href} icon={s.icon} tone={s.tone} accent={s.accent} />
+            ) : null,
+        };
+      }
+    }
+  };
 
-      {/* ── Charts ──────────────────────────────────────────────── */}
-      {showCharts ? (
-        <section aria-label={t("chartsLabel")} className="grid gap-4 lg:grid-cols-2">
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base">{t("chartTrendTitle")}</CardTitle>
-              <CardDescription>
-                {t("chartTrendSubtitle", { days: TREND_DAYS })}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TrendLineChart
-                data={trendData}
-                createdLabel={t("trendCreated")}
-                resolvedLabel={t("trendResolved")}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t("chartStatusTitle")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <StatusDonut data={statusData} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {t("chartPriorityTitle")}
-              </CardTitle>
-              <CardDescription>{t("chartPrioritySubtitle")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PriorityBar data={priorityData} />
-            </CardContent>
-          </Card>
-        </section>
-      ) : null}
+  const widgets = availableWidgets(viewer);
+  const slots = widgets.map((w) => slotFor(w.id));
+
+  return (
+    <div className="space-y-6">
+      {/* ── Welcome strip ───────────────────────────────────────── */}
+      <header>
+        <h1 className="text-2xl font-semibold mb-1">{t("welcome")}</h1>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {t("rolesPrefix")} <span className="font-medium">{displayRoles}</span>
+        </p>
+      </header>
+
+      <DashboardGrid
+        initialLayout={layout}
+        defaultLayout={defaultLayout(viewer)}
+        slots={slots}
+        catalog={widgets.map((w, i) => ({ id: w.id, group: w.group, title: slots[i].title }))}
+        chartLabels={{
+          empty: t("chart.empty"),
+          name: t("chart.name"),
+          value: t("chart.value"),
+          date: t("chart.date"),
+        }}
+      />
     </div>
   );
 }
@@ -846,30 +889,31 @@ function SlaBoard({
           </div>
         </div>
         <Link
-          href="/admin/tickets"
+          href={`/admin/tickets?sla=${data.counts.breached > 0 ? "breached" : "at_risk"}`}
           className="shrink-0 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
         >
-          {t("slaBoard.viewAll")}
+          {data.counts.breached > 0
+            ? t("slaBoard.viewBreached")
+            : t("slaBoard.viewAtRisk")}
         </Link>
       </div>
 
+      {/* The counts are links: each opens the tickets list filtered to exactly
+          the tickets it counts (same predicate, lib/tickets/ticket-filter-
+          conditions.ts). Only this card's 6 rows are previewed here. */}
       <div className="flex flex-wrap gap-2 px-4 pt-3">
-        <span className="inline-flex items-baseline gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 dark:border-red-900 dark:bg-red-950/40">
-          <span className="text-base font-semibold tabular-nums text-red-600 dark:text-red-400">
-            {data.counts.breached}
-          </span>
-          <span className="text-xs text-red-700/80 dark:text-red-300/80">
-            {t("slaBoard.breached")}
-          </span>
-        </span>
-        <span className="inline-flex items-baseline gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 dark:border-amber-900 dark:bg-amber-950/40">
-          <span className="text-base font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-            {data.counts.atRisk}
-          </span>
-          <span className="text-xs text-amber-700/80 dark:text-amber-300/80">
-            {t("slaBoard.atRisk")}
-          </span>
-        </span>
+        <SlaCountChip
+          count={data.counts.breached}
+          label={t("slaBoard.breached")}
+          href="/admin/tickets?sla=breached"
+          tone="red"
+        />
+        <SlaCountChip
+          count={data.counts.atRisk}
+          label={t("slaBoard.atRisk")}
+          href="/admin/tickets?sla=at_risk"
+          tone="amber"
+        />
       </div>
 
       <div className="px-4 pb-4 pt-2">
@@ -914,6 +958,56 @@ function SlaBoard({
         </ul>
       </div>
     </section>
+  );
+}
+
+const SLA_CHIP_TONES = {
+  red: {
+    box: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40",
+    hover: "hover:bg-red-100 dark:hover:bg-red-950/60",
+    count: "text-red-600 dark:text-red-400",
+    label: "text-red-700/80 dark:text-red-300/80",
+  },
+  amber: {
+    box: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40",
+    hover: "hover:bg-amber-100 dark:hover:bg-amber-950/60",
+    count: "text-amber-600 dark:text-amber-400",
+    label: "text-amber-700/80 dark:text-amber-300/80",
+  },
+} as const;
+
+/** A count chip that opens the matching tickets. A zero count stays plain: the
+ *  list behind it would be empty, so there is nothing to click through to. */
+function SlaCountChip({
+  count,
+  label,
+  href,
+  tone,
+}: {
+  count: number;
+  label: string;
+  href: string;
+  tone: keyof typeof SLA_CHIP_TONES;
+}) {
+  const c = SLA_CHIP_TONES[tone];
+  const body = (
+    <>
+      <span className={cn("text-base font-semibold tabular-nums", c.count)}>
+        {count}
+      </span>
+      <span className={cn("text-xs", c.label)}>{label}</span>
+    </>
+  );
+  const base = cn(
+    "inline-flex items-baseline gap-1.5 rounded-md border px-2.5 py-1",
+    c.box,
+  );
+  return count > 0 ? (
+    <Link href={href} className={cn(base, "transition-colors", c.hover)}>
+      {body}
+    </Link>
+  ) : (
+    <span className={base}>{body}</span>
   );
 }
 
@@ -1264,7 +1358,7 @@ function StatCard({
     <Link
       href={href}
       className={cn(
-        "rounded-lg border bg-white dark:bg-zinc-900 px-4 py-3 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500",
+        "block rounded-lg border bg-white dark:bg-zinc-900 px-4 py-3 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500",
         accent === "warning" && value > 0
           ? "border-amber-300 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30"
           : "border-zinc-200 dark:border-zinc-800",

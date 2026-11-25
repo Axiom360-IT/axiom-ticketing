@@ -5,6 +5,118 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-25 · Dashboard phase 2: fourteen on-demand chart widgets
+
+**What.** Per person, per category, per type, per stream, per organization; ticket
+age; backlog, first-response, resolution-time and CSAT trends; SLA compliance and
+escalation rate; hours per person and by billing type. Built on the phase 1
+widget system; the grid, saving and layout rules did not change.
+
+**Decisions.**
+  * **Opt-in, not default.** The default layout is still the original dashboard.
+    The new widgets are added through "Add widget". Defaulting everyone to 14 more
+    charts would have changed every dashboard overnight and cost 14 more queries
+    on every load. `defaultLayout` excludes widgets marked `lazy`.
+  * **Data loads only for widgets that are on the dashboard**, in parallel with the
+    rest of the page; adding one fetches just its data through
+    `loadDashboardWidget`. Both paths go through one function, `loadWidgetData`,
+    which re-checks the widget against the caller's current permissions, so
+    asking for a widget by id cannot return data they may not see. (The older
+    panels still load always: they render server markup that cannot be fetched
+    later.)
+  * **Three data shapes, each with only the chart types that suit it**: categories
+    (bar, horizontal bar, donut, pie, table), time series (line, area, bar, table),
+    and a single proportion (ring, number, table). New types `ring` and `number`.
+    A bar chart of one percentage, or a pie of a time series, would mislead.
+  * **A day with no data is a gap, not a zero** (`fillTrend` leaves it `null`).
+    "Average first response 0 hours" and "nothing was answered that day" are
+    different statements. Real data made this matter: first-response times exist on
+    only 6 of the last 30 days, so isolated points get dots or a line would draw
+    nothing. Counts that really are zero when nothing happened (backlog) fill with 0.
+  * **"Unassigned" is never folded into "Other"** on the per-person chart
+    (`topWithOther(..., keep)`): it is the number people are looking for.
+  * **Who sees what.** Ticket-derived widgets need `tickets.view` and are never
+    offered to a strict Technician (same as the existing org-wide counts).
+    By-organization also needs `organizations.view`. The hours widgets are
+    commercial data, so they need `worklog.view_all` and nothing else grants them.
+  * **Definitions chosen, worth knowing.** "Active" = not deleted, not a draft, not
+    resolved or closed. "Per person" counts the primary assignee only (co-assignees
+    are not counted). Backlog = tickets created by that day's end and not yet
+    resolved/closed (`coalesce(resolved_at, closed_at)`), so an auto-closed ticket
+    leaves the backlog. Response and resolution times are calendar hours, not
+    business hours. SLA compliance = of tickets resolved in the last 30 days, the
+    share with no breach stamp.
+  * **One list of chart types.** The layout validator once carried its own copy and
+    would have rejected any layout containing a new type (found by a test while
+    building this); it now derives from `CHART_TYPES`.
+  * **Add places a widget in the first free spot at the bottom** rather than always
+    at the left edge, so half-width widgets fill rows instead of one tall column.
+
+**Checked against the real database** (read-only): all 13 queries run, and agree
+with each other (every breakdown of active tickets totals the same, and today's
+backlog equals the active count). The loader's translation keys are covered by a
+test, since a missing key would show its raw path to a user.
+
+**Noticed, not changed.** SLA compliance over the last 30 days reads about 52%
+(86 of 178 resolved tickets carried a breach stamp). That is consistent with the
+SLA monitor mostly not running (see the Inngest entries), so the figure is as
+much about that as about service quality.
+
+---
+
+## 2026-11-25 · The dashboard is a set of widgets each person arranges (phase 1)
+
+**Ask.** The dashboard was a fixed page with three charts. Wanted: more kinds of
+charts, quick widgets, hide/show any card, add widgets, drag cards anywhere and
+resize them, and for a metric to be viewable as whichever chart suits it.
+
+**Decisions** (the first three were put to the product owner):
+  * **Personal, not shared.** Each person's layout is their own row in
+    `dashboard_layouts`. No row = the default (everything they may see, in the
+    old page's order), so nobody's dashboard changed until they customize.
+  * **Free-form drag and resize** (`react-grid-layout` 2, 12 columns, vertical
+    compaction) rather than a simple reorder. Cost accepted: arranging is
+    mouse/touch only, and not offered below `md` (a phone gets one column).
+    Hiding, adding, resetting and the chart-type picker work from the keyboard.
+  * **Phased.** Phase 1 (this): the widget system and the existing cards as
+    widgets, plus every chart type. Phase 2: new widgets (docs/BACKLOG.md).
+  * **One concept for hidden.** A widget not in a person's layout *is* hidden;
+    "Add widget" lists the available ones that are not in it. There is no second
+    "hidden" list that could disagree.
+  * **A widget only offers chart types its data suits** (`CHART_TYPES_BY_KIND`):
+    category data -> bar / horizontal bar / donut / pie / table; time series ->
+    line / area / bar / table. A pie of a time series or a line through
+    unordered categories would mislead. "Table" is the text alternative to any
+    chart.
+  * **Never widens access.** Visibility rules per widget mirror what the page
+    already did (`lib/dashboard/widgets.ts`). A saved layout is untrusted on the
+    way back in, so `sanitizeLayout` re-checks it against the viewer's *current*
+    permissions on every read and save: unknown, forbidden and duplicate widgets
+    are dropped, sizes are clamped into the grid. The save action trusts nothing
+    the browser sends.
+  * **The page never breaks over a layout.** Reading it cannot throw: a missing
+    table (code deployed before the migration), a database error or a value that
+    no longer parses all fall back to the default and log why.
+  * **Server renders the content, the client owns the arrangement.** Panels keep
+    their server-rendered markup; they are passed to the grid as slots. Panels
+    that used to size to their content now sit in a fixed-height widget and
+    scroll if taller. Default sizes are estimates; people resize.
+  * **Chart-type change while just viewing saves at once** (a display
+    preference, reverted if the save fails). Moving/resizing/hiding is held until
+    Save, and Cancel discards it.
+  * **"Reset to default" is a draft change**, undone by Cancel, rather than a
+    delete action, so there is nothing to confirm.
+
+**Migration.** `add-dashboard-layouts` is additive and idempotent, registered in
+`DEPLOY_MIGRATIONS`, so a production deploy creates the table before the new code
+serves traffic. Until then people simply cannot save.
+
+**Not done / known.** Data for hidden widgets is still loaded (as before; no
+regression, but an optimization for phase 2). Widgets are not yet filtered by
+date range. Keyboard users cannot reposition a widget.
+
+---
+
 ## 2026-11-24 · "Awaiting customer" tickets the monitor skipped now get chased and closed
 
 **Report.** A comment said Awaiting Customer tickets should close on day 5 with
