@@ -11,6 +11,11 @@ import { getAppUrl } from "@/lib/request";
 import { getSettings } from "@/lib/settings";
 import { ticketTrackingUrl } from "@/lib/tokens";
 import { withAutomationRun } from "@/lib/automations/runs";
+import {
+  followupClockStart,
+  MIN_NOTICE_MS,
+  quotedCloseAt,
+} from "@/lib/tickets/followup-clock";
 import { inngest } from "../client";
 
 // Customer follow-up + auto-close monitor — runs every 6 hours.
@@ -30,11 +35,16 @@ import { inngest } from "../client";
 // With followup_days=1, max_reminders=3, close_days=4 that is: reminders on
 // days 1, 2 and 3, silence on day 4, closed on day 5.
 //
-// The "clock" is the LATEST customer-visible message from the agent (not a
-// status-change timestamp), so a fresh agent reply automatically re-opens the
-// window: `customer_followup_sent_at < last agent message` marks the stamp
-// stale, no separate reset needed. A customer reply makes the latest author
-// `customer`, which drops the ticket from the candidate set entirely.
+// The "clock" start comes from `followupClockStart` (lib/tickets/followup-clock):
+// the later of the agent's last customer-visible message and the moment the
+// ticket was parked (`sla_paused_at`). Counting from the parking too is what
+// covers a ticket staff park WITHOUT replying (the customer's own email is then
+// the last message) — it used to be skipped forever. A fresh agent reply or a
+// re-parking moves the clock forward, which marks the old reminder stamp stale
+// (`customer_followup_sent_at < clock`), no separate reset needed. A customer
+// reply after the clock drops the ticket from the candidate set entirely.
+// `system` messages (e.g. "Merged from X") are bookkeeping and never count as
+// either side speaking.
 //
 // All behaviour is settings-driven (Settings → Tickets → "Customer follow-up").
 
@@ -98,10 +108,11 @@ export const customerFollowupMonitor = inngest.createFunction(
     // lands one reminder per calendar day without skipping.
     const RENUDGE_MS = 20 * 60 * 60 * 1000;
 
-    // Latest customer-VISIBLE message (excludes internal notes + held inbound):
-    // its author tells us whose turn it is, its time is the follow-up clock.
-    const lastAuthorSql = sql<string | null>`(select m.author_type from ${messages} m where m.ticket_id = "tickets"."id" and m.is_internal_note = false and m.moderation_status = 'approved' order by m.created_at desc limit 1)`;
-    const lastAtSql = sql<string | Date | null>`(select m.created_at from ${messages} m where m.ticket_id = "tickets"."id" and m.is_internal_note = false and m.moderation_status = 'approved' order by m.created_at desc limit 1)`;
+    // Latest customer-VISIBLE conversation message (excludes internal notes,
+    // held inbound, and `system` bookkeeping such as the merge notice): its
+    // author tells us whose turn it is, its time feeds the follow-up clock.
+    const lastAuthorSql = sql<string | null>`(select m.author_type from ${messages} m where m.ticket_id = "tickets"."id" and m.is_internal_note = false and m.moderation_status = 'approved' and m.author_type <> 'system' order by m.created_at desc limit 1)`;
+    const lastAtSql = sql<string | Date | null>`(select m.created_at from ${messages} m where m.ticket_id = "tickets"."id" and m.is_internal_note = false and m.moderation_status = 'approved' and m.author_type <> 'system' order by m.created_at desc limit 1)`;
 
     // Read candidates OUTSIDE step.run — Dates survive as Dates (Inngest's step
     // memoization would otherwise JSON-stringify them).
@@ -115,6 +126,7 @@ export const customerFollowupMonitor = inngest.createFunction(
         customerId: tickets.customerId,
         followupSentAt: tickets.customerFollowupSentAt,
         followupCount: tickets.customerFollowupCount,
+        parkedAt: tickets.slaPausedAt,
         lastAuthor: lastAuthorSql,
         lastAtRaw: lastAtSql,
       })
@@ -132,26 +144,38 @@ export const customerFollowupMonitor = inngest.createFunction(
     let closed = 0;
 
     for (const t of candidates) {
-      // Only when the AGENT spoke last (customer owes a reply). If the latest
-      // visible message is the customer's — or there's none — skip.
-      if (t.lastAuthor !== "agent" || !t.lastAtRaw) continue;
-      const lastAtMs = new Date(t.lastAtRaw as string | Date).getTime();
+      // Only when the CUSTOMER owes a reply, and counting from when the wait
+      // began (see followupClockStart). Otherwise leave the ticket alone.
+      const clockStart = followupClockStart({
+        lastAuthor: t.lastAuthor,
+        lastAt: t.lastAtRaw ? new Date(t.lastAtRaw as string | Date) : null,
+        parkedAt: t.parkedAt,
+      });
+      if (!clockStart) continue;
+      const clockMs = clockStart.getTime();
       const sentMs = t.followupSentAt ? t.followupSentAt.getTime() : null;
       // A reminder has been sent for the CURRENT agent message if the stamp
       // post-dates it; a newer agent reply makes the stamp stale and re-opens
       // the whole cycle.
-      const nudgedSinceLastAgent = sentMs !== null && sentMs >= lastAtMs;
+      const nudgedSinceLastAgent = sentMs !== null && sentMs >= clockMs;
       // Re-assert atomically at write time that the customer STILL hasn't
       // replied since the agent's last message. A reply (approved OR held for
       // moderation) that lands between the candidate read and this write must
       // cancel the nudge/close — the ticket's status alone doesn't change when
       // a customer replies, so the status guard isn't enough on its own.
-      const noNewCustomerReply = sql`not exists (select 1 from ${messages} m where m.ticket_id = ${t.id} and m.author_type = 'customer' and m.is_internal_note = false and m.created_at > ${new Date(lastAtMs)})`;
+      const noNewCustomerReply = sql`not exists (select 1 from ${messages} m where m.ticket_id = ${t.id} and m.author_type = 'customer' and m.is_internal_note = false and m.created_at > ${new Date(clockMs)})`;
 
       // ── 1. Auto-close ───────────────────────────────────────────
       // Once at least one reminder has gone out and the full grace+close window
-      // has elapsed since the agent's message, close it.
-      if (nudgedSinceLastAgent && lastAtMs <= closeCutoff) {
+      // has elapsed since the clock start, close it — but never within
+      // MIN_NOTICE_MS of the latest reminder, so a backlog ticket picked up
+      // late still gets the notice its email promised.
+      if (
+        nudgedSinceLastAgent &&
+        sentMs !== null &&
+        sentMs <= now.getTime() - MIN_NOTICE_MS &&
+        clockMs <= closeCutoff
+      ) {
         const didClose = await step.run(`followup-close-${t.id}`, async () => {
           const rows = await db
             .update(tickets)
@@ -197,7 +221,7 @@ export const customerFollowupMonitor = inngest.createFunction(
       // A stale stamp means a new series, so the stored count doesn't apply.
       const remindersSoFar = nudgedSinceLastAgent ? (t.followupCount ?? 0) : 0;
       const dueForNudge =
-        lastAtMs <= followupCutoff &&
+        clockMs <= followupCutoff &&
         (!nudgedSinceLastAgent ||
           (cfg.daily &&
             sentMs !== null &&
@@ -210,7 +234,7 @@ export const customerFollowupMonitor = inngest.createFunction(
       // than the re-nudge window. Overlapping runs still can't double-send.
       const claimGuards = [
         isNull(tickets.customerFollowupSentAt),
-        lt(tickets.customerFollowupSentAt, new Date(lastAtMs)),
+        lt(tickets.customerFollowupSentAt, new Date(clockMs)),
       ];
       if (cfg.daily) {
         // Re-nudge only while under the cap — checked in the same atomic
@@ -232,7 +256,7 @@ export const customerFollowupMonitor = inngest.createFunction(
             customerFollowupSentAt: now,
             // 1 when this starts a new series (no stamp, or one older than the
             // agent's message), otherwise one more than what's stored.
-            customerFollowupCount: sql`case when ${tickets.customerFollowupSentAt} is null or ${tickets.customerFollowupSentAt} < ${new Date(lastAtMs)} then 1 else ${tickets.customerFollowupCount} + 1 end`,
+            customerFollowupCount: sql`case when ${tickets.customerFollowupSentAt} is null or ${tickets.customerFollowupSentAt} < ${new Date(clockMs)} then 1 else ${tickets.customerFollowupCount} + 1 end`,
             updatedAt: sql`now()`,
           })
           .where(
@@ -262,8 +286,11 @@ export const customerFollowupMonitor = inngest.createFunction(
         // The close instant is fixed to the agent's message — NOT to when this
         // reminder happens to go out. Deriving it from `now` made every
         // reminder after the first quote a date later than the actual close.
-        const closeAt = new Date(
-          lastAtMs + (cfg.followupDays + cfg.closeDays) * DAY_MS,
+        const closeAt = quotedCloseAt(
+          clockStart,
+          now,
+          cfg.followupDays,
+          cfg.closeDays,
         );
         await step.run(`followup-email-${t.id}`, async () => {
           await sendFollowupEmail(t, closeAt);

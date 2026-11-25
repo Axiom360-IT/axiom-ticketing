@@ -5,6 +5,58 @@ entries go at the top; date them.
 
 ---
 
+## 2026-11-24 · "Awaiting customer" tickets the monitor skipped now get chased and closed
+
+**Report.** A comment said Awaiting Customer tickets should close on day 5 with
+no reply; the exported list (14 tickets) had ones parked for weeks.
+
+**Diagnosis, from the live database (read-only) and the run history.** Two
+independent causes:
+  1. **Code (fixed here).** The monitor only acted when an *agent* wrote the last
+     customer-visible message. Staff park a ticket with the status dropdown (or
+     the MCP status tool) without replying, so the customer's own email stayed
+     the last message and the ticket was skipped on every run, forever. Six
+     tickets were stuck this way for 1 to 18 days (SJ-20261019-001,
+     VITA-20261105-002, ME-20261111-001, BRAN-20261110-001, YAM-20261110-001,
+     BRAM-20261027-001). A merge's `system` notice would have blocked a ticket
+     the same way.
+  2. **Scheduler (NOT fixed here).** `customer-followup-monitor` ran every 6h
+     until 2026-11-08 12:00, then only on 18 Nov, 23 Nov (12:00, 18:00) and 24
+     Nov 00:00. Every other Inngest cron is dropped in the same way (`sla-monitor`:
+     12 runs in 3 days against ~216 due). This matches the 2026-11-10 "Inngest
+     Hobby plan exhausted" entry: those changes lowered usage but cannot lift the
+     cap inside the billing cycle. Reminders and closes therefore arrive days
+     late. Not a code fault; options are an Inngest upgrade or moving the
+     monitors to Vercel Cron (the same move already made for notifications and
+     inbound email).
+
+**Change.** `lib/tickets/followup-clock.ts` (pure, tested) decides whether the
+customer owes a reply and when the wait began: the later of the agent's last
+message and `sla_paused_at` (stamped when a ticket is parked). A customer
+message after that drops the ticket, as before. `system` messages are ignored.
+
+**Two consequences handled on purpose.**
+  * A ticket the agent wrote on long ago but only parked now used to count its 5
+    days from the old message, so it could be reminded and closed within one
+    cron tick. The parking time now counts.
+  * The backlog (parked 12-18 days ago) would have been told "we close it on
+    <date in the past>" and closed ~6h later. The quoted date is now at least a
+    day out and a ticket is never closed within 20h (`MIN_NOTICE_MS`) of its
+    latest reminder. A normal daily series is unaffected (last reminder on day 3,
+    close on day 5).
+
+**Known limit.** `sla_paused_at` is stamped on entering the *first* pause status,
+so a ticket moved On hold -> Awaiting customer counts from when it went on hold.
+The 20h notice guard still gives the customer a reminder before any close. A
+dedicated "parked at" column would remove the imprecision; not worth a schema
+change yet.
+
+**Not changed.** The cadence, `customer_followup.*` settings, reminder
+wording, and the "agent is slow to reply" case: nothing closes a ticket because
+staff are quiet (SLA alerts only).
+
+---
+
 ## 2026-11-10 · Per-organization notification settings
 
 **Ask.** "Don't send this organization notifications for this and this" — for
